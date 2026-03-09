@@ -1,0 +1,14 @@
+# Deepgram Video List Example
+# One video file path per line
+# Lines starting with # are comments and will be ignored
+# Empty lines are also ignored
+
+# Tom Goes to the Mayor episodes
+/media/tv/Tom Goes to the Mayor/Season 02/Tom Goes to the Mayor - S02E10 - Friendship Alliance.mkv
+/media/tv/Tom Goes to the Mayor/Season 01/Tom Goes to the Mayor - S01E12 - Rebirth.mkv
+
+# The Eric Andre Show
+/media/tv/The Eric Andre Show/Season 04/The Eric Andre Show - S04E10 - Jack Black; Jennette McCurdy.mkv
+
+# The Apothecary Diaries
+/media/tv/The Apothecary Diaries/Season 02/The Apothecary Diaries - S02E24 - The Beginning.mkv

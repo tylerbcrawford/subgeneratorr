@@ -1,0 +1,853 @@
+#!/usr/bin/env python3
+"""
+Core transcription functionality for Subgeneratorr.
+
+This module provides reusable functions for video processing and transcription
+that can be used by both the CLI tool and the Web UI.
+"""
+
+from pathlib import Path
+from deepgram import DeepgramClient, PrerecordedOptions
+from deepgram_captions import DeepgramConverter, srt
+import subprocess
+import tempfile
+import os
+import json
+import csv
+from typing import Optional, List
+
+# Supported video file extensions
+VIDEO_EXTS = {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.wmv', '.flv'}
+
+# Supported audio file extensions (Deepgram compatible)
+AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.ogg', '.opus', '.m4a', '.aac', '.wma'}
+
+
+def is_video(p: Path) -> bool:
+    """
+    Check if a path points to a supported video file.
+    
+    Args:
+        p: Path to check
+        
+    Returns:
+        True if the file has a supported video extension
+    """
+    return p.suffix.lower() in VIDEO_EXTS
+
+
+def is_audio(p: Path) -> bool:
+    """
+    Check if a path points to a supported audio file.
+    
+    Args:
+        p: Path to check
+        
+    Returns:
+        True if the file has a supported audio extension
+    """
+    return p.suffix.lower() in AUDIO_EXTS
+
+
+def is_media(p: Path) -> bool:
+    """
+    Check if a path points to a supported media file (video or audio).
+    
+    Args:
+        p: Path to check
+        
+    Returns:
+        True if the file has a supported media extension
+    """
+    return is_video(p) or is_audio(p)
+
+
+def get_video_duration(video: Path) -> float:
+    """
+    Get video duration in seconds using ffprobe.
+    
+    Args:
+        video: Path to video file
+        
+    Returns:
+        Duration in seconds, or 0 if unable to determine
+    """
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "json",
+            str(video)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        return float(data.get("format", {}).get("duration", 0))
+    except Exception:
+        return 0.0
+
+
+# ISO 639-1 (Deepgram) → ISO 639-2/B (MKV tags) mapping
+# Includes both /B and /T variants where they differ
+_LANG_MAP = {
+    "en": ["eng"],
+    "es": ["spa"],
+    "fr": ["fra", "fre"],
+    "de": ["deu", "ger"],
+    "it": ["ita"],
+    "pt": ["por"],
+    "ja": ["jpn"],
+    "ko": ["kor"],
+    "zh": ["zho", "chi"],
+    "ru": ["rus"],
+    "ar": ["ara"],
+    "hi": ["hin"],
+    "nl": ["nld", "dut"],
+    "sv": ["swe"],
+    "pl": ["pol"],
+    "da": ["dan"],
+    "no": ["nor"],
+    "fi": ["fin"],
+    "tr": ["tur"],
+    "uk": ["ukr"],
+}
+
+
+def get_audio_stream_index(video: Path, language: str) -> Optional[int]:
+    """
+    Find the audio stream index matching a target language using ffprobe.
+
+    Args:
+        video: Path to video file
+        language: ISO 639-1 language code (e.g., 'en', 'de')
+
+    Returns:
+        Absolute stream index for the matching audio track, or None if
+        no match found (caller should fall back to default behavior)
+    """
+    if language == "multi":
+        return None
+
+    target_codes = _LANG_MAP.get(language)
+    if not target_codes:
+        return None
+
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index:stream_tags=language",
+            "-of", "json",
+            str(video)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+
+        # Single audio stream — no selection needed
+        if len(streams) <= 1:
+            return None
+
+        for stream in streams:
+            tag = stream.get("tags", {}).get("language", "").lower()
+            if tag in target_codes:
+                return stream["index"]
+
+        return None
+    except Exception:
+        return None
+
+
+def _get_channel_count(video: Path, stream_index: Optional[int] = None) -> int:
+    """
+    Get the number of audio channels for a stream using ffprobe.
+
+    Args:
+        video: Path to video file
+        stream_index: Absolute stream index to query. If None, queries the
+                      default audio stream.
+
+    Returns:
+        Channel count, or 0 on failure
+    """
+    try:
+        cmd = ["ffprobe", "-v", "error"]
+        if stream_index is not None:
+            cmd += ["-select_streams", str(stream_index)]
+        else:
+            cmd += ["-select_streams", "a:0"]
+        cmd += [
+            "-show_entries", "stream=channels",
+            "-of", "json",
+            str(video)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        if streams:
+            return int(streams[0].get("channels", 0))
+    except Exception:
+        pass
+    return 0
+
+
+def extract_audio(video: Path, language: Optional[str] = None) -> Path:
+    """
+    Extract audio from video file using FFmpeg.
+
+    Args:
+        video: Path to source video file
+        language: Optional ISO 639-1 language code (e.g., 'en'). When provided,
+                  ffprobe is used to find a matching audio stream so the correct
+                  track is extracted from multi-language containers.
+
+    Returns:
+        Path to temporary MP3 audio file
+
+    Raises:
+        subprocess.CalledProcessError: If FFmpeg extraction fails
+    """
+    tmp = Path(tempfile.mkstemp(suffix=".mp3")[1])
+
+    # Build -map flag if a specific language stream is found
+    map_args = []
+    stream_idx = None
+    if language:
+        stream_idx = get_audio_stream_index(video, language)
+        if stream_idx is not None:
+            map_args = ["-map", f"0:{stream_idx}"]
+
+    # Detect surround sound and extract center channel for better speech recognition
+    filter_args = []
+    channels = _get_channel_count(video, stream_idx)
+    if channels >= 6:
+        # 5.1/7.1 surround: extract center channel (FC = dialogue)
+        filter_args = ["-af", "pan=mono|c0=FC"]
+
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-i", str(video),
+        *map_args,
+        *filter_args,
+        "-vn", "-acodec", "mp3", "-ar", "16000", "-ac", "1",
+        "-y", str(tmp)
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=3600)
+    except subprocess.TimeoutExpired:
+        if tmp.exists():
+            tmp.unlink()
+        raise RuntimeError(
+            f"FFmpeg audio extraction timed out after 1 hour for: {video.name}"
+        )
+    return tmp
+
+
+def transcribe_file(buf: bytes, api_key: str, model: str, language: str,
+                    profanity_filter: str = "off", diarize: bool = False, keyterms: list = None,
+                    numerals: bool = False, filler_words: bool = False,
+                    detect_language: bool = False, measurements: bool = False,
+                    utterances: bool = True, paragraphs: bool = True,
+                    dictation: bool = False, multichannel: bool = False,
+                    redact: list = None, replace: list = None,
+                    utt_split: float = None, sentiment: bool = False,
+                    summarize: bool = False, topics: bool = False,
+                    intents: bool = False, detect_entities: bool = False,
+                    search: list = None, tag: str = None) -> dict:
+    """
+    Transcribe audio buffer using Deepgram API.
+
+    Args:
+        buf: Audio file contents as bytes
+        api_key: Deepgram API key
+        model: Model to use (e.g., 'nova-3', 'nova-3-medical')
+        language: Language code (e.g., 'en', 'multi')
+        profanity_filter: Profanity filter mode - "off", "tag", or "remove"
+        diarize: Enable speaker diarization
+        keyterms: List of keyterms for better recognition
+        numerals: Convert spoken numbers to digits
+        filler_words: Include filler words in transcription
+        detect_language: Auto-detect language
+        measurements: Convert spoken measurements
+        utterances: Enable utterance segmentation
+        paragraphs: Enable paragraph formatting
+        dictation: Convert spoken punctuation to symbols
+        multichannel: Process stereo channels separately
+        redact: List of redaction types ["pci", "pii", "numbers"]
+        replace: List of "wrong:right" replacement strings
+        utt_split: Utterance split threshold in seconds
+        sentiment: Enable sentiment analysis
+        summarize: Enable summarization
+        topics: Enable topic detection
+        intents: Enable intent detection
+        detect_entities: Enable entity detection
+        search: List of search terms
+        tag: Request label tag
+
+    Returns:
+        Deepgram response object
+
+    Raises:
+        Exception: If transcription fails
+    """
+    client = DeepgramClient(api_key=api_key)
+
+    # Convert profanity_filter to boolean for API compatibility
+    use_profanity_filter = profanity_filter != "off"
+
+    opts = PrerecordedOptions(
+        model=model,
+        smart_format=True,
+        utterances=utterances,
+        punctuate=True,
+        paragraphs=paragraphs,
+        diarize=diarize,
+        language=language,
+        profanity_filter=use_profanity_filter
+    )
+
+    # Add keyterms if provided (Nova-3 feature, supports all languages)
+    if keyterms and "nova-3" in model:
+        opts.keyterm = keyterms
+
+    # Quality enhancement parameters
+    if numerals:
+        opts.numerals = True
+    if filler_words:
+        opts.filler_words = True
+    if detect_language:
+        opts.detect_language = True
+    if measurements:
+        opts.measurements = True
+    if dictation:
+        opts.dictation = True
+    if multichannel:
+        opts.multichannel = True
+
+    # Redaction
+    if redact:
+        opts.redact = redact
+
+    # Find & replace
+    if replace:
+        opts.replace = replace
+
+    # Utterance split threshold
+    if utt_split is not None:
+        opts.utt_split = utt_split
+
+    # Audio Intelligence features
+    if sentiment:
+        opts.sentiment = True
+    if summarize:
+        opts.summarize = "v2"
+    if topics:
+        opts.topics = True
+    if intents:
+        opts.intents = True
+    if detect_entities:
+        opts.detect_entities = True
+    if search:
+        opts.search = search
+
+    # Operational
+    if tag:
+        opts.tag = [tag]
+
+    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts)
+
+
+def write_srt(resp: dict, dest: Path, lang: str = "eng"):
+    """
+    Generate and write SRT subtitle file from Deepgram response.
+    
+    Args:
+        resp: Deepgram transcription response
+        dest: Path where SRT file should be written
+        lang: Language code for subtitle file (default: "eng" for English)
+        
+    Raises:
+        Exception: If SRT generation or writing fails
+    """
+    # Ensure the destination has the proper .lang.srt extension
+    if not dest.name.endswith(f".{lang}.srt"):
+        dest = dest.parent / f"{dest.stem}.{lang}.srt"
+
+    # Guard against empty transcripts (e.g., music-only or silent files)
+    try:
+        words = resp.results.channels[0].alternatives[0].words
+    except (AttributeError, IndexError):
+        words = []
+
+    if not words:
+        raise ValueError(
+            f"No speech detected in audio — Deepgram returned empty transcript. "
+            f"Skipping SRT generation for: {dest.name}"
+        )
+
+    srt_content = srt(DeepgramConverter(resp))
+    dest.write_text(srt_content, encoding="utf-8")
+
+
+def get_transcripts_folder(video_path: Path) -> Path:
+    """
+    Determine the appropriate Transcripts folder for a video file.
+    
+    Creates folder structure:
+    - TV Shows: /media/tv/Show/Transcripts/ (at show level, alongside seasons)
+    - TV Specials: /media/tv/Show/Transcripts/ (at show level, alongside specials)
+    - Movies: /media/movies/Movie (2024)/Transcripts/
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Path to the Transcripts folder (created if doesn't exist)
+    """
+    # Get the parent directory of the video file
+    video_parent = video_path.parent
+    
+    # Try to detect if this is a TV show (has "Season" or "Specials" in path) or movie
+    path_str = str(video_path).lower()
+    parent_name_lower = video_parent.name.lower()
+    
+    # For TV shows, Transcripts folder should be at the show level (one level up from season/specials)
+    # Path pattern: /media/tv/Show Name/Season 01/episode.mkv
+    # Path pattern: /media/tv/Show Name/Specials/episode.mkv
+    # Transcripts: /media/tv/Show Name/Transcripts/ (alongside Season/Specials folders)
+    if 'season' in path_str or parent_name_lower.startswith('season') or parent_name_lower == 'specials':
+        # Go up one more level to get to the show folder
+        show_folder = video_parent.parent
+        transcripts_folder = show_folder / "Transcripts"
+    else:
+        # For movies, Transcripts folder at the movie directory level
+        # Path pattern: /media/movies/Movie (2024)/movie.mkv
+        # Transcripts: /media/movies/Movie (2024)/Transcripts/
+        transcripts_folder = video_parent / "Transcripts"
+    
+    # Create folder if it doesn't exist with proper permissions
+    transcripts_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure folder has proper permissions (0o755 = rwxr-xr-x)
+    # This prevents permission issues when created by Docker containers
+    try:
+        transcripts_folder.chmod(0o755)
+        # Also set permissions for parent directories if they were just created
+        if 'season' in path_str or parent_name_lower.startswith('season') or parent_name_lower == 'specials':
+            # For TV shows, also ensure the parent Transcripts folder has proper permissions
+            parent = transcripts_folder.parent
+            if parent.exists():
+                parent.chmod(0o755)
+    except (OSError, PermissionError):
+        # If we can't set permissions (e.g., running as non-root), that's okay
+        pass
+    
+    return transcripts_folder
+
+
+def get_json_folder(video_path: Path) -> Path:
+    """
+    Get the JSON subfolder within the Transcripts folder.
+    
+    Creates: Transcripts/JSON/
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Path to the JSON folder (created if doesn't exist)
+    """
+    transcripts_folder = get_transcripts_folder(video_path)
+    json_folder = transcripts_folder / "JSON"
+    json_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure proper permissions
+    try:
+        json_folder.chmod(0o755)
+    except (OSError, PermissionError):
+        pass
+    
+    return json_folder
+
+
+def get_keyterms_folder(video_path: Path) -> Path:
+    """
+    Get the Keyterms subfolder within the Transcripts folder.
+    
+    Creates: Transcripts/Keyterms/
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Path to the Keyterms folder (created if doesn't exist)
+    """
+    transcripts_folder = get_transcripts_folder(video_path)
+    keyterms_folder = transcripts_folder / "Keyterms"
+    keyterms_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure proper permissions
+    try:
+        keyterms_folder.chmod(0o755)
+    except (OSError, PermissionError):
+        pass
+    
+    return keyterms_folder
+
+
+def get_speakermap_folder(video_path: Path) -> Path:
+    """
+    Get the Speakermap subfolder within the Transcripts folder.
+    
+    Creates: Transcripts/Speakermap/
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Path to the Speakermap folder (created if doesn't exist)
+    """
+    transcripts_folder = get_transcripts_folder(video_path)
+    speakermap_folder = transcripts_folder / "Speakermap"
+    speakermap_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure proper permissions
+    try:
+        speakermap_folder.chmod(0o755)
+    except (OSError, PermissionError):
+        pass
+    
+    return speakermap_folder
+
+
+def load_keyterms_from_csv(video_path: Path) -> Optional[List[str]]:
+    """
+    Load keyterms from CSV file in Transcripts/Keyterms/ folder.
+    
+    Looks for: Transcripts/Keyterms/{show_or_movie_name}_keyterms.csv
+    
+    CSV Format (one keyterm per line):
+    ```
+    Walter White
+    Jesse Pinkman
+    Heisenberg
+    Albuquerque
+    ```
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        List of keyterms if CSV exists, None otherwise
+    """
+    try:
+        keyterms_folder = get_keyterms_folder(video_path)
+        
+        # Determine show/movie name from path
+        # For TV: /media/tv/Show Name/Season XX/episode.mkv -> "Show Name"
+        # For TV Specials: /media/tv/Show Name/Specials/episode.mkv -> "Show Name"
+        # For Movies: /media/movies/Movie (2024)/movie.mkv -> "Movie (2024)"
+        path_parts = video_path.parts
+        
+        # Try to find the show/movie name
+        show_or_movie_name = None
+        for i, part in enumerate(path_parts):
+            part_lower = part.lower()
+            # Check for season folders or specials folders
+            if 'season' in part_lower or part_lower == 'specials':
+                # TV show - name is one level up from season/specials
+                if i > 0:
+                    show_or_movie_name = path_parts[i - 1]
+                break
+        
+        if not show_or_movie_name:
+            # Movie - parent directory of video file
+            show_or_movie_name = video_path.parent.name
+        
+        # Look for keyterms CSV
+        csv_path = keyterms_folder / f"{show_or_movie_name}_keyterms.csv"
+        
+        if not csv_path.exists():
+            return None
+        
+        # Read keyterms from CSV
+        keyterms = []
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if row and row[0].strip() and not row[0].strip().startswith('#'):
+                    keyterms.append(row[0].strip())
+        
+        return keyterms if keyterms else None
+        
+    except Exception as e:
+        print(f"Warning: Failed to load keyterms from CSV: {e}")
+        return None
+
+
+def save_keyterms_to_csv(video_path: Path, keyterms: List[str]) -> bool:
+    """
+    Save keyterms to CSV file in Transcripts/Keyterms/ folder.
+    
+    Saves to: Transcripts/Keyterms/{show_or_movie_name}_keyterms.csv
+    
+    Args:
+        video_path: Path to the video file
+        keyterms: List of keyterms to save
+        
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    try:
+        keyterms_folder = get_keyterms_folder(video_path)
+        
+        # Determine show/movie name from path
+        path_parts = video_path.parts
+        show_or_movie_name = None
+        for i, part in enumerate(path_parts):
+            part_lower = part.lower()
+            # Check for season folders or specials folders
+            if 'season' in part_lower or part_lower == 'specials':
+                if i > 0:
+                    show_or_movie_name = path_parts[i - 1]
+                break
+        
+        if not show_or_movie_name:
+            show_or_movie_name = video_path.parent.name
+        
+        # Save keyterms to CSV
+        csv_path = keyterms_folder / f"{show_or_movie_name}_keyterms.csv"
+        
+        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            for keyterm in keyterms:
+                if keyterm.strip():
+                    writer.writerow([keyterm.strip()])
+        
+        return True
+        
+    except Exception as e:
+        print(f"Warning: Failed to save keyterms to CSV: {e}")
+        return False
+
+
+def find_speaker_map(video_path: Path) -> Optional[Path]:
+    """
+    Find speaker map for a video file.
+
+    Looks for: Transcripts/Speakermap/speakers.csv
+
+    Args:
+        video_path: Path to the video file
+
+    Returns:
+        Path to speakers.csv if found, None otherwise
+    """
+    try:
+        # Check Transcripts/Speakermap/ folder
+        speakermap_folder = get_speakermap_folder(video_path)
+        local_map = speakermap_folder / "speakers.csv"
+
+        if local_map.exists():
+            return local_map
+
+        return None
+
+    except Exception as e:
+        print(f"Warning: Failed to find speaker map: {e}")
+        return None
+
+
+def write_transcript(resp: dict, dest: Path, speaker_map_path: Optional[Path] = None):
+    """
+    Generate and write transcript text file from Deepgram response.
+    
+    Args:
+        resp: Deepgram transcription response with diarization
+        dest: Path where transcript file should be written
+        speaker_map_path: Optional path to speaker map CSV file
+        
+    Raises:
+        Exception: If transcript generation or writing fails
+    """
+    # Load speaker map if provided
+    speaker_map = {}
+    if speaker_map_path and speaker_map_path.exists():
+        try:
+            with open(speaker_map_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    speaker_map[int(row['speaker_id'])] = row['name']
+        except Exception as e:
+            print(f"Warning: Failed to load speaker map: {e}")
+    
+    # Guard against empty transcripts (e.g., music-only or silent files)
+    try:
+        words = resp.results.channels[0].alternatives[0].words
+    except (AttributeError, IndexError):
+        words = []
+
+    if not words:
+        import logging
+        logging.warning(
+            "No speech detected — skipping transcript generation for: %s", dest.name
+        )
+        return
+
+    # Generate transcript with speaker labels
+    transcript_lines = []
+
+    try:
+        # Access the response data
+        result = resp.results.channels[0].alternatives[0]
+        
+        # Check if diarization was enabled
+        if hasattr(result, 'words') and result.words:
+            current_speaker = None
+            current_text = []
+            
+            for word in result.words:
+                speaker_id = getattr(word, 'speaker', None)
+                
+                # Handle speaker changes
+                if speaker_id != current_speaker:
+                    # Save previous speaker's text
+                    if current_speaker is not None and current_text:
+                        speaker_name = speaker_map.get(current_speaker, f"Speaker {current_speaker}")
+                        transcript_lines.append(f"{speaker_name}: {' '.join(current_text)}")
+                    
+                    # Start new speaker
+                    current_speaker = speaker_id
+                    current_text = [word.word]
+                else:
+                    current_text.append(word.word)
+            
+            # Save last speaker's text
+            if current_text:
+                speaker_name = speaker_map.get(current_speaker, f"Speaker {current_speaker}")
+                transcript_lines.append(f"{speaker_name}: {' '.join(current_text)}")
+        else:
+            # No diarization, just write the transcript
+            transcript_lines.append(result.transcript)
+    
+    except Exception as e:
+        # Fallback to simple transcript
+        try:
+            result = resp.results.channels[0].alternatives[0]
+            transcript_lines.append(result.transcript)
+        except Exception:
+            raise Exception(f"Failed to generate transcript: {e}")
+    
+    # Write transcript to file
+    dest.write_text('\n\n'.join(transcript_lines), encoding='utf-8')
+
+
+def write_raw_json(resp: dict, video_path: Path):
+    """
+    Save raw Deepgram API response as JSON for debugging.
+    
+    Saves to: Transcripts/JSON/{video_name}.deepgram.json
+    
+    Args:
+        resp: Deepgram transcription response
+        video_path: Path to the original video file
+        
+    Raises:
+        Exception: If JSON writing fails
+    """
+    json_folder = get_json_folder(video_path)
+    json_path = json_folder / f"{video_path.stem}.deepgram.json"
+    
+    try:
+        # Convert response to dict if it has to_dict method
+        response_data = resp.to_dict() if hasattr(resp, 'to_dict') else resp
+        json_path.write_text(json.dumps(response_data, indent=2), encoding='utf-8')
+    except Exception as e:
+        raise Exception(f"Failed to write raw JSON: {e}")
+
+
+def get_intelligence_folder(video_path: Path) -> Path:
+    """
+    Get the Intelligence subfolder within the Transcripts folder.
+
+    Creates: Transcripts/Intelligence/
+
+    Args:
+        video_path: Path to the video file
+
+    Returns:
+        Path to the Intelligence folder (created if doesn't exist)
+    """
+    transcripts_folder = get_transcripts_folder(video_path)
+    intelligence_folder = transcripts_folder / "Intelligence"
+    intelligence_folder.mkdir(parents=True, exist_ok=True)
+
+    try:
+        intelligence_folder.chmod(0o755)
+    except (OSError, PermissionError):
+        pass
+
+    return intelligence_folder
+
+
+def write_intelligence_summary(resp, video_path: Path):
+    """
+    Extract and save Audio Intelligence results from a Deepgram response.
+
+    Extracts sentiment, summary, topics, intents, entities, and search results
+    from the Deepgram API response and saves to a structured JSON file.
+
+    Saves to: Transcripts/Intelligence/{video_name}.intelligence.json
+
+    Args:
+        resp: Deepgram transcription response (with intelligence features enabled)
+        video_path: Path to the original video file
+
+    Raises:
+        Exception: If writing fails
+    """
+    intelligence_folder = get_intelligence_folder(video_path)
+    output_path = intelligence_folder / f"{video_path.stem}.intelligence.json"
+
+    # Convert response to dict for easier extraction
+    data = resp.to_dict() if hasattr(resp, 'to_dict') else resp
+
+    summary = {}
+    results = data.get("results", {})
+
+    # Sentiment analysis
+    if "sentiments" in results:
+        summary["sentiments"] = results["sentiments"]
+
+    # Summarization
+    if "summary" in results:
+        summary["summary"] = results["summary"]
+
+    # Topic detection
+    if "topics" in results:
+        summary["topics"] = results["topics"]
+
+    # Intent detection
+    if "intents" in results:
+        summary["intents"] = results["intents"]
+
+    # Entity detection
+    if "entities" in results:
+        summary["entities"] = results["entities"]
+
+    # Search results
+    channels = results.get("channels", [])
+    if channels:
+        channel_0 = channels[0] if isinstance(channels, list) else {}
+        search_results = channel_0.get("search", [])
+        if search_results:
+            summary["search"] = search_results
+
+    if not summary:
+        print("No intelligence data found in response")
+        return
+
+    try:
+        output_path.write_text(json.dumps(summary, indent=2), encoding='utf-8')
+        print(f"Saved intelligence summary to {output_path}")
+    except Exception as e:
+        raise Exception(f"Failed to write intelligence summary: {e}")

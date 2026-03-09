@@ -1,0 +1,146 @@
+# Subgeneratorr - AI-powered subtitle generation
+# https://github.com/tylerbcrawford/subgeneratorr
+#
+# Quick start:
+#   1. Copy this file: cp examples/docker-compose.example.yml docker-compose.yml
+#   2. Copy .env.example to .env and set your DEEPGRAM_API_KEY and MEDIA_PATH
+#   3. docker compose build
+#   4. docker compose up -d    (Web UI at http://localhost:5000)
+#
+# CLI usage:
+#   docker compose run --profile cli --rm cli
+
+services:
+  # ==========================================================================
+  # Redis - Task queue broker
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: subgeneratorr-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ==========================================================================
+  # Web UI - Gunicorn app server
+  # ==========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-web:latest
+    container_name: subgeneratorr-web
+    environment:
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_ROOT: /media
+      LOG_ROOT: /logs
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-nova-3}
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
+      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
+      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/healthz | grep ok"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "${WEB_PORT:-5000}:5000"
+
+  # ==========================================================================
+  # Celery Worker - Background transcription job processing
+  # ==========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-worker:latest
+    container_name: subgeneratorr-worker
+    command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe --concurrency=${WORKER_CONCURRENCY:-1}
+    environment:
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_ROOT: /media
+      LOG_ROOT: /logs
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-nova-3}
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
+      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CELERYD_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # ==========================================================================
+  # CLI Tool - One-shot batch subtitle generation (run manually)
+  # ==========================================================================
+  # Usage: docker compose run --profile cli --rm cli
+  cli:
+    build:
+      context: .
+      dockerfile: cli/Dockerfile
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-cli:latest
+    container_name: subgeneratorr-cli
+    profiles:
+      - cli
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      MEDIA_PATH: /media
+      BATCH_SIZE: ${BATCH_SIZE:-10}
+      LOG_PATH: /logs
+      LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  logs:
+    driver: local

@@ -1,0 +1,54 @@
+# Environment variables
+.env
+
+# Personal/internal documentation (keep local only)
+_devdocs/
+
+# Claude Code
+.claude/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Logs
+deepgram-logs/*.json
+*.log
+
+# Personal video lists (users should create their own)
+video-list.txt
+batch-videos.txt
+test-videos.txt
+
+# Temporary files
+/tmp/
+*.tmp
+*.mp3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.yml
+docker-compose.override.yml
+.mcp.json
+.worktrees/

@@ -1,0 +1,35 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+
+# Logs and runtime data
+deepgram-logs/
+*.log
+
+# Documentation (not needed in image)
+docs/
+_devdocs/
+examples/
+CONTRIBUTING.md
+LICENSE
+README.md
+Makefile
+
+# Tests
+tests/
+
+# Environment files (secrets — never bake into image)
+.env
+.env.*
+!.env.example

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <title>Subgeneratorr</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v=23">
+</head>
+<body>
+    <div class="container">
+        <!-- Main Content -->
+        <main>
+            <!-- File Selection Section -->
+            <section aria-label="File selection">
+                <div class="card">
+                    <!-- Action Bar (Sticky) -->
+                    <div class="action-bar">
+                        <div class="sticky-title">
+                            <h1>Subgeneratorr</h1>
+                            <button class="gear-btn" onclick="toggleGearPopover()" aria-label="Preferences">
+                                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <line x1="3" y1="5" x2="17" y2="5"/>
+                                    <line x1="3" y1="10" x2="17" y2="10"/>
+                                    <line x1="3" y1="15" x2="17" y2="15"/>
+                                    <circle cx="7" cy="5" r="1.5" fill="currentColor"/>
+                                    <circle cx="13" cy="10" r="1.5" fill="currentColor"/>
+                                    <circle cx="9" cy="15" r="1.5" fill="currentColor"/>
+                                </svg>
+                            </button>
+                            <p class="subtitle">Subtitle Generation via Deepgram Nova-3</p>
+                        </div>
+
+                        <!-- Gear Popover (Browser Preferences) -->
+                        <div id="gearPopover" class="gear-popover hidden">
+                            <div class="gear-popover-header">Preferences</div>
+                            <div class="controls-aligned">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="onlyFoldersWithVideos" checked onchange="toggleFolderFilter()">
+                                    <span>Show folders with media only</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="autoClearFiles" checked>
+                                    <span>Auto-clear files after completion</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="rememberSettings" onchange="toggleRememberSettings()">
+                                    <span>Remember my last settings</span>
+                                </label>
+                            </div>
+                            <div class="gear-popover-theme">
+                                <button class="theme-toggle theme-toggle-small" onclick="toggleTheme()" aria-label="Toggle theme">
+                                    <span class="theme-icon theme-icon-dark">☀️</span>
+                                    <span class="theme-icon theme-icon-light" style="display: none;">🌙</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="action-bar-controls">
+                            <button onclick="submitBatch()" id="submitBtn" class="btn-primary" disabled>Transcribe</button>
+                            <select id="language" class="action-bar-select" aria-label="Language" onchange="updateKeytermAvailability(); updateIntelligenceAvailability();">
+                                <option value="en">English</option>
+                                <optgroup label="──────────">
+                                    <option value="auto">Auto-detect</option>
+                                    <option value="multi">Multi-language</option>
+                                </optgroup>
+                                <optgroup label="──────────">
+                                    <option value="ar">Arabic</option>
+                                    <option value="ar-AE">Arabic (UAE)</option>
+                                    <option value="ar-DZ">Arabic (Algeria)</option>
+                                    <option value="ar-EG">Arabic (Egypt)</option>
+                                    <option value="ar-IQ">Arabic (Iraq)</option>
+                                    <option value="ar-IR">Arabic (Iran)</option>
+                                    <option value="ar-JO">Arabic (Jordan)</option>
+                                    <option value="ar-KW">Arabic (Kuwait)</option>
+                                    <option value="ar-LB">Arabic (Lebanon)</option>
+                                    <option value="ar-MA">Arabic (Morocco)</option>
+                                    <option value="ar-PS">Arabic (Palestine)</option>
+                                    <option value="ar-QA">Arabic (Qatar)</option>
+                                    <option value="ar-SA">Arabic (Saudi Arabia)</option>
+                                    <option value="ar-SD">Arabic (Sudan)</option>
+                                    <option value="ar-SY">Arabic (Syria)</option>
+                                    <option value="ar-TD">Arabic (Chad)</option>
+                                    <option value="ar-TN">Arabic (Tunisia)</option>
+                                    <option value="be">Belarusian</option>
+                                    <option value="bn">Bengali</option>
+                                    <option value="bs">Bosnian</option>
+                                    <option value="bg">Bulgarian</option>
+                                    <option value="ca">Catalan</option>
+                                    <option value="hr">Croatian</option>
+                                    <option value="cs">Czech</option>
+                                    <option value="da">Danish</option>
+                                    <option value="da-DK">Danish (Denmark)</option>
+                                    <option value="nl">Dutch</option>
+                                    <option value="nl-BE">Dutch (Belgium)</option>
+                                    <option value="en-AU">English (Australia)</option>
+                                    <option value="en-CA">English (Canada)</option>
+                                    <option value="en-GB">English (UK)</option>
+                                    <option value="en-IN">English (India)</option>
+                                    <option value="en-IE">English (Ireland)</option>
+                                    <option value="en-NZ">English (New Zealand)</option>
+                                    <option value="en-US">English (US)</option>
+                                    <option value="et">Estonian</option>
+                                    <option value="fa">Persian</option>
+                                    <option value="fi">Finnish</option>
+                                    <option value="fr">French</option>
+                                    <option value="fr-CA">French (Canada)</option>
+                                    <option value="de">German</option>
+                                    <option value="de-CH">German (Switzerland)</option>
+                                    <option value="el">Greek</option>
+                                    <option value="he">Hebrew</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="hu">Hungarian</option>
+                                    <option value="id">Indonesian</option>
+                                    <option value="it">Italian</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="kn">Kannada</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="ko-KR">Korean (Korea)</option>
+                                    <option value="lv">Latvian</option>
+                                    <option value="lt">Lithuanian</option>
+                                    <option value="mk">Macedonian</option>
+                                    <option value="ms">Malay</option>
+                                    <option value="mr">Marathi</option>
+                                    <option value="no">Norwegian</option>
+                                    <option value="pl">Polish</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="pt-BR">Portuguese (Brazil)</option>
+                                    <option value="pt-PT">Portuguese (Portugal)</option>
+                                    <option value="ro">Romanian</option>
+                                    <option value="ru">Russian</option>
+                                    <option value="sr">Serbian</option>
+                                    <option value="sk">Slovak</option>
+                                    <option value="sl">Slovenian</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="es-419">Spanish (Latin America)</option>
+                                    <option value="sv">Swedish</option>
+                                    <option value="sv-SE">Swedish (Sweden)</option>
+                                    <option value="tl">Tagalog</option>
+                                    <option value="ta">Tamil</option>
+                                    <option value="te">Telugu</option>
+                                    <option value="tr">Turkish</option>
+                                    <option value="uk">Ukrainian</option>
+                                    <option value="ur">Urdu</option>
+                                    <option value="vi">Vietnamese</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <!-- Unified Status Area -->
+                        <div class="unified-status" id="unifiedStatus">
+                            <div class="status-text" id="statusText"></div>
+                            <div class="status-progress" id="statusProgress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <div class="progress-label" id="progressLabel">0%</div>
+                            </div>
+                            <button onclick="cancelJob()" id="cancelBtn" class="btn-cancel" style="display: none;">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Directory Browser -->
+                    <div id="directoryBrowser">
+                        <div class="search-container">
+                            <input type="text" id="fileSearch" class="search-input"
+                                   placeholder="Search..."
+                                   oninput="filterBrowserItems(this.value)"
+                                   aria-label="Search files and folders">
+                            <button class="search-clear" id="searchClear" onclick="clearFileSearch()"
+                                    aria-label="Clear search" style="display: none;">&times;</button>
+                        </div>
+                        <div id="directoryList" class="files-list">
+                            <div id="skeleton" class="skeleton-loader hidden">
+                                <div class="skeleton-item"></div>
+                                <div class="skeleton-item"></div>
+                                <div class="skeleton-item"></div>
+                            </div>
+                        </div>
+                        <div class="browser-toolbar browser-toolbar-footer">
+                            <div class="toolbar-right" style="margin: 0 auto;">
+                                <button class="btn-link" onclick="selectAllInFolder()" id="selectAllBtn">Select All</button>
+                                <span class="separator">•</span>
+                                <button class="btn-link" onclick="selectNone()">Clear Selection</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Keyterms Zone -->
+                    <div class="config-section" style="text-align: center;">
+                        <div class="form-group">
+                            <label for="keyTerms" class="section-label">Keyterms</label>
+                            <textarea id="keyTerms" rows="2" placeholder="Character names, places, show-specific terms (comma-separated)" aria-label="Keyterms prompting"></textarea>
+                            <small class="keyterms-help">Auto-loaded from CSV if available.</small>
+
+                            <div class="keyterms-generate-row">
+                                <button id="generateKeytermsBtn" class="btn-secondary">
+                                    Generate Keyterms
+                                </button>
+                                <span class="ai-model-label">
+                                    via <span id="aiModelDisplay">Claude Sonnet 4.6</span>
+                                    <button class="ai-config-toggle" onclick="toggleAiConfig()" aria-label="AI settings">⚙</button>
+                                </span>
+                            </div>
+
+                            <!-- Inline AI Config (expandable) -->
+                            <div id="aiConfigPanel" class="ai-config-panel hidden">
+                                <div class="form-group">
+                                    <label for="llmProvider">
+                                        API Key Status:
+                                        <span id="apiKeyStatus" class="api-key-status" title="API key status"></span>
+                                    </label>
+                                    <select id="llmProvider">
+                                        <option value="anthropic">Anthropic (Claude)</option>
+                                        <option value="openai">OpenAI (GPT)</option>
+                                        <option value="google">Google (Gemini)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="llmModel">Model</label>
+                                    <select id="llmModel">
+                                        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
+                                        <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
+                                    </select>
+                                </div>
+                                <div id="keytermCostEstimate" class="ai-cost-estimate"></div>
+                            </div>
+                        </div>
+
+                        <!-- Transcription Settings Toggle -->
+                        <div style="margin-top: var(--space-m); text-align: center;">
+                            <button onclick="toggleAdvancedOptions()" id="advancedToggle">
+                                Transcription Settings ▼
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Transcription Settings (Collapsible) -->
+                    <div id="advancedOptions" class="config-section hidden" style="padding-top: var(--space-m);">
+
+                        <!-- Quality -->
+                        <div class="nova-settings">
+                            <h3 class="section-label-quiet">Quality</h3>
+
+                            <!-- Model Selector -->
+                            <div class="form-group">
+                                <label style="text-align: center; font-size: var(--font-body); color: var(--text-secondary);">Model</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="model" value="nova-3" checked>
+                                        <span>General</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="model" value="nova-3-medical">
+                                        <span>Medical</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Profanity Filter -->
+                            <div class="form-group">
+                                <label style="text-align: center; font-size: var(--font-body); color: var(--text-secondary);">Profanity Filter</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="profanityFilter" value="off" checked>
+                                        <span>Off</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="profanityFilter" value="tag">
+                                        <span>Tag</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="profanityFilter" value="remove">
+                                        <span>Remove</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="checkbox-group controls-aligned" style="margin-top: var(--space-s);">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="numerals" checked>
+                                    <span>Convert numbers to digits</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="measurements" checked>
+                                    <span>Convert measurements to symbols</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="fillerWords">
+                                    <span>Remove filler words</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="dictation">
+                                    <span>Dictation mode</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="redact" onchange="toggleRedactOptions()">
+                                    <span>Redact sensitive info</span>
+                                </label>
+                            </div>
+
+                            <!-- Redaction sub-options -->
+                            <div id="redactOptions" class="sub-options hidden">
+                                <div class="checkbox-group controls-aligned">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="redactPci">
+                                        <span>Credit cards (PCI)</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="redactPii" checked>
+                                        <span>Personal info (PII)</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="redactNumbers">
+                                        <span>Numbers</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="checkbox-group controls-aligned">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="findReplace" onchange="toggleReplaceOptions()">
+                                    <span>Find &amp; replace terms</span>
+                                </label>
+                            </div>
+
+                            <!-- Find & replace sub-options -->
+                            <div id="replaceOptions" class="sub-options hidden">
+                                <textarea id="replaceTerms" rows="3" placeholder="wrong:right (one per line, max 200)"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Transcript Format -->
+                        <div class="transcript-settings">
+                            <h3 class="section-label-quiet">Transcript Format</h3>
+                            <div class="checkbox-group controls-aligned">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="enableTranscript" onchange="toggleTranscriptOptions()">
+                                    <span>Generate Transcript</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="saveRawJson">
+                                    <span>Save Raw JSON</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="diarization" checked>
+                                    <span>Speaker diarization</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="utterances" checked onchange="toggleUttSplit()">
+                                    <span>Utterance segmentation</span>
+                                </label>
+                            </div>
+
+                            <!-- Utterance split threshold slider -->
+                            <div id="uttSplitOptions" class="sub-options">
+                                <label class="slider-label">
+                                    Pause threshold: <span id="uttSplitValue">0.8s</span>
+                                </label>
+                                <input type="range" id="uttSplit" min="0.1" max="5.0" step="0.1" value="0.8"
+                                       class="range-slider" oninput="document.getElementById('uttSplitValue').textContent = parseFloat(this.value).toFixed(1) + 's'">
+                            </div>
+
+                            <div class="checkbox-group controls-aligned">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="paragraphs" checked>
+                                    <span>Paragraph formatting</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="multichannel">
+                                    <span>Multichannel (stereo)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="transcriptOptions" style="display: none; margin-top: var(--space-s);">
+                            <div class="status info">
+                                <span style="color: var(--color-blue); font-size: var(--font-caption);">
+                                    Speaker maps auto-detected from Transcripts/Speakermap/speakers.csv
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Audio Intelligence (English only) -->
+                        <div class="nova-settings" id="intelligenceSection">
+                            <h3 class="section-label-quiet">Audio Intelligence <span class="badge-english">English only</span></h3>
+                            <p class="help-text" style="text-align: center; margin-bottom: var(--space-s); font-size: var(--font-caption); color: var(--text-tertiary);">
+                                Analysis saved to JSON. Does not affect subtitles.
+                            </p>
+                            <div class="checkbox-group controls-aligned">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="sentiment">
+                                    <span>Sentiment analysis</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="summarize">
+                                    <span>Summarization</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="topics">
+                                    <span>Topic detection</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="intents">
+                                    <span>Intent detection</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="detectEntities">
+                                    <span>Entity detection</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="enableSearch" onchange="toggleSearchTerms()">
+                                    <span>Search for terms</span>
+                                </label>
+                            </div>
+                            <!-- Search terms sub-option -->
+                            <div id="searchTermsOptions" class="sub-options hidden">
+                                <textarea id="searchTerms" rows="2" placeholder="Terms to search for (comma-separated)"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Request Tag (Tier 3) -->
+                        <div class="nova-settings" style="border-bottom: none;">
+                            <div class="form-group" style="max-width: 340px; margin: 0 auto;">
+                                <label for="requestTag" style="text-align: center; font-size: var(--font-caption); color: var(--text-tertiary);">Request label (optional)</label>
+                                <input type="text" id="requestTag" placeholder="e.g. batch-2026-02" style="text-align: center;">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Screen Reader Announcer -->
+    <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
+
+    <script src="/static/app.js?v=18"></script>
+</body>
+</html>

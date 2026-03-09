@@ -1,0 +1,11 @@
+flask==3.0.*
+celery==5.3.*
+redis==5.*
+gunicorn==22.*
+gevent==24.*
+deepgram-sdk==3.*
+deepgram-captions==1.*
+requests==2.*
+anthropic>=0.30.0
+openai>=1.35.0
+google-genai>=1.0.0
