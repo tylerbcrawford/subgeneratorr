@@ -5,6 +5,16 @@ All notable changes to Subgeneratorr will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Find All Missing Subtitles** — Library-wide async scan from gear menu with progress tracking, grouped results, and CSV export
+- Four new API endpoints: `POST /api/library-scan`, `GET /api/library-scan/status/<task_id>`, `POST /api/library-scan/<task_id>/cancel`, `GET /api/library-scan/export/<task_id>`
+- `library_scan_task` Celery task with two-phase scan (fast sidecar check + optional ffprobe embedded check)
+
+### Changed
+- Moved `check_subtitles()` and `SUBTITLE_EXTS` from `web/app.py` to `core/transcribe.py` for reuse across modules
+
 ## [2.0.0] - 2026-02-25
 
 Initial public release.

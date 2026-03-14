@@ -573,6 +573,74 @@ Download keyterms CSV for a video.
 
 **Response:** CSV file download
 
+#### Library Scan
+
+**POST `/api/library-scan`**
+
+Launch a library-wide scan for files missing subtitles. Uses a two-phase approach: fast sidecar file check, then optional ffprobe embedded subtitle detection.
+
+**Request:**
+```json
+{
+  "skip_embedded": false
+}
+```
+
+**Response:**
+```json
+{
+  "task_id": "abc123-def456",
+  "status": "pending"
+}
+```
+
+**GET `/api/library-scan/status/<task_id>`**
+
+Check scan progress. Returns phase, file counts, and percentage.
+
+**Response (in progress):**
+```json
+{
+  "state": "PROGRESS",
+  "phase": "sidecar_scan",
+  "scanned": 2100,
+  "total": 4286,
+  "missing_so_far": 312,
+  "progress": 49.0
+}
+```
+
+**Response (complete):**
+```json
+{
+  "state": "SUCCESS",
+  "missing_files": [
+    {"path": "/media/tv/Show/episode.mkv", "name": "episode.mkv", "directory": "/media/tv/Show"}
+  ],
+  "total_scanned": 4286,
+  "total_missing": 312,
+  "scan_time_seconds": 45.2
+}
+```
+
+**POST `/api/library-scan/<task_id>/cancel`**
+
+Cancel a running scan.
+
+**Response:**
+```json
+{
+  "status": "cancelled",
+  "task_id": "abc123-def456"
+}
+```
+
+**GET `/api/library-scan/export/<task_id>`**
+
+Export scan results as CSV download. Only available for completed scans.
+
+**Response:** CSV file download (`missing-subtitles-YYYY-MM-DD.csv`) with columns: `path`, `name`, `directory`.
+
 #### LLM Keyterm Generation
 
 **POST `/api/keyterms/generate`**

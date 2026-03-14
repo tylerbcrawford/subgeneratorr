@@ -32,6 +32,7 @@ I looked around for options with free trials but most only gave a couple hours f
 - 📁 **Flexible Processing** - Batch process directories, specific files, or from lists
 - 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0043/min)
 - ⚡ **Smart Skipping** - Skip files that already have subtitles
+- 🔍 **Library-Wide Scan** - Find all files missing subtitles across your entire media library
 - 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby (`.eng.srt` format)
 
 ---
@@ -118,6 +119,7 @@ Access at `http://localhost:5000` (or configure reverse proxy for remote access)
 - 📁 **Directory browser** with search and file filtering
 - 🔄 **Bazarr integration** for automatic subtitle rescans
 - ⚡ **Batch processing** with parallel workers
+- 🔍 **Find Missing Subtitles** — one-click async library scan with CSV export
 - ⚙️ **Full Nova-3 feature control** — model selection, redaction, dictation, multichannel, Audio Intelligence, and more via collapsible Transcription Settings panel
 
 ---
@@ -161,6 +163,13 @@ speaker_id,name
 ```
 
 Auto-detected when you enable transcript generation (`ENABLE_TRANSCRIPT=1`)
+
+### Find All Missing Subtitles
+
+1. Open Web UI → click gear icon → "Find All Missing Subtitles"
+2. Optionally skip embedded subtitle check for faster scan
+3. Review results grouped by directory
+4. Select files → Transcribe, or download CSV report
 
 ---
 
