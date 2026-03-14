@@ -14,20 +14,17 @@ import subprocess
 from flask import Flask, request, jsonify, Response, abort, render_template, send_file
 from werkzeug.utils import secure_filename
 import redis as redis_lib
-from tasks import celery_app, make_batch, generate_keyterms_task
+from tasks import celery_app, make_batch, generate_keyterms_task, library_scan_task
 from core.transcribe import (
     is_video, is_media, get_video_duration,
     load_keyterms_from_csv, save_keyterms_to_csv,
-    get_keyterms_folder
+    get_keyterms_folder, check_subtitles, SUBTITLE_EXTS
 )
 
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
 DEFAULT_MODEL = "nova-3"  # Hardcoded to Nova-3
 DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
 ALLOWED = set([e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()])
-
-# Subtitle file extensions to detect as sidecar files
-SUBTITLE_EXTS = {'.srt', '.ass', '.ssa', '.sub', '.vtt'}
 
 def _check_media_path(p: Path) -> bool:
     """Check if a path is safely under MEDIA_ROOT."""
@@ -39,50 +36,6 @@ def _check_media_path(p: Path) -> bool:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-me")
-
-
-def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
-    """
-    Check if a media file has subtitles (sidecar files or embedded tracks).
-
-    Args:
-        media_path: Path to the media file
-        dir_filenames: Optional pre-built set of filenames in the same directory.
-                       If None, will scan the directory (slower for batch calls).
-
-    Returns:
-        dict with 'has_subtitles' (bool) and 'subtitle_source' ("sidecar"|"embedded"|None)
-    """
-    stem = media_path.stem
-
-    # Step 1: Check for sidecar subtitle files (instant — in-memory string matching)
-    if dir_filenames is None:
-        dir_filenames = {p.name for p in media_path.parent.iterdir() if p.is_file()}
-
-    for name in dir_filenames:
-        if not name.startswith(stem):
-            continue
-        # Get the part after the stem (e.g., ".eng.srt", ".en.hi.srt")
-        remainder = name[len(stem):]
-        # Must start with a dot (separator) and end with a subtitle extension
-        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
-            return {"has_subtitles": True, "subtitle_source": "sidecar"}
-
-    # Step 2: Fallback — ffprobe for embedded subtitle tracks (~50-100ms)
-    if is_video(media_path):
-        try:
-            result = subprocess.run(
-                ["ffprobe", "-v", "quiet", "-select_streams", "s",
-                 "-show_entries", "stream=codec_type", "-of", "csv=p=0",
-                 str(media_path)],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.stdout.strip():
-                return {"has_subtitles": True, "subtitle_source": "embedded"}
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
-
-    return {"has_subtitles": False, "subtitle_source": None}
 
 
 # Redis client for batch metadata (timeout tracking)
@@ -1142,6 +1095,96 @@ def api_keyterms_generate_status(task_id):
             'state': 'FAILURE',
             'error': f'Task state unreadable: {str(e)}'
         })
+
+
+@app.post("/api/library-scan")
+def api_library_scan():
+    """
+    Launch a library-wide scan for files missing subtitles.
+
+    Request Body (JSON):
+        skip_embedded: Skip ffprobe embedded subtitle check (default: false)
+
+    Returns:
+        JSON with task_id and status
+    """
+    body = request.get_json(force=True) or {}
+    skip_embedded = body.get('skip_embedded', False)
+
+    task = library_scan_task.delay(skip_embedded=skip_embedded)
+
+    return jsonify({
+        'task_id': task.id,
+        'status': 'pending'
+    })
+
+
+@app.get("/api/library-scan/status/<task_id>")
+def api_library_scan_status(task_id):
+    """
+    Check status of a library scan task.
+
+    Parameters:
+        task_id: Celery task ID from /api/library-scan
+
+    Returns:
+        JSON with state and progress/result data
+    """
+    try:
+        task = celery_app.AsyncResult(task_id)
+
+        if task.state == 'PENDING':
+            return jsonify({'state': 'PENDING'})
+        elif task.state == 'PROGRESS':
+            info = task.info or {}
+            return jsonify({
+                'state': 'PROGRESS',
+                'phase': info.get('phase', '') if isinstance(info, dict) else '',
+                'scanned': info.get('scanned', 0) if isinstance(info, dict) else 0,
+                'total': info.get('total', 0) if isinstance(info, dict) else 0,
+                'missing_so_far': info.get('missing_so_far', 0) if isinstance(info, dict) else 0,
+                'progress': round(info.get('scanned', 0) / max(info.get('total', 1), 1) * 100, 1) if isinstance(info, dict) else 0
+            })
+        elif task.state == 'FAILURE':
+            error_msg = str(task.info) if task.info else 'Unknown error'
+            return jsonify({
+                'state': 'FAILURE',
+                'error': error_msg
+            })
+        elif task.state == 'SUCCESS':
+            result = task.info or {}
+            return jsonify({
+                'state': 'SUCCESS',
+                **result
+            })
+        else:
+            return jsonify({
+                'state': task.state,
+                'info': str(task.info) if task.info else None
+            })
+    except Exception as e:
+        return jsonify({
+            'state': 'FAILURE',
+            'error': f'Task state unreadable: {str(e)}'
+        })
+
+
+@app.post("/api/library-scan/<task_id>/cancel")
+def api_library_scan_cancel(task_id):
+    """
+    Cancel a running library scan task.
+
+    Parameters:
+        task_id: Celery task ID to cancel
+
+    Returns:
+        JSON with cancellation status
+    """
+    try:
+        celery_app.control.revoke(task_id, terminate=True, signal='SIGTERM')
+        return jsonify({'status': 'cancelled', 'task_id': task_id})
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
 if __name__ == "__main__":

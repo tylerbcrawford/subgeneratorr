@@ -8,6 +8,7 @@ Supports batched processing with Bazarr integration for subtitle rescanning.
 
 import os
 import json
+import subprocess
 import time
 import sys
 from pathlib import Path
@@ -17,10 +18,10 @@ from celery import group, chord
 # Add parent directory to path to import core module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.transcribe import (
-    is_video, extract_audio, transcribe_file, write_srt, get_transcripts_folder,
+    is_video, is_media, extract_audio, transcribe_file, write_srt, get_transcripts_folder,
     get_json_folder, write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
     find_speaker_map, write_transcript, get_video_duration, write_intelligence_summary,
-    get_intelligence_folder
+    get_intelligence_folder, SUBTITLE_EXTS
 )
 
 # Configuration from environment
@@ -42,6 +43,7 @@ celery_app.conf.task_routes = {
     'transcribe_task': {'queue': 'transcribe'},
     'batch_finalize': {'queue': 'transcribe'},
     'generate_keyterms_task': {'queue': 'transcribe'},
+    'library_scan_task': {'queue': 'transcribe'},
 }
 
 
@@ -421,6 +423,124 @@ def generate_keyterms_task(
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + '...'
         raise RuntimeError(error_msg)
+
+
+@celery_app.task(bind=True, name="library_scan_task")
+def library_scan_task(self, skip_embedded=False):
+    """
+    Scan the entire media library for files missing subtitles.
+
+    Args:
+        skip_embedded: If True, only check for sidecar subtitle files (faster).
+                       If False (default), also probe for embedded subtitle tracks.
+
+    Returns:
+        dict with missing_files list, total_scanned, total_missing, scan_time_seconds
+    """
+    start = time.time()
+
+    # Phase 0: Collect all media files and group by directory
+    self.update_state(state='PROGRESS', meta={
+        'phase': 'collecting', 'scanned': 0, 'total': 0, 'missing_so_far': 0
+    })
+
+    all_files = []
+    for p in MEDIA_ROOT.rglob("*"):
+        if p.is_file() and is_media(p):
+            all_files.append(p)
+
+    total = len(all_files)
+    if total == 0:
+        return {
+            'missing_files': [], 'total_scanned': 0,
+            'total_missing': 0, 'scan_time_seconds': 0
+        }
+
+    # Build per-directory filename sets (avoids redundant iterdir() calls)
+    dir_filenames = {}
+    for f in all_files:
+        parent = f.parent
+        if parent not in dir_filenames:
+            try:
+                dir_filenames[parent] = {p.name for p in parent.iterdir() if p.is_file()}
+            except (PermissionError, OSError):
+                dir_filenames[parent] = set()
+
+    missing = []
+    scanned = 0
+
+    # Phase 1: Sidecar scan (fast — string matching only)
+    needs_embedded_check = []
+    for f in all_files:
+        scanned += 1
+        stem = f.stem
+        filenames = dir_filenames.get(f.parent, set())
+        has_sidecar = False
+        for name in filenames:
+            if not name.startswith(stem):
+                continue
+            remainder = name[len(stem):]
+            if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
+                has_sidecar = True
+                break
+
+        if has_sidecar:
+            continue  # Has sidecar subtitles, skip
+
+        if skip_embedded or not is_video(f):
+            # No sidecar and we're not checking embedded (or it's audio)
+            missing.append({
+                'path': str(f),
+                'name': f.name,
+                'directory': str(f.parent)
+            })
+        else:
+            needs_embedded_check.append(f)
+
+        if scanned % 100 == 0:
+            self.update_state(state='PROGRESS', meta={
+                'phase': 'sidecar_scan', 'scanned': scanned,
+                'total': total, 'missing_so_far': len(missing)
+            })
+
+    # Phase 2: Embedded subtitle check via ffprobe (slower)
+    if needs_embedded_check:
+        for i, f in enumerate(needs_embedded_check):
+            has_embedded = False
+            try:
+                result = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-select_streams", "s",
+                     "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+                     str(f)],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.stdout.strip():
+                    has_embedded = True
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                pass
+
+            if not has_embedded:
+                missing.append({
+                    'path': str(f),
+                    'name': f.name,
+                    'directory': str(f.parent)
+                })
+
+            if (i + 1) % 50 == 0:
+                self.update_state(state='PROGRESS', meta={
+                    'phase': 'embedded_scan',
+                    'scanned': total - len(needs_embedded_check) + i + 1,
+                    'total': total,
+                    'missing_so_far': len(missing)
+                })
+
+    elapsed = round(time.time() - start, 1)
+    return {
+        'missing_files': missing,
+        'total_scanned': total,
+        'total_missing': len(missing),
+        'scan_time_seconds': elapsed
+    }
 
 
 def make_batch(files, model, language, profanity_filter="off", force_regenerate=False,

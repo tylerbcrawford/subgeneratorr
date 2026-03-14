@@ -262,6 +262,9 @@ function navigateToPath(path) {
    ============================================ */
 
 async function browseDirectories(path) {
+    // Exit library scan view when navigating
+    isLibraryScanView = false;
+
     currentPath = path;
     const directoryList = document.getElementById('directoryList');
     const showAll = true;
@@ -2045,6 +2048,290 @@ function updateJobDisplay(data) {
             submitBtn.classList.remove('completed');
             submitBtn.textContent = 'Transcribe';
         }
+    }
+}
+
+/* ============================================
+   LIBRARY SCAN — FIND ALL MISSING SUBTITLES
+   ============================================ */
+
+let libraryScanTaskId = null;
+let libraryScanPollInterval = null;
+let libraryScanPollCount = 0;
+let isLibraryScanView = false;
+const MAX_LIBRARY_SCAN_POLLS = 600; // 600 × 2s = 20 minutes
+
+function showLibraryScanDialog() {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+        overlay.innerHTML = `
+            <div class="dialog-box">
+                <div class="dialog-title">Find Missing Subtitles</div>
+                <div class="dialog-message">
+                    This will scan your entire media library for files missing subtitles.
+                    For large libraries, this may take several minutes.
+                </div>
+                <label class="checkbox-label" style="justify-content: center; margin-bottom: var(--space-m);">
+                    <input type="checkbox" id="scanSkipEmbedded">
+                    <span>Skip embedded subtitle check (faster, sidecar files only)</span>
+                </label>
+                <div class="dialog-actions">
+                    <button class="btn-primary" data-action="scan">Scan Library</button>
+                    <button class="btn-link" data-action="cancel">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        function cleanup(action) {
+            const skipEmbedded = overlay.querySelector('#scanSkipEmbedded')?.checked || false;
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 200);
+            document.removeEventListener('keydown', onKey);
+            resolve({ action, skipEmbedded });
+        }
+
+        function onKey(e) {
+            if (e.key === 'Escape') cleanup('cancel');
+        }
+
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) cleanup('cancel');
+        });
+
+        overlay.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => cleanup(btn.dataset.action));
+        });
+
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('show'));
+    });
+}
+
+async function startLibraryScan() {
+    // Close gear popover
+    const popover = document.getElementById('gearPopover');
+    if (popover) popover.classList.add('hidden');
+
+    // Show warning dialog
+    const { action, skipEmbedded } = await showLibraryScanDialog();
+    if (action === 'cancel') return;
+
+    // Clear current selection
+    selectedFiles = [];
+    updateSelectionStatus();
+
+    // Show scanning status
+    updateUnifiedStatus('Starting library scan...', true, 0);
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.style.display = '';
+        cancelBtn.onclick = cancelLibraryScan;
+    }
+
+    // Disable submit button during scan
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    // Show loading state in directory list
+    const directoryList = document.getElementById('directoryList');
+    directoryList.innerHTML = '<div style="text-align:center; padding: var(--space-xl); color: var(--text-secondary);">Scanning library for missing subtitles...</div>';
+
+    try {
+        const response = await fetch('/api/library-scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ skip_embedded: skipEmbedded })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        libraryScanTaskId = data.task_id;
+        libraryScanPollCount = 0;
+
+        // Start polling
+        libraryScanPollInterval = setInterval(() => pollLibraryScanStatus(libraryScanTaskId), 2000);
+        pollLibraryScanStatus(libraryScanTaskId);
+
+    } catch (error) {
+        console.error('Library scan error:', error);
+        showToast('error', `Failed to start scan: ${error.message}`);
+        updateUnifiedStatus('', false);
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+        browseDirectories(currentPath);
+    }
+}
+
+async function pollLibraryScanStatus(taskId) {
+    try {
+        libraryScanPollCount++;
+
+        if (libraryScanPollCount > MAX_LIBRARY_SCAN_POLLS) {
+            clearInterval(libraryScanPollInterval);
+            updateUnifiedStatus('Scan timed out — polling stopped after 20 minutes', false);
+            showToast('error', 'Library scan timed out');
+            const cancelBtn = document.getElementById('cancelBtn');
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = false;
+            return;
+        }
+
+        const response = await fetch(`/api/library-scan/status/${taskId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+
+        if (data.state === 'PROGRESS') {
+            const pct = data.progress || 0;
+            const phase = data.phase === 'embedded_scan' ? 'Checking embedded subtitles' :
+                          data.phase === 'sidecar_scan' ? 'Checking sidecar files' :
+                          'Collecting files';
+            updateUnifiedStatus(
+                `${phase}... ${data.scanned}/${data.total} files (${data.missing_so_far} missing)`,
+                true, pct
+            );
+        } else if (data.state === 'SUCCESS') {
+            clearInterval(libraryScanPollInterval);
+            displayLibraryScanResults(data);
+        } else if (data.state === 'FAILURE') {
+            clearInterval(libraryScanPollInterval);
+            updateUnifiedStatus('Scan failed: ' + (data.error || 'Unknown error'), false);
+            showToast('error', 'Library scan failed');
+            const cancelBtn = document.getElementById('cancelBtn');
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = false;
+            browseDirectories(currentPath);
+        } else if (data.state === 'PENDING') {
+            updateUnifiedStatus('Scan queued...', true, 0);
+        }
+
+    } catch (error) {
+        console.error('Library scan poll error:', error);
+    }
+}
+
+function displayLibraryScanResults(data) {
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'none';
+        cancelBtn.onclick = () => cancelJob(); // Reset to default
+    }
+
+    isLibraryScanView = true;
+
+    const totalMissing = data.total_missing || 0;
+    const totalScanned = data.total_scanned || 0;
+    const scanTime = data.scan_time_seconds || 0;
+    const missingFiles = data.missing_files || [];
+
+    updateUnifiedStatus(
+        `Found ${totalMissing} files missing subtitles (scanned ${totalScanned} files in ${scanTime}s)`,
+        false
+    );
+
+    const directoryList = document.getElementById('directoryList');
+    let html = '';
+
+    // Summary banner
+    html += `<div class="scan-results-banner">
+        <strong>${totalMissing}</strong> files missing subtitles out of <strong>${totalScanned}</strong> scanned
+    </div>`;
+
+    // "Back to Browser" button
+    html += `<button class="browser-item directory-item" onclick="exitLibraryScanView()">
+        <span class="item-icon">↩</span>
+        <span class="item-name">Back to Browser</span>
+    </button>`;
+
+    if (missingFiles.length === 0) {
+        html += `<div class="empty-state">
+            <h3 class="empty-title">All caught up!</h3>
+            <p class="empty-message">Every media file in your library has subtitles.</p>
+        </div>`;
+        directoryList.innerHTML = html;
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    // Group files by directory
+    const groups = {};
+    missingFiles.forEach(f => {
+        const dir = f.directory;
+        if (!groups[dir]) groups[dir] = [];
+        groups[dir].push(f);
+    });
+
+    // Sort directories alphabetically
+    const sortedDirs = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+
+    html += '<div class="browser-section">';
+    sortedDirs.forEach(dir => {
+        // Directory header — show relative to /media if possible
+        const displayDir = dir.startsWith('/media/') ? dir.substring(7) : dir;
+        html += `<div class="scan-group-header">${displayDir}</div>`;
+
+        groups[dir].forEach((file, index) => {
+            const escapedPath = file.path.replace(/"/g, '&quot;');
+            html += `
+                <label class="browser-item browser-file" data-has-subtitles="false">
+                    <input type="checkbox" class="item-checkbox" value="${escapedPath}"
+                           onchange="toggleFileSelection(this.value)">
+                    <span class="item-status" data-status="missing" title="Missing subtitles" aria-label="Missing subtitles"></span>
+                    <span class="item-name">${file.name}</span>
+                </label>
+            `;
+        });
+    });
+    html += '</div>';
+
+    directoryList.innerHTML = html;
+
+    // Enable submit button
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) submitBtn.disabled = true; // Will enable when files are selected
+
+    // Reset selection
+    selectedFiles = [];
+    updateSelectionStatus();
+}
+
+function exitLibraryScanView() {
+    isLibraryScanView = false;
+    libraryScanTaskId = null;
+    selectedFiles = [];
+    updateSelectionStatus();
+    browseDirectories(currentPath);
+}
+
+async function cancelLibraryScan() {
+    if (!libraryScanTaskId) return;
+
+    try {
+        await fetch(`/api/library-scan/${libraryScanTaskId}/cancel`, { method: 'POST' });
+        clearInterval(libraryScanPollInterval);
+        showToast('info', 'Library scan cancelled');
+        updateUnifiedStatus('Scan cancelled', false);
+
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) {
+            cancelBtn.style.display = 'none';
+            cancelBtn.onclick = () => cancelJob(); // Reset to default
+        }
+
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = false;
+
+        libraryScanTaskId = null;
+        browseDirectories(currentPath);
+    } catch (error) {
+        console.error('Cancel scan error:', error);
+        showToast('error', 'Failed to cancel scan');
     }
 }
 

@@ -1120,6 +1120,33 @@ input[readonly] {
   border-top: 1px solid var(--border);
 }
 
+/* Gear Popover Action Button */
+.gear-popover-action {
+  margin-top: var(--space-s);
+  padding-top: var(--space-s);
+  border-top: 1px solid var(--border);
+}
+.btn-full-width { width: 100%; }
+
+/* Library Scan Results */
+.scan-results-banner {
+  text-align: center;
+  padding: var(--space-m);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-body);
+}
+.scan-results-banner strong { color: var(--text-primary); }
+.scan-group-header {
+  padding: var(--space-xs) var(--space-m);
+  font-size: var(--font-caption);
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 /* Overwrite Dialog */
 .dialog-overlay {
   position: fixed;

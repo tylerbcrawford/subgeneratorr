@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=23">
+    <link rel="stylesheet" href="/static/styles.css?v=24">
 </head>
 <body>
     <div class="container">
@@ -50,6 +50,11 @@
                                     <input type="checkbox" id="rememberSettings" onchange="toggleRememberSettings()">
                                     <span>Remember my last settings</span>
                                 </label>
+                            </div>
+                            <div class="gear-popover-action">
+                                <button class="btn-secondary btn-full-width" onclick="startLibraryScan()">
+                                    Find All Missing Subtitles
+                                </button>
                             </div>
                             <div class="gear-popover-theme">
                                 <button class="theme-toggle theme-toggle-small" onclick="toggleTheme()" aria-label="Toggle theme">
@@ -439,6 +444,6 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=18"></script>
+    <script src="/static/app.js?v=19"></script>
 </body>
 </html>

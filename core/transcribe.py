@@ -16,6 +16,9 @@ import json
 import csv
 from typing import Optional, List
 
+# Subtitle file extensions to detect as sidecar files
+SUBTITLE_EXTS = {'.srt', '.ass', '.ssa', '.sub', '.vtt'}
+
 # Supported video file extensions
 VIDEO_EXTS = {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.wmv', '.flv'}
 
@@ -60,6 +63,49 @@ def is_media(p: Path) -> bool:
         True if the file has a supported media extension
     """
     return is_video(p) or is_audio(p)
+
+
+def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
+    """
+    Check if a media file has subtitles (sidecar files or embedded tracks).
+
+    Args:
+        media_path: Path to the media file
+        dir_filenames: Optional pre-built set of filenames in the same directory.
+                       If None, will scan the directory (slower for batch calls).
+
+    Returns:
+        dict with 'has_subtitles' (bool) and 'subtitle_source' ("sidecar"|"embedded"|None)
+    """
+    import subprocess
+    stem = media_path.stem
+
+    # Step 1: Check for sidecar subtitle files (instant — in-memory string matching)
+    if dir_filenames is None:
+        dir_filenames = {p.name for p in media_path.parent.iterdir() if p.is_file()}
+
+    for name in dir_filenames:
+        if not name.startswith(stem):
+            continue
+        remainder = name[len(stem):]
+        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
+            return {"has_subtitles": True, "subtitle_source": "sidecar"}
+
+    # Step 2: Fallback — ffprobe for embedded subtitle tracks (~50-100ms)
+    if is_video(media_path):
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-select_streams", "s",
+                 "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+                 str(media_path)],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.stdout.strip():
+                return {"has_subtitles": True, "subtitle_source": "embedded"}
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+    return {"has_subtitles": False, "subtitle_source": None}
 
 
 def get_video_duration(video: Path) -> float:
