@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Automatically load directory on page load
+    console.log('Initial path for browseDirectories:', initialPath);
     browseDirectories(initialPath);
 
     // Setup keyboard shortcuts
@@ -184,6 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Reset label ONLY if it shows auto-loaded or generated (not if it shows "saved")
                 const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
                 if (keyTermsLabel && (keyTermsLabel.textContent.includes('auto-loaded') || keyTermsLabel.textContent.includes('generated')) && !keyTermsLabel.textContent.includes('saved')) {
+                    console.log('Resetting keyterm label from:', keyTermsLabel.textContent);
                     resetKeytermLabel();
                 }
 
@@ -192,7 +194,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearTimeout(autoSaveTimeout);
                 }
 
+                console.log('Setting auto-save timer...');
                 autoSaveTimeout = setTimeout(() => {
+                    console.log('Auto-save timer triggered');
                     autoSaveKeyterms();
                 }, 1500); // Wait 1.5 seconds after user stops typing
             }
@@ -284,6 +288,7 @@ async function browseDirectories(path) {
         isInitialLoad = false; // Reset flag after first load
     }
 
+    console.log('Browsing directory:', path);
     updateBreadcrumb(path);
     
     // Show skeleton loader
@@ -301,12 +306,15 @@ async function browseDirectories(path) {
     
     try {
         const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&show_all=${showAll}&only_folders_with_videos=${onlyFoldersWithVideos}`);
+        console.log('API Response status:', response.status);
+        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const data = await response.json();
-
+        console.log('API Response data:', data);
+        
         // Hide skeleton loader
         skeleton = document.getElementById('skeleton');
         if (skeleton) {
@@ -383,7 +391,9 @@ async function browseDirectories(path) {
             `;
         }
         
+        console.log('Setting innerHTML with', html.length, 'characters');
         directoryList.innerHTML = html;
+        console.log('Updated directory list, now has', directoryList.children.length, 'children');
         currentPathHasSubdirs = data.directories.length > 0;
 
         updateSelectionStatus();
@@ -706,6 +716,7 @@ function saveCurrentSettings() {
         requestTag: document.getElementById('requestTag')?.value || ''
     };
 
+    console.log('Saving settings with currentPath:', currentPath);
     localStorage.setItem('deepgramSettings', JSON.stringify(settings));
 }
 
@@ -831,6 +842,7 @@ function loadSavedSettings() {
             if (settings.currentPath) {
                 currentPath = settings.currentPath;
                 restoredPath = settings.currentPath;
+                console.log('Restored currentPath from settings:', currentPath);
             }
 
             // Restore keyterms
@@ -925,6 +937,8 @@ async function autoSaveKeyterms() {
 
         if (response.ok) {
             const data = await response.json();
+            console.log(`Auto-saved ${data.keyterms_count} keyterms`);
+
             // Update label to show it was saved
             const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
             if (keyTermsLabel) {
@@ -957,6 +971,7 @@ async function loadKeytermsForSelection() {
         const response = await fetch(`/api/keyterms/load?video_path=${encodeURIComponent(firstFile)}`);
 
         if (!response.ok) {
+            console.log('No keyterms found for this video');
             updateGenerateKeytermButtonState();
             return;
         }
@@ -983,6 +998,8 @@ async function loadKeytermsForSelection() {
                 }, 100);
 
                 // Show a subtle notification
+                console.log(`Auto-loaded ${data.count} keyterms from CSV`);
+
                 // Show persistent indicator that keyterms were auto-loaded
                 const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
                 if (keyTermsLabel) {
@@ -2053,6 +2070,7 @@ function getCurrentVideoPath() {
 function updateSpinnerText(message) {
     // Since showSpinner doesn't exist yet, we'll use toast for now
     // In a real implementation, you'd modify the actual spinner element
+    console.log('Spinner update:', message);
 }
 
 /**

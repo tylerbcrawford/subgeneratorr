@@ -2,10 +2,9 @@
 .env
 
 # Personal/internal documentation (keep local only)
+DEEPGRAM-SETUP-SUMMARY.md
+docs/PUBLIC-LAUNCH-PLAN.md
 _devdocs/
-
-# Claude Code
-.claude/
 
 
 # Python

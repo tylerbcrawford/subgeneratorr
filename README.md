@@ -6,8 +6,6 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-![Subgeneratorr — File browser with episode selection, cost tracking, and auto-loaded keyterms](docs/screenshots/file-browser.png)
-
 ---
 
 ## Why Subgeneratorr?
@@ -111,8 +109,6 @@ docker compose up -d
 ```
 
 Access at `http://localhost:5000` (or configure reverse proxy for remote access)
-
-![Web UI — Keyterms, AI generation, and transcription settings](docs/screenshots/transcription-settings.png)
 
 ### Web UI Features
 

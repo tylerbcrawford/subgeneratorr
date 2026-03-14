@@ -20,9 +20,6 @@ from core.transcribe import (
     load_keyterms_from_csv, save_keyterms_to_csv,
     get_keyterms_folder
 )
-import logging
-
-logger = logging.getLogger(__name__)
 
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
 DEFAULT_MODEL = "nova-3"  # Hardcoded to Nova-3
@@ -543,7 +540,7 @@ def api_job(rid):
     try:
         group_result = GroupResult.restore(rid, app=celery_app)
     except Exception as e:
-        logger.error("Failed to restore GroupResult: %s", e)
+        print(f"Failed to restore GroupResult: {e}")
         group_result = None
 
     # Check for batch timeout
@@ -556,7 +553,7 @@ def api_job(rid):
 
     # If it's a group result, handle it specially
     if group_result is not None and hasattr(group_result, 'results') and group_result.results:
-        logger.debug("Processing GroupResult with %d tasks", len(group_result.results))
+        print(f"Processing GroupResult with {len(group_result.results)} tasks")
         children_info = []
         completed_count = 0
         failed_count = 0
@@ -570,7 +567,7 @@ def api_job(rid):
                     'state': child.state,
                 }
 
-                logger.debug("Child task %s: state=%s", child.id, child.state)
+                print(f"Child task {child.id}: state={child.state}")
 
                 # Get task metadata if available
                 if child.state == 'PROGRESS':
@@ -587,7 +584,7 @@ def api_job(rid):
                             child_info['status'] = result.get('status', '')
                             child_info['video'] = result.get('video', '')
                     except Exception as e:
-                        logger.error("Error getting result for %s: %s", child.id, e)
+                        print(f"Error getting result for {child.id}: {e}")
                 elif child.state == 'STARTED':
                     started_count += 1
                 elif child.state == 'FAILURE':
@@ -598,18 +595,20 @@ def api_job(rid):
                             child_info['error'] = str(result)
                             child_info['status'] = 'error'
                     except Exception as e:
-                        logger.error("Error getting failure info for %s: %s", child.id, e)
+                        print(f"Error getting failure info for {child.id}: {e}")
                 elif child.state == 'PENDING':
                     pending_count += 1
 
                 children_info.append(child_info)
             except Exception as child_error:
-                logger.exception("Error processing child task: %s", child_error)
+                print(f"Error processing child task: {child_error}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         # Determine overall state
         total = len(group_result.results)
-        logger.debug("Task counts - Total: %d, Completed: %d, Failed: %d, Started: %d, Pending: %d", total, completed_count, failed_count, started_count, pending_count)
+        print(f"Task counts - Total: {total}, Completed: {completed_count}, Failed: {failed_count}, Started: {started_count}, Pending: {pending_count}")
 
         if total == 0:
             state = 'PENDING'
@@ -625,9 +624,9 @@ def api_job(rid):
         # Check for timeout on non-terminal states
         if batch_meta and state in ('PENDING', 'STARTED') and elapsed_seconds > batch_meta["timeout_seconds"]:
             state = 'TIMEOUT'
-            logger.error("Batch %s timed out after %.0fs (limit: %ss)", rid, elapsed_seconds, batch_meta['timeout_seconds'])
+            print(f"Batch {rid} timed out after {elapsed_seconds:.0f}s (limit: {batch_meta['timeout_seconds']}s)")
 
-        logger.debug("Determined state: %s", state)
+        print(f"Determined state: {state}")
 
         # Build results array for SUCCESS state
         # The frontend expects data.data.results with status='ok'|'skipped'|'error'
@@ -695,11 +694,11 @@ def api_job(rid):
                     children_info.append(child_info)
                 except Exception as child_error:
                     # Skip problematic children but continue processing
-                    logger.error("Error processing child task: %s", child_error)
+                    print(f"Error processing child task: {child_error}")
                     continue
 
     except Exception as e:
-        logger.error("Error in api_job: %s", e)
+        print(f"Error in api_job: {e}")
         data = {"error": str(e), "error_type": type(e).__name__}
 
     # Check for timeout on non-terminal states (fallback path)
@@ -1001,20 +1000,20 @@ def api_keyterms_generate():
         from core.media_metadata import extract_media_metadata
         metadata = extract_media_metadata(vp)
 
-        logger.debug("Extracted metadata from path: %s", vp)
-        logger.debug("Media type: %s", metadata.media_type)
-        logger.debug("Name: %s", metadata.name)
+        print(f"[DEBUG] Extracted metadata from path: {vp}")
+        print(f"[DEBUG] Media type: {metadata.media_type}")
+        print(f"[DEBUG] Name: {metadata.name}")
         if metadata.media_type == 'tv':
-            logger.debug("Season: %s, Episode: %s", metadata.season, metadata.episode)
+            print(f"[DEBUG] Season: {metadata.season}, Episode: {metadata.episode}")
             if metadata.episode_title:
-                logger.debug("Episode title: %s", metadata.episode_title)
+                print(f"[DEBUG] Episode title: {metadata.episode_title}")
 
         if not metadata.name or metadata.name.strip() == '':
-            logger.error("Empty name extracted from path: %s", vp)
+            print(f"[ERROR] Empty name extracted from path: {vp}")
             return jsonify({'error': 'Could not extract show/movie name from video path. Please ensure video is in a properly named directory.'}), 400
 
     except Exception as e:
-        logger.error("Exception extracting metadata: %s", e)
+        print(f"[ERROR] Exception extracting metadata: {str(e)}")
         return jsonify({'error': f'Failed to extract metadata: {str(e)}'}), 400
     
     # Get API key from environment
@@ -1038,28 +1037,30 @@ def api_keyterms_generate():
         try:
             from core.keyterm_search import KeytermSearcher, LLMProvider, LLMModel
 
-            logger.debug("Estimating cost for: '%s'", metadata.name)
-            logger.debug("Provider: %s, Model: %s", provider, model)
+            print(f"[DEBUG] Estimating cost for: '{metadata.name}'")
+            print(f"[DEBUG] Provider: {provider}, Model: {model}")
 
             # Use bracket notation to access enum by NAME, not by VALUE
             provider_enum = LLMProvider[provider.upper()]
             model_enum_name = model.upper().replace('-', '_').replace('.', '_')
-            logger.debug("Looking up enum: LLMModel.%s", model_enum_name)
+            print(f"[DEBUG] Looking up enum: LLMModel.{model_enum_name}")
             model_enum = LLMModel[model_enum_name]
 
-            logger.debug("Initializing KeytermSearcher...")
+            print(f"[DEBUG] Initializing KeytermSearcher...")
             searcher = KeytermSearcher(provider_enum, model_enum, api_key)
 
-            logger.debug("Calling estimate_cost...")
+            print(f"[DEBUG] Calling estimate_cost...")
             estimate = searcher.estimate_cost(metadata)
 
-            logger.debug("Cost estimation successful: %s", estimate)
+            print(f"[DEBUG] Cost estimation successful: {estimate}")
             return jsonify(estimate)
         except KeyError as e:
-            logger.error("KeyError in cost estimation: %s", e)
+            print(f"[ERROR] KeyError in cost estimation: {str(e)}")
             return jsonify({'error': f'Invalid provider or model: {provider}, {model}'}), 400
         except Exception as e:
-            logger.exception("Exception in cost estimation: %s: %s", type(e).__name__, e)
+            print(f"[ERROR] Exception in cost estimation: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': f'Cost estimation failed: {str(e)}'}), 500
     
     # Queue async generation task

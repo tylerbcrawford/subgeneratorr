@@ -1,6 +1,5 @@
 """Configuration management for Subgeneratorr"""
 import os
-import tempfile
 
 class Config:
     """Application configuration"""
@@ -9,7 +8,7 @@ class Config:
     MEDIA_PATH = os.environ.get("MEDIA_PATH", "/media")
     FILE_LIST_PATH = os.environ.get("FILE_LIST_PATH")
     LOG_PATH = os.environ.get("LOG_PATH", "/logs")
-    TEMP_AUDIO_PATH = os.path.join(tempfile.gettempdir(), "subgeneratorr_audio_extract.mp3")
+    TEMP_AUDIO_PATH = "/tmp/audio_extract.mp3"
     BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "0"))
     LANGUAGE = os.environ.get("LANGUAGE", "en")
     VIDEO_EXTENSIONS = {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.wmv', '.flv'}

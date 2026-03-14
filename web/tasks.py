@@ -23,9 +23,6 @@ from core.transcribe import (
     get_intelligence_folder
 )
 
-import logging
-logger = logging.getLogger(__name__)
-
 # Configuration from environment
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
@@ -161,7 +158,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         csv_keyterms = load_keyterms_from_csv(vp)
         if csv_keyterms:
             keyterms = csv_keyterms
-            logger.info("Auto-loaded %d keyterms from CSV", len(keyterms))
+            print(f"Auto-loaded {len(keyterms)} keyterms from CSV")
     
     audio_tmp = None
     try:
@@ -207,16 +204,16 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
         if synced_marker.exists():
             synced_marker.unlink()
-            logger.info("Removed Subsyncarr marker: %s", synced_marker)
+            print(f"Removed Subsyncarr marker: {synced_marker}")
         
         # Save keyterms to CSV if enabled and keyterms were provided
         if auto_save_keyterms and keyterms:
             self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_keyterms'})
             try:
                 if save_keyterms_to_csv(vp, keyterms):
-                    logger.info("Saved %d keyterms to CSV", len(keyterms))
+                    print(f"Saved {len(keyterms)} keyterms to CSV")
             except Exception as e:
-                logger.warning("Failed to save keyterms: %s", e)
+                print(f"Warning: Failed to save keyterms: {e}")
         
         # Generate transcript if requested
         if enable_transcript:
@@ -226,7 +223,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             speaker_map_path = find_speaker_map(vp)
 
             if speaker_map_path:
-                logger.info("Using speaker map: %s", speaker_map_path)
+                print(f"Using speaker map: {speaker_map_path}")
 
             write_transcript(resp, txt_out, speaker_map_path)
         
@@ -236,7 +233,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             try:
                 write_raw_json(resp, vp)
             except Exception as e:
-                logger.warning("Failed to save raw JSON: %s", e)
+                print(f"Warning: Failed to save raw JSON: {e}")
 
         # Save intelligence summary if any intelligence features were enabled
         has_intelligence = any([sentiment, summarize, topics, intents, detect_entities, search])
@@ -245,7 +242,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             try:
                 write_intelligence_summary(resp, vp)
             except Exception as e:
-                logger.warning("Failed to save intelligence summary: %s", e)
+                print(f"Warning: Failed to save intelligence summary: {e}")
         
         # Calculate processing time
         end_time = time.time()
@@ -305,9 +302,9 @@ def batch_finalize(results):
                 headers={"X-API-KEY": BAZARR_API_KEY},
                 timeout=10
             )
-            logger.info("Bazarr rescan triggered: %s", response.status_code)
+            print(f"Bazarr rescan triggered: {response.status_code}")
         except Exception as e:
-            logger.error("Bazarr rescan failed: %s", e)
+            print(f"Bazarr rescan failed: {e}")
     
     return {"batch_status": "done", "results": results}
 
@@ -403,7 +400,7 @@ def generate_keyterms_task(
         
         # Save to CSV
         if save_keyterms_to_csv(vp, result['keyterms']):
-            logger.info("Saved %d LLM-generated keyterms to CSV", len(result['keyterms']))
+            print(f"Saved {len(result['keyterms'])} LLM-generated keyterms to CSV")
         
         # Return results
         return {
