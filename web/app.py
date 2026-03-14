@@ -7,8 +7,11 @@ transcription jobs, and monitoring progress via Server-Sent Events (SSE).
 """
 
 import os
+import io
+import csv
 import json
 import time
+from datetime import date
 from pathlib import Path
 import subprocess
 from flask import Flask, request, jsonify, Response, abort, render_template, send_file
@@ -1185,6 +1188,45 @@ def api_library_scan_cancel(task_id):
         return jsonify({'status': 'cancelled', 'task_id': task_id})
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.get("/api/library-scan/export/<task_id>")
+def api_library_scan_export(task_id):
+    """
+    Export library scan results as a CSV file download.
+
+    Parameters:
+        task_id: Celery task ID of a completed library scan
+
+    Returns:
+        CSV file download with columns: path, name, directory
+    """
+    try:
+        task = celery_app.AsyncResult(task_id)
+
+        if task.state != 'SUCCESS':
+            return jsonify({'error': f'Task not complete (state: {task.state})'}), 400
+
+        result = task.info or {}
+        missing_files = result.get('missing_files', [])
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(['path', 'name', 'directory'])
+        for f in missing_files:
+            writer.writerow([f.get('path', ''), f.get('name', ''), f.get('directory', '')])
+
+        output = io.BytesIO(buf.getvalue().encode('utf-8'))
+        filename = f"missing-subtitles-{date.today().isoformat()}.csv"
+
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == "__main__":

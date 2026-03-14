@@ -2237,9 +2237,10 @@ function displayLibraryScanResults(data) {
     const directoryList = document.getElementById('directoryList');
     let html = '';
 
-    // Summary banner
+    // Summary banner with CSV export
     html += `<div class="scan-results-banner">
-        <strong>${totalMissing}</strong> files missing subtitles out of <strong>${totalScanned}</strong> scanned
+        <span><strong>${totalMissing}</strong> files missing subtitles out of <strong>${totalScanned}</strong> scanned</span>
+        ${totalMissing > 0 ? `<button class="btn-link scan-export-btn" onclick="window.location='/api/library-scan/export/${libraryScanTaskId}'">Download CSV</button>` : ''}
     </div>`;
 
     // "Back to Browser" button

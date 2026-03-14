@@ -1130,13 +1130,17 @@ input[readonly] {
 
 /* Library Scan Results */
 .scan-results-banner {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-m);
   padding: var(--space-m);
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border);
   font-size: var(--font-body);
 }
 .scan-results-banner strong { color: var(--text-primary); }
+.scan-export-btn { font-size: var(--font-caption); white-space: nowrap; }
 .scan-group-header {
   padding: var(--space-xs) var(--space-m);
   font-size: var(--font-caption);
