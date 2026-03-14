@@ -171,6 +171,8 @@ Auto-detected when you enable transcript generation (`ENABLE_TRANSCRIPT=1`)
 3. Review results grouped by directory
 4. Select files → Transcribe, or download CSV report
 
+**Performance:** A 4,662-file library (TV, movies, audiobooks) scans in ~6 minutes with embedded subtitle detection enabled. Skipping the embedded check (sidecar-only mode) reduces this to seconds.
+
 ---
 
 ## Configuration

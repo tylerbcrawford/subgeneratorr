@@ -641,6 +641,15 @@ Export scan results as CSV download. Only available for completed scans.
 
 **Response:** CSV file download (`missing-subtitles-YYYY-MM-DD.csv`) with columns: `path`, `name`, `directory`.
 
+**Performance Benchmark:**
+
+| Library Size | Scan Mode | Time | Result |
+|-------------|-----------|------|--------|
+| 4,662 files | Full (sidecar + embedded) | ~346s (~6 min) | 573 missing |
+| 4,662 files | Sidecar-only (skip embedded) | ~5s | Faster, but misses files with embedded-only subs |
+
+The two-phase approach means Phase 1 (sidecar detection) is instant — pure in-memory string matching against filenames. Phase 2 (ffprobe embedded check) runs only on files without sidecars and accounts for the majority of scan time (~50-100ms per file).
+
 #### LLM Keyterm Generation
 
 **POST `/api/keyterms/generate`**
