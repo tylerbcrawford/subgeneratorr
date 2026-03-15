@@ -128,9 +128,9 @@ Access at `http://localhost:5000` (or configure reverse proxy for remote access)
 
 ### Keyterm Prompting
 
-Improve transcription accuracy by up to 90% for important terms like character names, locations, and show-specific jargon.
+This is the feature I'm most proud of. Speech-to-text models are excellent at everyday words, but they struggle with proper nouns — character names, fictional locations, made-up terminology. Without guidance, "Heisenberg" becomes "Heizenberg" and "Los Pollos Hermanos" becomes gibberish. Keyterms tell Nova-3 exactly what to listen for, and the difference in accuracy is dramatic.
 
-**Create keyterms CSV:**
+**Manual CSV (full control):**
 ```bash
 # For TV shows (at show level)
 /media/tv/Breaking Bad/Transcripts/Keyterms/Breaking Bad_keyterms.csv
@@ -142,10 +142,9 @@ Heisenberg
 Los Pollos Hermanos
 ```
 
-**Or use AI generation** (Web UI only):
-- Select video → Click "Generate Keyterms"
-- Supports Claude, GPT, and Gemini
-- Costs ~$0.002-0.08 per generation depending on model
+**AI generation (the easy way):** Select any video file in the Web UI, click "Generate Keyterms," and an LLM reads the file path to figure out what show or movie it is. It researches the title and returns 20-50 character names, locations, and jargon — the exact terms a speech model would otherwise botch. One click per show, and the keyterms apply to every episode automatically.
+
+The whole process takes 3-5 seconds and costs less than a penny per generation ($0.0006-$0.0064 depending on model). Gemini's free tier works well here, so you can generate keyterms for your entire library at zero cost. Supports Claude, GPT, and Gemini — see the [model benchmarks](docs/technical.md#ai-powered-generation) for detailed comparisons.
 
 ### Speaker Maps
 
@@ -166,10 +165,11 @@ Auto-detected when you enable transcript generation (`ENABLE_TRANSCRIPT=1`)
 
 ### Find All Missing Subtitles
 
-1. Open Web UI → click gear icon → "Find All Missing Subtitles"
-2. Optionally skip embedded subtitle check for faster scan
-3. Review results grouped by directory
-4. Select files → Transcribe, or download CSV report
+When you have thousands of files across TV shows, movies, and audiobooks, you have no idea which ones actually need subtitles. Manually clicking through folders isn't realistic. This scans your entire library and tells you exactly what's missing.
+
+The scan uses a two-phase approach. Phase 1 checks for sidecar subtitle files (`.eng.srt` next to the video) — this is pure filename matching and finishes in seconds. Phase 2 uses ffprobe to detect embedded subtitle tracks inside video containers, running at ~50-100ms per file. You can skip Phase 2 for a quick scan if you only care about sidecar files.
+
+Results come back grouped by directory, so you can see at a glance which shows or seasons need work. Select files directly from the results to send them to transcription, or export the full list as CSV. Results persist across page reloads, so you can start a scan, close your laptop, and come back to it later. For large selections, the Web UI auto-chunks files into 25-file batches with a cost summary between each so you stay in control.
 
 **Performance:** A 4,662-file library (TV, movies, audiobooks) scans in ~6 minutes with embedded subtitle detection enabled. Skipping the embedded check (sidecar-only mode) reduces this to seconds.
 
@@ -254,6 +254,18 @@ After generation, refresh your media library to detect new subtitles.
 2. Run: `docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli`
 3. Subtitles generated automatically
 4. Bazarr rescan triggers (if Web UI integration enabled)
+
+### Complete Library Cleanup
+
+This is where the keyterm and scan features come together — the workflow I actually use:
+
+1. **Scan** your library for missing subtitles (gear icon → "Find All Missing Subtitles")
+2. **Review** results by directory — see which shows and seasons have gaps
+3. **Generate AI keyterms** for each show (one click per show, shared across all episodes)
+4. **Select files** from the scan results → transcribe (keyterms auto-applied per show)
+5. **Resume anytime** — scan results persist, and processed files drop off the list
+
+You can work through it show by show over a few days, or batch everything at once. The scan doesn't need to be re-run unless you add new media.
 
 ### Generate Transcripts for Archive
 
