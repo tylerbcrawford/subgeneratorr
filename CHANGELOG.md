@@ -8,12 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Scan results keyword filter** — exclude files by keyword (e.g. "trailer, extras") with persistent filter across sessions
 - **Find All Missing Subtitles** — Library-wide async scan from gear menu with progress tracking, grouped results, and CSV export
 - Four new API endpoints: `POST /api/library-scan`, `GET /api/library-scan/status/<task_id>`, `POST /api/library-scan/<task_id>/cancel`, `GET /api/library-scan/export/<task_id>`
 - `library_scan_task` Celery task with two-phase scan (fast sidecar check + optional ffprobe embedded check)
+- **Persistent scan results** — library scan data saved to localStorage, survives page reload and browser close
+- **Resume scan** — gear menu shows "Resume Scan (N remaining)" when previous scan data exists
+- **Chunked batch processing** — large selections auto-split into 25-file chunks with auto-pause between each
+- **Batch confirmation dialog** with accurate cost/time estimate before first chunk
+- **Auto-pause prompt** between chunks showing cumulative results and remaining cost/time
 
 ### Changed
 - Moved `check_subtitles()` and `SUBTITLE_EXTS` from `web/app.py` to `core/transcribe.py` for reuse across modules
+- Debounced cost estimation to prevent API flooding on rapid file selection
+- Polling watchdog scales with batch size instead of fixed 10-minute timeout
+- LLM cost estimation uses single-file extrapolation for large batches (prevents request flooding)
+- Scan results update in-place after each chunk (completed files marked, counts updated)
+- Reduced noisy per-child logging in batch status polling
 
 ## [2.0.0] - 2026-02-25
 

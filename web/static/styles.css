@@ -1151,6 +1151,15 @@ input[readonly] {
   z-index: 1;
 }
 
+/* Scan Exclude Filter */
+.scan-exclude-row {
+  padding: var(--space-s) var(--space-m);
+  border-bottom: 1px solid var(--border);
+}
+.scan-exclude-container {
+  position: relative;
+}
+
 /* Overwrite Dialog */
 .dialog-overlay {
   position: fixed;

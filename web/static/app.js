@@ -7,11 +7,23 @@ let currentBatchId = null;
 let eventSource = null;
 let pollInterval = null;
 let pollCount = 0;
-const MAX_POLL_COUNT = 200; // 200 polls × 3s = 10 minutes
+let currentMaxPolls = 200; // Dynamic per-batch; default 200 polls × 3s = 10 minutes
 let onlyFoldersWithVideos = true; // Default to filtering empty folders
 let isInitialLoad = true; // Flag to prevent clearing keyterms on initial page load
 let currentPathHasSubdirs = false; // True when current view has subdirectories (not a leaf file listing)
 let searchDebounceTimer = null; // Debounce timer for API-backed search
+let estimateDebounceTimer = null; // Debounce timer for cost estimation
+
+// Chunked batch processing
+const CHUNK_SIZE = 25;
+const AVG_DURATION = 2700; // Average media file duration in seconds (~45 min)
+const DEEPGRAM_RATE = 0.0043; // $/minute for Nova-3
+let chunkQueue = [];        // Array of file path arrays (chunks)
+let currentChunkIndex = 0;
+let chunkResults = [];       // Accumulated results across chunks
+let totalChunkCount = 0;
+let chunkTotalFiles = 0;     // Total files across all chunks
+let chunkEstimateData = null; // Cost/duration estimate for extrapolation
 
 /* ============================================
    INITIALIZATION
@@ -165,6 +177,31 @@ document.addEventListener('DOMContentLoaded', function() {
         autoClearFilesCheckbox.addEventListener('change', function() {
             localStorage.setItem('autoClearFiles', this.checked);
         });
+    }
+
+    // Check for saved library scan data and update gear menu
+    updateGearMenuScanState();
+
+    // Check for active chunk state (mid-chunk recovery on page reload)
+    const activeChunk = loadActiveChunkState();
+    if (activeChunk && activeChunk.activeBatchId) {
+        // Restore chunk state and reconnect
+        currentBatchId = activeChunk.activeBatchId;
+        chunkQueue = activeChunk.chunkQueue;
+        if (activeChunk.baseBody) chunkQueue._baseBody = activeChunk.baseBody;
+        currentChunkIndex = activeChunk.currentChunkIndex;
+        chunkResults = activeChunk.chunkResults;
+        chunkTotalFiles = activeChunk.totalFiles;
+        totalChunkCount = activeChunk.totalChunkCount;
+        chunkEstimateData = activeChunk.estimateData;
+
+        const chunkSize = chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE;
+        updateUnifiedStatus(`Reconnecting to chunk ${currentChunkIndex + 1}/${totalChunkCount}...`, true, 0);
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) cancelBtn.style.display = '';
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = true;
+        startChunkMonitoring(currentBatchId, chunkSize);
     }
 
     // Update cost estimate when keyterms change
@@ -1459,7 +1496,8 @@ function updateSelectionStatus() {
 function selectAllInFolder() {
     selectedFiles = [];
     currentFolder = currentPath; // Lock to current folder
-    document.querySelectorAll('.browser-file:not([style*="display: none"]) input[type="checkbox"]').forEach(cb => {
+    // Skip disabled checkboxes (completed files in scan view)
+    document.querySelectorAll('.browser-file:not([style*="display: none"]):not(.scan-completed) input[type="checkbox"]:not(:disabled)').forEach(cb => {
         cb.checked = true;
         const filePath = cb.value;
         if (!selectedFiles.includes(filePath)) {
@@ -1470,7 +1508,7 @@ function selectAllInFolder() {
     updateSelectionStatus();
     if (selectedFiles.length > 0) {
         const fileText = selectedFiles.length === 1 ? 'file' : 'files';
-        showToast('success', `Selected ${selectedFiles.length} ${fileText} in this folder`);
+        showToast('success', `Selected ${selectedFiles.length} ${fileText}`);
         // Auto-load keyterms for the first selected file
         loadKeytermsForSelection();
     }
@@ -1502,11 +1540,29 @@ function clearSelection() {
    COST ESTIMATION
    ============================================ */
 
-async function calculateEstimatesAuto() {
+function calculateEstimatesAuto() {
     if (selectedFiles.length === 0) {
         updateUnifiedStatus('', false);
         return;
     }
+
+    // Debounce: collapse rapid toggles (e.g. Select All) into one request
+    if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer);
+
+    // For large selections, show instant rough estimate immediately
+    if (selectedFiles.length > CHUNK_SIZE) {
+        const roughCost = (selectedFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
+        const roughDuration = selectedFiles.length * AVG_DURATION;
+        const fileText = selectedFiles.length === 1 ? 'file' : 'files';
+        const costStr = roughCost < 0.01 ? roughCost.toFixed(4) : roughCost.toFixed(2);
+        updateUnifiedStatus(`~${selectedFiles.length} ${fileText} • ~${formatDurationGlobal(roughDuration)} • ~$${costStr} (estimating...)`, false);
+    }
+
+    estimateDebounceTimer = setTimeout(() => _calculateEstimatesDebounced(), 500);
+}
+
+async function _calculateEstimatesDebounced() {
+    if (selectedFiles.length === 0) return;
 
     try {
         const response = await fetch('/api/estimate', {
@@ -1523,9 +1579,8 @@ async function calculateEstimatesAuto() {
 
         // Add LLM keyterm cost if applicable
         let llmCost = 0;
-        const keytermField = document.getElementById('keyterms');
+        const keytermField = document.getElementById('keyTerms');
         if (keytermField && keytermField.value.trim()) {
-            // Estimate LLM cost for all selected files
             llmCost = await estimateLLMCostForBatch(selectedFiles);
         }
 
@@ -1540,35 +1595,34 @@ async function calculateEstimatesAuto() {
     }
 }
 
-function displayEstimates(data) {
-    function formatDuration(seconds) {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        if (h > 0) {
-            return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }
-        return `${m}:${String(s).padStart(2, '0')}`;
+// Global duration formatter (used by estimates and chunk prompts)
+function formatDurationGlobal(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) {
+        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
+    return `${m}:${String(s).padStart(2, '0')}`;
+}
 
+function displayEstimates(data) {
     const fileText = data.total_files === 1 ? 'file' : 'files';
     const totalCost = data.total_cost !== undefined ? data.total_cost : data.estimated_cost_usd;
     const costStr = totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2);
-    const statusText = `${data.total_files} ${fileText} • ${formatDuration(data.total_duration_seconds)} • $${costStr}`;
+    const statusText = `${data.total_files} ${fileText} • ${formatDurationGlobal(data.total_duration_seconds)} • $${costStr}`;
     updateUnifiedStatus(statusText, false);
 }
 
 async function estimateLLMCostForBatch(files) {
-    // This is a rough estimation based on typical transcript sizes
-    // Claude Sonnet pricing: ~$3 per million input tokens, ~$15 per million output tokens
-    // GPT pricing: ~$2.50 per million input tokens, ~$10 per million output tokens
-
     const provider = document.getElementById('llmProvider')?.value || 'anthropic';
     const model = document.getElementById('llmModel')?.value || 'claude-sonnet-4-6';
 
     try {
-        // Make parallel requests to estimate cost for each file
-        const costPromises = files.map(async (file) => {
+        // For >10 files, estimate just the first file and extrapolate
+        const sampleFiles = files.length > 10 ? [files[0]] : files;
+
+        const costPromises = sampleFiles.map(async (file) => {
             try {
                 const response = await fetch('/api/keyterms/generate', {
                     method: 'POST',
@@ -1592,7 +1646,14 @@ async function estimateLLMCostForBatch(files) {
         });
 
         const costs = await Promise.all(costPromises);
-        return costs.reduce((sum, cost) => sum + cost, 0);
+        const sampleTotal = costs.reduce((sum, cost) => sum + cost, 0);
+
+        // Extrapolate for larger batches
+        if (files.length > 10 && sampleFiles.length > 0) {
+            const avgCostPerFile = sampleTotal / sampleFiles.length;
+            return avgCostPerFile * files.length;
+        }
+        return sampleTotal;
     } catch (error) {
         console.error('Failed to estimate LLM costs:', error);
         return 0;
@@ -1761,11 +1822,16 @@ async function submitBatch() {
         saveCurrentSettings();
     }
 
+    // Route to chunked mode for large selections
+    if (selectedFilesList.length > CHUNK_SIZE) {
+        await startChunkedBatch(selectedFilesList, requestBody);
+        return;
+    }
+
+    // Single batch mode (≤ CHUNK_SIZE files)
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
     submitBtn.classList.remove('completed');
-
-    // Keep the cost estimate visible (don't update status bar)
 
     try {
         const response = await fetch('/api/submit', {
@@ -1787,7 +1853,7 @@ async function submitBatch() {
         const cancelBtn = document.getElementById('cancelBtn');
         if (cancelBtn) cancelBtn.style.display = '';
 
-        startJobMonitoring(currentBatchId);
+        startJobMonitoring(currentBatchId, selectedFilesList.length);
 
     } catch (error) {
         console.error('Submit error:', error);
@@ -1798,10 +1864,521 @@ async function submitBatch() {
 }
 
 /* ============================================
+   CHUNKED BATCH PROCESSING
+   ============================================ */
+
+async function startChunkedBatch(allFiles, baseRequestBody) {
+    // Split files into chunks
+    chunkQueue = [];
+    for (let i = 0; i < allFiles.length; i += CHUNK_SIZE) {
+        chunkQueue.push(allFiles.slice(i, i + CHUNK_SIZE));
+    }
+    currentChunkIndex = 0;
+    chunkResults = [];
+    totalChunkCount = chunkQueue.length;
+    chunkTotalFiles = allFiles.length;
+
+    // Store the base request body (without files) for reuse across chunks
+    const { files, ...baseBody } = baseRequestBody;
+    chunkQueue._baseBody = baseBody;
+
+    // Get accurate estimate for the first chunk, extrapolate total
+    const confirmed = await showBatchConfirmation(allFiles, chunkQueue);
+    if (!confirmed) return;
+
+    // Start first chunk
+    submitChunk(0);
+}
+
+async function showBatchConfirmation(allFiles, chunks) {
+    return new Promise(async (resolve) => {
+        const firstChunkSize = chunks[0].length;
+
+        // Get accurate estimate for the first chunk
+        let estimateHtml = '<div style="color: var(--text-tertiary); font-size: var(--font-caption);">Calculating exact cost...</div>';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'dialog-overlay';
+        overlay.innerHTML = `
+            <div class="dialog-box">
+                <div class="dialog-title">Transcribe ${allFiles.length} Files</div>
+                <div class="dialog-message">
+                    <div id="confirmEstimate">${estimateHtml}</div>
+                    <div style="margin-top: var(--space-s); color: var(--text-secondary); font-size: var(--font-caption);">
+                        Processing in chunks of ${CHUNK_SIZE} (${chunks.length} chunks).<br>
+                        You'll be prompted between each chunk to continue or stop.
+                    </div>
+                </div>
+                <div class="dialog-actions">
+                    <button class="btn-primary" data-action="start" disabled>Start First Chunk</button>
+                    <button class="btn-link" data-action="cancel">Cancel</button>
+                </div>
+            </div>
+        `;
+
+        function cleanup(action) {
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 200);
+            document.removeEventListener('keydown', onKey);
+            resolve(action === 'start');
+        }
+
+        function onKey(e) {
+            if (e.key === 'Escape') cleanup('cancel');
+        }
+
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) cleanup('cancel');
+        });
+
+        overlay.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => cleanup(btn.dataset.action));
+        });
+
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => overlay.classList.add('show'));
+
+        // Fetch real estimate for first chunk in background
+        try {
+            const response = await fetch('/api/estimate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: chunks[0] })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            chunkEstimateData = data;
+
+            const chunkCost = data.estimated_cost_usd;
+            const chunkDuration = data.total_duration_seconds;
+            const totalCost = (chunkCost / firstChunkSize) * allFiles.length;
+            const totalDuration = (chunkDuration / firstChunkSize) * allFiles.length;
+
+            const confirmEl = overlay.querySelector('#confirmEstimate');
+            if (confirmEl) {
+                confirmEl.innerHTML = `
+                    <div style="margin-bottom: var(--space-xs);">
+                        <strong>Total estimate:</strong> ${formatDurationGlobal(totalDuration)} • $${totalCost.toFixed(2)}
+                    </div>
+                    <div style="font-size: var(--font-caption); color: var(--text-secondary);">
+                        First chunk: ${firstChunkSize} files • ~${formatDurationGlobal(chunkDuration)} • ~$${chunkCost.toFixed(2)}
+                    </div>
+                `;
+            }
+
+            // Enable the start button
+            const startBtn = overlay.querySelector('[data-action="start"]');
+            if (startBtn) startBtn.disabled = false;
+        } catch (e) {
+            console.error('Estimate for confirmation failed:', e);
+            // Enable start anyway with rough estimate
+            const roughCost = (allFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
+            const confirmEl = overlay.querySelector('#confirmEstimate');
+            if (confirmEl) {
+                confirmEl.innerHTML = `<div><strong>Estimated:</strong> ~$${roughCost.toFixed(2)} (rough estimate)</div>`;
+            }
+            const startBtn = overlay.querySelector('[data-action="start"]');
+            if (startBtn) startBtn.disabled = false;
+        }
+    });
+}
+
+async function submitChunk(index) {
+    if (index >= chunkQueue.length) {
+        // All chunks complete
+        showAllChunksComplete();
+        return;
+    }
+
+    currentChunkIndex = index;
+    const chunkFiles = chunkQueue[index];
+    const baseBody = chunkQueue._baseBody;
+
+    // Build request body for this chunk
+    const requestBody = { ...baseBody, files: chunkFiles };
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('processing');
+        submitBtn.textContent = `Chunk ${index + 1}/${totalChunkCount}`;
+    }
+
+    updateUnifiedStatus(`Starting chunk ${index + 1}/${totalChunkCount} (${chunkFiles.length} files)...`, true, 0);
+
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.style.display = '';
+        cancelBtn.onclick = cancelChunkedBatch;
+    }
+
+    // Save active chunk state for mid-chunk recovery
+    saveActiveChunkState();
+
+    try {
+        const response = await fetch('/api/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        currentBatchId = data.batch_id;
+
+        // Update active chunk state with the batch ID
+        saveActiveChunkState();
+
+        announceToScreenReader(`Processing chunk ${index + 1} of ${totalChunkCount}: ${data.enqueued} files`);
+
+        // Start monitoring this chunk — override the completion handler
+        startChunkMonitoring(currentBatchId, chunkFiles.length);
+
+    } catch (error) {
+        console.error('Chunk submit error:', error);
+        showToast('error', `Failed to start chunk: ${error.message}`);
+        updateUnifiedStatus('Error starting chunk', false);
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('processing');
+            submitBtn.textContent = 'Transcribe';
+        }
+        clearActiveChunkState();
+    }
+}
+
+function startChunkMonitoring(batchId, fileCount) {
+    if (pollInterval) clearInterval(pollInterval);
+    if (eventSource) eventSource.close();
+
+    pollCount = 0;
+    currentMaxPolls = Math.max(200, fileCount * 20);
+
+    eventSource = new EventSource('/api/progress');
+    eventSource.addEventListener('ping', function(e) {});
+
+    pollInterval = setInterval(() => checkChunkStatus(batchId), 3000);
+    checkChunkStatus(batchId);
+}
+
+async function checkChunkStatus(batchId) {
+    try {
+        pollCount++;
+
+        if (pollCount > currentMaxPolls) {
+            clearInterval(pollInterval);
+            if (eventSource) eventSource.close();
+            updateUnifiedStatus(`Chunk may be stuck — polling stopped. Click to retry.`, false);
+            const statusText = document.getElementById('statusText');
+            if (statusText) {
+                statusText.style.cursor = 'pointer';
+                statusText.onclick = () => {
+                    pollCount = 0;
+                    startChunkMonitoring(batchId, chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE);
+                };
+            }
+            return;
+        }
+
+        const response = await fetch(`/api/job/${batchId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        updateJobDisplay(data);
+
+        // Check for terminal states
+        if (data.state === 'SUCCESS' || data.state === 'FAILURE' || data.state === 'REVOKED' || data.state === 'TIMEOUT') {
+            clearInterval(pollInterval);
+            if (eventSource) eventSource.close();
+
+            // Accumulate results
+            const results = data.data?.results || [];
+            chunkResults.push({
+                chunkIndex: currentChunkIndex,
+                results: results,
+                state: data.state
+            });
+
+            if (data.state === 'SUCCESS') {
+                // Mark successful files as completed in localStorage
+                const successfulPaths = results
+                    .filter(r => r.status === 'ok')
+                    .map(r => r.video)
+                    .filter(Boolean);
+                addCompletedFiles(successfulPaths);
+
+                // Update scan results view if visible
+                if (isLibraryScanView) {
+                    const scanData = loadLibraryScanData();
+                    if (scanData) displaySavedScanResults(scanData);
+                }
+
+                updateGearMenuScanState();
+            }
+
+            // Clear active chunk state (chunk is done, about to show prompt)
+            clearActiveChunkState();
+
+            // Reset cancel button to default handler
+            const cancelBtn = document.getElementById('cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+                cancelBtn.onclick = () => cancelJob();
+            }
+
+            // If cancelled/revoked/failed, stop the whole queue
+            if (data.state === 'REVOKED' || data.state === 'FAILURE' || data.state === 'TIMEOUT') {
+                showToast('info', data.state === 'REVOKED' ? 'Chunk cancelled' : `Chunk ${data.state.toLowerCase()}`);
+                stopChunkedBatch();
+                return;
+            }
+
+            // Show the auto-pause prompt (SUCCESS only)
+            showChunkCompletePrompt(currentChunkIndex, data);
+        }
+
+    } catch (error) {
+        console.error('Chunk status check error:', error);
+    }
+}
+
+function showChunkCompletePrompt(chunkIndex, chunkData) {
+    const results = chunkData.data?.results || [];
+    const processed = results.filter(r => r.status === 'ok').length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
+    const failed = results.filter(r => r.status === 'error').length;
+
+    // Calculate cumulative totals
+    let totalProcessed = 0, totalSkipped = 0, totalFailed = 0;
+    chunkResults.forEach(cr => {
+        const r = cr.results || [];
+        totalProcessed += r.filter(x => x.status === 'ok').length;
+        totalSkipped += r.filter(x => x.status === 'skipped').length;
+        totalFailed += r.filter(x => x.status === 'error').length;
+    });
+
+    const totalDone = totalProcessed + totalSkipped + totalFailed;
+    const remainingFiles = chunkTotalFiles - totalDone;
+    const remainingChunks = totalChunkCount - (chunkIndex + 1);
+    const isLastChunk = remainingChunks === 0;
+
+    // Estimate remaining cost/time
+    let remainingCostStr = '';
+    if (chunkEstimateData && !isLastChunk) {
+        const costPerFile = chunkEstimateData.estimated_cost_usd / chunkEstimateData.total_files;
+        const durationPerFile = chunkEstimateData.total_duration_seconds / chunkEstimateData.total_files;
+        const remainingCost = costPerFile * remainingFiles;
+        const remainingDuration = durationPerFile * remainingFiles;
+        remainingCostStr = `${remainingFiles} files remaining • ~${formatDurationGlobal(remainingDuration)} • ~$${remainingCost.toFixed(2)}`;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.classList.remove('processing');
+        submitBtn.textContent = 'Transcribe';
+    }
+
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+
+    if (isLastChunk) {
+        // All chunks done
+        showAllChunksComplete();
+        return;
+    }
+
+    const nextChunkSize = chunkQueue[chunkIndex + 1]?.length || 0;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    overlay.innerHTML = `
+        <div class="dialog-box">
+            <div class="dialog-title">Chunk ${chunkIndex + 1}/${totalChunkCount} Complete</div>
+            <div class="dialog-message">
+                <div style="margin-bottom: var(--space-xs);">
+                    This chunk: ${processed} processed, ${skipped} skipped, ${failed} failed
+                </div>
+                <div style="margin-bottom: var(--space-s);">
+                    Overall: <strong>${totalDone}/${chunkTotalFiles}</strong> files done
+                </div>
+                ${remainingCostStr ? `<div style="font-size: var(--font-caption); color: var(--text-secondary);">${remainingCostStr}</div>` : ''}
+            </div>
+            <div class="dialog-actions">
+                <button class="btn-primary" data-action="continue">Continue Next ${nextChunkSize}</button>
+                <button class="btn-secondary" data-action="stop">Stop</button>
+            </div>
+        </div>
+    `;
+
+    function cleanup(action) {
+        overlay.classList.remove('show');
+        setTimeout(() => overlay.remove(), 200);
+        document.removeEventListener('keydown', onKey);
+
+        if (action === 'continue') {
+            submitChunk(chunkIndex + 1);
+        } else {
+            stopChunkedBatch();
+        }
+    }
+
+    function onKey(e) {
+        if (e.key === 'Escape') cleanup('stop');
+    }
+
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) cleanup('stop');
+    });
+
+    overlay.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => cleanup(btn.dataset.action));
+    });
+
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+}
+
+function showAllChunksComplete() {
+    let totalProcessed = 0, totalSkipped = 0, totalFailed = 0;
+    chunkResults.forEach(cr => {
+        const r = cr.results || [];
+        totalProcessed += r.filter(x => x.status === 'ok').length;
+        totalSkipped += r.filter(x => x.status === 'skipped').length;
+        totalFailed += r.filter(x => x.status === 'error').length;
+    });
+
+    clearActiveChunkState();
+
+    updateUnifiedStatus(
+        `All chunks complete: ${totalProcessed} processed, ${totalSkipped} skipped, ${totalFailed} failed`,
+        false
+    );
+    showToast('success', 'All chunks complete!');
+    announceToScreenReader('All batch chunks completed');
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.classList.remove('processing');
+        submitBtn.classList.add('completed');
+        submitBtn.textContent = 'Done!';
+        submitBtn.disabled = false;
+    }
+
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+
+    // Check if all scan files are done
+    const scanData = loadLibraryScanData();
+    if (scanData) {
+        const remaining = getRemainingFiles(scanData);
+        if (remaining.length === 0) {
+            clearLibraryScanData();
+        }
+        updateGearMenuScanState();
+    }
+
+    // Reset after delay
+    setTimeout(() => {
+        if (submitBtn) {
+            submitBtn.classList.remove('completed');
+            submitBtn.textContent = 'Transcribe';
+        }
+        chunkQueue = [];
+        chunkResults = [];
+        currentChunkIndex = 0;
+        totalChunkCount = 0;
+        chunkTotalFiles = 0;
+        chunkEstimateData = null;
+
+        // Refresh scan view if applicable
+        if (isLibraryScanView) {
+            const scanData = loadLibraryScanData();
+            if (scanData) displaySavedScanResults(scanData);
+        }
+    }, 10000);
+}
+
+function stopChunkedBatch() {
+    // Clear chunk queue, save progress, return to scan results
+    clearActiveChunkState();
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('processing');
+        submitBtn.textContent = 'Transcribe';
+    }
+
+    let totalProcessed = 0, totalSkipped = 0, totalFailed = 0;
+    chunkResults.forEach(cr => {
+        const r = cr.results || [];
+        totalProcessed += r.filter(x => x.status === 'ok').length;
+        totalSkipped += r.filter(x => x.status === 'skipped').length;
+        totalFailed += r.filter(x => x.status === 'error').length;
+    });
+
+    const totalDone = totalProcessed + totalSkipped + totalFailed;
+    const remaining = chunkTotalFiles - totalDone;
+
+    updateUnifiedStatus(
+        `Stopped after ${totalDone}/${chunkTotalFiles} files (${remaining} remaining)`,
+        false
+    );
+    showToast('info', `Stopped. ${remaining} files remaining — resume anytime.`);
+
+    // Reset chunk state
+    chunkQueue = [];
+    chunkResults = [];
+    currentChunkIndex = 0;
+    totalChunkCount = 0;
+    chunkTotalFiles = 0;
+    chunkEstimateData = null;
+
+    // Refresh scan view if applicable
+    if (isLibraryScanView) {
+        const scanData = loadLibraryScanData();
+        if (scanData) displaySavedScanResults(scanData);
+    }
+
+    updateGearMenuScanState();
+}
+
+async function cancelChunkedBatch() {
+    // Cancel the currently running chunk AND stop the entire queue
+    if (currentBatchId) {
+        try {
+            await fetch(`/api/job/${currentBatchId}/cancel`, { method: 'POST' });
+        } catch (e) {
+            console.error('Cancel chunk error:', e);
+        }
+    }
+
+    // Stop polling
+    if (pollInterval) clearInterval(pollInterval);
+    if (eventSource) eventSource.close();
+
+    // Reset cancel button to default handler
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'none';
+        cancelBtn.onclick = () => cancelJob();
+    }
+
+    stopChunkedBatch();
+}
+
+/* ============================================
    JOB MONITORING
    ============================================ */
 
-function startJobMonitoring(batchId) {
+function startJobMonitoring(batchId, fileCount) {
     if (pollInterval) {
         clearInterval(pollInterval);
     }
@@ -1810,6 +2387,8 @@ function startJobMonitoring(batchId) {
     }
 
     pollCount = 0;
+    // Scale watchdog: at 25 files → max(200, 500) = 500 polls × 3s = 25 min
+    currentMaxPolls = Math.max(200, (fileCount || 10) * 20);
 
     eventSource = new EventSource('/api/progress');
     eventSource.addEventListener('ping', function(e) {
@@ -1831,8 +2410,8 @@ async function checkJobStatus(batchId) {
     try {
         pollCount++;
 
-        // Client-side polling watchdog: stop after MAX_POLL_COUNT polls
-        if (pollCount > MAX_POLL_COUNT) {
+        // Client-side polling watchdog: stop after currentMaxPolls polls
+        if (pollCount > currentMaxPolls) {
             clearInterval(pollInterval);
             if (eventSource) {
                 eventSource.close();
@@ -2052,7 +2631,7 @@ function updateJobDisplay(data) {
 }
 
 /* ============================================
-   LIBRARY SCAN — FIND ALL MISSING SUBTITLES
+   LIBRARY SCAN — PERSISTENT SCAN RESULTS
    ============================================ */
 
 let libraryScanTaskId = null;
@@ -2060,6 +2639,412 @@ let libraryScanPollInterval = null;
 let libraryScanPollCount = 0;
 let isLibraryScanView = false;
 const MAX_LIBRARY_SCAN_POLLS = 600; // 600 × 2s = 20 minutes
+
+// --- localStorage persistence for scan results ---
+
+function saveLibraryScanData(data) {
+    const scanData = {
+        scanDate: new Date().toISOString(),
+        totalScanned: data.total_scanned || 0,
+        originalMissing: (data.missing_files || []).length,
+        missingFiles: (data.missing_files || []).map(f => ({
+            path: f.path,
+            name: f.name,
+            directory: f.directory
+        })),
+        completedFiles: [],
+        taskId: libraryScanTaskId
+    };
+    localStorage.setItem('libraryScanData', JSON.stringify(scanData));
+    return scanData;
+}
+
+function loadLibraryScanData() {
+    try {
+        const raw = localStorage.getItem('libraryScanData');
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (e) {
+        console.error('Failed to load scan data:', e);
+        localStorage.removeItem('libraryScanData');
+        return null;
+    }
+}
+
+function clearLibraryScanData() {
+    localStorage.removeItem('libraryScanData');
+    localStorage.removeItem('activeChunkState');
+    updateGearMenuScanState();
+}
+
+function addCompletedFiles(filePaths) {
+    const scanData = loadLibraryScanData();
+    if (!scanData) return;
+    const completedSet = new Set(scanData.completedFiles);
+    filePaths.forEach(p => completedSet.add(p));
+    scanData.completedFiles = Array.from(completedSet);
+    localStorage.setItem('libraryScanData', JSON.stringify(scanData));
+}
+
+function getScanAge(scanDate) {
+    const diff = Date.now() - new Date(scanDate).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
+function getRemainingFiles(scanData) {
+    if (!scanData) return [];
+    const completedSet = new Set(scanData.completedFiles);
+    return scanData.missingFiles.filter(f => !completedSet.has(f.path));
+}
+
+// --- Scan results keyword exclusion filter ---
+
+let scanExcludeDebounceTimer = null;
+
+function parseScanExcludeKeywords(raw) {
+    if (!raw) return [];
+    return raw.split(',').map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+}
+
+function applyScanExcludeFilter(rawKeywords) {
+    const keywords = parseScanExcludeKeywords(rawKeywords);
+    const fileItems = document.querySelectorAll('#directoryList .browser-file:not(.scan-completed)');
+    let excludedCount = 0;
+
+    fileItems.forEach(item => {
+        if (keywords.length === 0) {
+            item.style.display = '';
+            return;
+        }
+        const name = (item.querySelector('.item-name')?.textContent || '').toLowerCase();
+        const path = (item.querySelector('input[type="checkbox"]')?.value || '').toLowerCase();
+        const matches = keywords.some(kw => name.includes(kw) || path.includes(kw));
+
+        if (matches) {
+            item.style.display = 'none';
+            const cb = item.querySelector('input[type="checkbox"]');
+            if (cb && cb.checked) {
+                cb.checked = false;
+                const idx = selectedFiles.indexOf(cb.value);
+                if (idx !== -1) selectedFiles.splice(idx, 1);
+                item.classList.remove('selected');
+            }
+            excludedCount++;
+        } else {
+            item.style.display = '';
+        }
+    });
+
+    // Hide group headers where all sibling file items are hidden
+    document.querySelectorAll('#directoryList .scan-group-header').forEach(header => {
+        let allHidden = true;
+        let sibling = header.nextElementSibling;
+        while (sibling && !sibling.classList.contains('scan-group-header')) {
+            if (sibling.classList.contains('browser-file') && !sibling.classList.contains('scan-completed')) {
+                if (sibling.style.display !== 'none') {
+                    allHidden = false;
+                    break;
+                }
+            }
+            sibling = sibling.nextElementSibling;
+        }
+        header.style.display = allHidden ? 'none' : '';
+    });
+
+    updateScanExcludeCount(excludedCount);
+    updateSelectionStatus();
+}
+
+function updateScanExcludeCount(excludedCount) {
+    const info = document.getElementById('scanExcludeInfo');
+    if (!info) return;
+    info.textContent = excludedCount > 0 ? ` (${excludedCount} excluded by filter)` : '';
+}
+
+function onScanExcludeInput(value) {
+    clearTimeout(scanExcludeDebounceTimer);
+    scanExcludeDebounceTimer = setTimeout(() => {
+        const scanData = loadLibraryScanData();
+        if (scanData) {
+            scanData.excludeKeywords = value;
+            localStorage.setItem('libraryScanData', JSON.stringify(scanData));
+        }
+        const clearBtn = document.getElementById('scanExcludeClear');
+        if (clearBtn) clearBtn.style.display = value ? '' : 'none';
+        applyScanExcludeFilter(value);
+    }, 300);
+}
+
+function clearScanExcludeFilter() {
+    const input = document.getElementById('scanExcludeInput');
+    if (input) input.value = '';
+    const scanData = loadLibraryScanData();
+    if (scanData) {
+        delete scanData.excludeKeywords;
+        localStorage.setItem('libraryScanData', JSON.stringify(scanData));
+    }
+    const clearBtn = document.getElementById('scanExcludeClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    applyScanExcludeFilter('');
+}
+
+// --- Active chunk state persistence (mid-chunk recovery) ---
+
+function saveActiveChunkState() {
+    const state = {
+        activeBatchId: currentBatchId,
+        chunkQueue: chunkQueue,
+        baseBody: chunkQueue._baseBody || null,  // Array properties are lost by JSON.stringify
+        currentChunkIndex: currentChunkIndex,
+        chunkResults: chunkResults,
+        totalFiles: chunkTotalFiles,
+        totalChunkCount: totalChunkCount,
+        estimateData: chunkEstimateData
+    };
+    localStorage.setItem('activeChunkState', JSON.stringify(state));
+}
+
+function loadActiveChunkState() {
+    try {
+        const raw = localStorage.getItem('activeChunkState');
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (e) {
+        console.error('Failed to load active chunk state:', e);
+        localStorage.removeItem('activeChunkState');
+        return null;
+    }
+}
+
+function clearActiveChunkState() {
+    localStorage.removeItem('activeChunkState');
+}
+
+// --- Gear menu scan state ---
+
+function updateGearMenuScanState() {
+    const actionDiv = document.getElementById('gearScanAction');
+    if (!actionDiv) return;
+
+    const scanData = loadLibraryScanData();
+    const activeChunk = loadActiveChunkState();
+
+    if (!scanData) {
+        // No saved scan — default button
+        actionDiv.innerHTML = `
+            <button class="btn-secondary btn-full-width" onclick="startLibraryScan()">
+                Find All Missing Subtitles
+            </button>
+        `;
+        return;
+    }
+
+    const remaining = getRemainingFiles(scanData);
+    const completed = scanData.completedFiles.length;
+    const total = scanData.originalMissing;
+    const age = getScanAge(scanData.scanDate);
+
+    if (remaining.length === 0 && total > 0) {
+        // All done
+        actionDiv.innerHTML = `
+            <div style="text-align: center; padding: var(--space-xs) 0; color: var(--color-green); font-size: var(--font-caption);">
+                All caught up! (${total}/${total} transcribed)
+            </div>
+            <button class="btn-secondary btn-full-width" onclick="startLibraryScan()" style="margin-top: var(--space-xs);">
+                New Scan
+            </button>
+            <button class="btn-link btn-full-width" onclick="clearLibraryScanData(); toggleGearPopover();" style="margin-top: var(--space-xs); font-size: var(--font-caption);">
+                Clear Scan Data
+            </button>
+        `;
+    } else if (remaining.length > 0) {
+        // Has remaining files
+        const activeLabel = activeChunk ? ' (chunk in progress)' : '';
+        actionDiv.innerHTML = `
+            <button class="btn-secondary btn-full-width" onclick="loadSavedScanResults()">
+                Resume Scan (${remaining.length} remaining)
+            </button>
+            <div style="text-align: center; padding: var(--space-xs) 0; color: var(--text-tertiary); font-size: var(--font-caption);">
+                ${completed}/${total} transcribed • scanned ${age}${activeLabel}
+            </div>
+            <button class="btn-link btn-full-width" onclick="startLibraryScan()" style="font-size: var(--font-caption);">
+                New Scan
+            </button>
+            <button class="btn-link btn-full-width" onclick="clearLibraryScanData(); toggleGearPopover();" style="font-size: var(--font-caption);">
+                Clear Scan Data
+            </button>
+        `;
+    }
+}
+
+function loadSavedScanResults() {
+    // Close gear popover
+    const popover = document.getElementById('gearPopover');
+    if (popover) popover.classList.add('hidden');
+
+    const scanData = loadLibraryScanData();
+    if (!scanData) {
+        showToast('warning', 'No saved scan data found');
+        return;
+    }
+
+    // Check for active chunk state (mid-chunk recovery)
+    const activeChunk = loadActiveChunkState();
+    if (activeChunk && activeChunk.activeBatchId) {
+        // Reconnect to active batch
+        currentBatchId = activeChunk.activeBatchId;
+        chunkQueue = activeChunk.chunkQueue;
+        if (activeChunk.baseBody) chunkQueue._baseBody = activeChunk.baseBody;
+        currentChunkIndex = activeChunk.currentChunkIndex;
+        chunkResults = activeChunk.chunkResults;
+        chunkTotalFiles = activeChunk.totalFiles;
+        totalChunkCount = activeChunk.totalChunkCount;
+        chunkEstimateData = activeChunk.estimateData;
+
+        // Show scan results with progress, then reconnect monitoring
+        displaySavedScanResults(scanData);
+
+        const chunkSize = chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE;
+        updateUnifiedStatus(`Reconnecting to chunk ${currentChunkIndex + 1}/${totalChunkCount}...`, true, 0);
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) cancelBtn.style.display = '';
+        startChunkMonitoring(currentBatchId, chunkSize);
+        return;
+    }
+
+    displaySavedScanResults(scanData);
+}
+
+function displaySavedScanResults(scanData) {
+    isLibraryScanView = true;
+    libraryScanTaskId = scanData.taskId;
+
+    // Hide the search bar and update footer — not relevant in scan results view
+    const searchContainer = document.querySelector('.search-container');
+    if (searchContainer) searchContainer.style.display = 'none';
+    const footerToolbar = document.querySelector('.browser-toolbar-footer');
+    if (footerToolbar) footerToolbar.style.display = 'none';
+
+    const remaining = getRemainingFiles(scanData);
+    const completed = scanData.completedFiles.length;
+    const total = scanData.originalMissing;
+    const age = getScanAge(scanData.scanDate);
+
+    updateUnifiedStatus(
+        `${remaining.length} of ${total} remaining (${completed} transcribed) • scanned ${age}`,
+        false
+    );
+
+    const directoryList = document.getElementById('directoryList');
+    let html = '';
+
+    // Summary banner with inline Select All / Clear
+    const savedKeywords = scanData.excludeKeywords || '';
+    const escapedKeywords = savedKeywords.replace(/"/g, '&quot;');
+    html += `<div class="scan-results-banner">
+        <span><strong>${remaining.length}</strong> remaining of <strong>${total}</strong> missing (${completed} transcribed)<span id="scanExcludeInfo"></span></span>
+        <span>
+            ${scanData.taskId ? `<button class="btn-link scan-export-btn" onclick="window.location='/api/library-scan/export/${scanData.taskId}'">CSV</button> • ` : ''}
+            <button class="btn-link" onclick="selectAllInFolder()">Select All</button> • <button class="btn-link" onclick="selectNone()">Clear</button>
+        </span>
+    </div>`;
+
+    // Keyword exclusion filter
+    html += `<div class="scan-exclude-row">
+        <div class="scan-exclude-container">
+            <input type="text" id="scanExcludeInput" class="search-input"
+                   placeholder="Exclude keywords (comma-separated)..."
+                   value="${escapedKeywords}"
+                   oninput="onScanExcludeInput(this.value)">
+            <button class="search-clear" id="scanExcludeClear"
+                    onclick="clearScanExcludeFilter()"
+                    style="display: ${savedKeywords ? '' : 'none'}">&times;</button>
+        </div>
+    </div>`;
+
+    // Back to Browser button
+    html += `<button class="browser-item directory-item" onclick="exitLibraryScanView()">
+        <span class="item-icon">↩</span>
+        <span class="item-name">Back to Browser</span>
+    </button>`;
+
+    if (remaining.length === 0) {
+        html += `<div class="empty-state">
+            <h3 class="empty-title">All caught up!</h3>
+            <p class="empty-message">Every file from the scan has been transcribed.</p>
+        </div>`;
+        directoryList.innerHTML = html;
+        clearLibraryScanData();
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    // Group remaining files by directory
+    const completedSet = new Set(scanData.completedFiles);
+    const groups = {};
+    scanData.missingFiles.forEach(f => {
+        const dir = f.directory;
+        if (!groups[dir]) groups[dir] = [];
+        groups[dir].push(f);
+    });
+
+    const sortedDirs = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+
+    html += '<div class="browser-section">';
+    sortedDirs.forEach(dir => {
+        const displayDir = dir.startsWith('/media/') ? dir.substring(7) : dir;
+        const dirFiles = groups[dir];
+        const hasRemaining = dirFiles.some(f => !completedSet.has(f.path));
+        if (!hasRemaining) return; // Skip directories where all files are completed
+
+        html += `<div class="scan-group-header">${displayDir}</div>`;
+
+        dirFiles.forEach(file => {
+            const escapedPath = file.path.replace(/"/g, '&quot;');
+            const isCompleted = completedSet.has(file.path);
+
+            if (isCompleted) {
+                html += `
+                    <label class="browser-item browser-file scan-completed" data-has-subtitles="true">
+                        <input type="checkbox" class="item-checkbox" value="${escapedPath}" disabled checked>
+                        <span class="item-status" data-status="complete" title="Transcribed" aria-label="Transcribed"></span>
+                        <span class="item-name" style="opacity: 0.5; text-decoration: line-through;">${file.name}</span>
+                    </label>
+                `;
+            } else {
+                html += `
+                    <label class="browser-item browser-file" data-has-subtitles="false">
+                        <input type="checkbox" class="item-checkbox" value="${escapedPath}"
+                               onchange="toggleFileSelection(this.value)">
+                        <span class="item-status" data-status="missing" title="Missing subtitles" aria-label="Missing subtitles"></span>
+                        <span class="item-name">${file.name}</span>
+                    </label>
+                `;
+            }
+        });
+    });
+    html += '</div>';
+
+    directoryList.innerHTML = html;
+
+    // Apply persisted keyword exclusion filter
+    if (scanData.excludeKeywords) {
+        applyScanExcludeFilter(scanData.excludeKeywords);
+    }
+
+    // Reset selection
+    selectedFiles = [];
+    updateSelectionStatus();
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) submitBtn.disabled = true;
+}
 
 function showLibraryScanDialog() {
     return new Promise(resolve => {
@@ -2229,77 +3214,18 @@ function displayLibraryScanResults(data) {
     const scanTime = data.scan_time_seconds || 0;
     const missingFiles = data.missing_files || [];
 
+    // Save scan results to localStorage for persistence
+    saveLibraryScanData(data);
+    updateGearMenuScanState();
+
     updateUnifiedStatus(
         `Found ${totalMissing} files missing subtitles (scanned ${totalScanned} files in ${scanTime}s)`,
         false
     );
 
-    const directoryList = document.getElementById('directoryList');
-    let html = '';
-
-    // Summary banner with CSV export
-    html += `<div class="scan-results-banner">
-        <span><strong>${totalMissing}</strong> files missing subtitles out of <strong>${totalScanned}</strong> scanned</span>
-        ${totalMissing > 0 ? `<button class="btn-link scan-export-btn" onclick="window.location='/api/library-scan/export/${libraryScanTaskId}'">Download CSV</button>` : ''}
-    </div>`;
-
-    // "Back to Browser" button
-    html += `<button class="browser-item directory-item" onclick="exitLibraryScanView()">
-        <span class="item-icon">↩</span>
-        <span class="item-name">Back to Browser</span>
-    </button>`;
-
-    if (missingFiles.length === 0) {
-        html += `<div class="empty-state">
-            <h3 class="empty-title">All caught up!</h3>
-            <p class="empty-message">Every media file in your library has subtitles.</p>
-        </div>`;
-        directoryList.innerHTML = html;
-        const submitBtn = document.getElementById('submitBtn');
-        if (submitBtn) submitBtn.disabled = true;
-        return;
-    }
-
-    // Group files by directory
-    const groups = {};
-    missingFiles.forEach(f => {
-        const dir = f.directory;
-        if (!groups[dir]) groups[dir] = [];
-        groups[dir].push(f);
-    });
-
-    // Sort directories alphabetically
-    const sortedDirs = Object.keys(groups).sort((a, b) => a.localeCompare(b));
-
-    html += '<div class="browser-section">';
-    sortedDirs.forEach(dir => {
-        // Directory header — show relative to /media if possible
-        const displayDir = dir.startsWith('/media/') ? dir.substring(7) : dir;
-        html += `<div class="scan-group-header">${displayDir}</div>`;
-
-        groups[dir].forEach((file, index) => {
-            const escapedPath = file.path.replace(/"/g, '&quot;');
-            html += `
-                <label class="browser-item browser-file" data-has-subtitles="false">
-                    <input type="checkbox" class="item-checkbox" value="${escapedPath}"
-                           onchange="toggleFileSelection(this.value)">
-                    <span class="item-status" data-status="missing" title="Missing subtitles" aria-label="Missing subtitles"></span>
-                    <span class="item-name">${file.name}</span>
-                </label>
-            `;
-        });
-    });
-    html += '</div>';
-
-    directoryList.innerHTML = html;
-
-    // Enable submit button
-    const submitBtn = document.getElementById('submitBtn');
-    if (submitBtn) submitBtn.disabled = true; // Will enable when files are selected
-
-    // Reset selection
-    selectedFiles = [];
-    updateSelectionStatus();
+    // Render using the shared saved-scan renderer (fresh scan has no completed files)
+    const scanData = loadLibraryScanData();
+    displaySavedScanResults(scanData);
 }
 
 function exitLibraryScanView() {
@@ -2307,6 +3233,13 @@ function exitLibraryScanView() {
     libraryScanTaskId = null;
     selectedFiles = [];
     updateSelectionStatus();
+
+    // Restore search bar and footer toolbar
+    const searchContainer = document.querySelector('.search-container');
+    if (searchContainer) searchContainer.style.display = '';
+    const footerToolbar = document.querySelector('.browser-toolbar-footer');
+    if (footerToolbar) footerToolbar.style.display = '';
+
     browseDirectories(currentPath);
 }
 

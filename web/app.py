@@ -509,7 +509,6 @@ def api_job(rid):
 
     # If it's a group result, handle it specially
     if group_result is not None and hasattr(group_result, 'results') and group_result.results:
-        print(f"Processing GroupResult with {len(group_result.results)} tasks")
         children_info = []
         completed_count = 0
         failed_count = 0
@@ -522,8 +521,6 @@ def api_job(rid):
                     'id': child.id,
                     'state': child.state,
                 }
-
-                print(f"Child task {child.id}: state={child.state}")
 
                 # Get task metadata if available
                 if child.state == 'PROGRESS':
@@ -564,7 +561,6 @@ def api_job(rid):
 
         # Determine overall state
         total = len(group_result.results)
-        print(f"Task counts - Total: {total}, Completed: {completed_count}, Failed: {failed_count}, Started: {started_count}, Pending: {pending_count}")
 
         if total == 0:
             state = 'PENDING'
@@ -582,7 +578,7 @@ def api_job(rid):
             state = 'TIMEOUT'
             print(f"Batch {rid} timed out after {elapsed_seconds:.0f}s (limit: {batch_meta['timeout_seconds']}s)")
 
-        print(f"Determined state: {state}")
+        print(f"Batch {rid}: {state} ({completed_count}/{total} done, {failed_count} failed)")
 
         # Build results array for SUCCESS state
         # The frontend expects data.data.results with status='ok'|'skipped'|'error'

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=24">
+    <link rel="stylesheet" href="/static/styles.css?v=25">
 </head>
 <body>
     <div class="container">
@@ -51,7 +51,7 @@
                                     <span>Remember my last settings</span>
                                 </label>
                             </div>
-                            <div class="gear-popover-action">
+                            <div class="gear-popover-action" id="gearScanAction">
                                 <button class="btn-secondary btn-full-width" onclick="startLibraryScan()">
                                     Find All Missing Subtitles
                                 </button>
@@ -444,6 +444,6 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=19"></script>
+    <script src="/static/app.js?v=20"></script>
 </body>
 </html>
