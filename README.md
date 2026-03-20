@@ -12,7 +12,7 @@
 
 I built this tool to solve a persistent problem in my media library: **hundreds of episodes missing subtitles**. While [Bazarr](https://www.bazarr.media/) does an excellent job finding subtitles for most content, there are always gaps like obscure shows, older episodes, or content that doesn't have community-contributed subtitles available.
 
-I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 model produces high-quality transcriptions at ~$0.004/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
+I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 model produces high-quality transcriptions at ~$0.006/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
 
 **Subgeneratorr is for media enthusiasts** who care about complete subtitle coverage, accessibility, and having a polished library experience in Plex, Jellyfin, or Emby.
 
@@ -30,7 +30,7 @@ I looked around for options with free trials but most only gave a couple hours f
 - 🧠 **Audio Intelligence** - Sentiment analysis, summarization, topic/intent/entity detection, term search (English)
 - 🐳 **Docker-Based** - Easy deployment with CLI and optional Web UI
 - 📁 **Flexible Processing** - Batch process directories, specific files, or from lists
-- 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0043/min)
+- 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0057/min)
 - ⚡ **Smart Skipping** - Skip files that already have subtitles
 - 🔍 **Library-Wide Scan** - Find all files missing subtitles across your entire media library
 - 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby (`.eng.srt` format)
@@ -207,14 +207,14 @@ Set `MEDIA_PATH` in your `.env` file to point to your media library:
 
 ## Pricing
 
-Deepgram Nova-3 charges ~$0.0043 per minute of audio:
+Deepgram Nova-3 charges ~$0.0057 per minute of audio:
 
-- 10-minute TV episode: ~$0.04
-- 45-minute episode: ~$0.19
-- 90-minute movie: ~$0.39
-- 100 episodes (10 min each): ~$4.30
+- 10-minute TV episode: ~$0.06
+- 45-minute episode: ~$0.26
+- 90-minute movie: ~$0.51
+- 100 episodes (10 min each): ~$5.70
 
-**New users get $200 in free credits** - enough for ~46,000 minutes (~767 hours) of transcription.
+**New users get $200 in free credits** - enough for ~35,000 minutes (~585 hours) of transcription.
 
 ---
 

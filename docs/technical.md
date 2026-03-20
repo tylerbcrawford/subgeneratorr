@@ -238,7 +238,7 @@ See `examples/video-list-example.txt` for a complete example.
 | `MEDIA_PATH` | `/media` | Path to scan for videos (inside container) |
 | `FILE_LIST_PATH` | - | Path to text file with specific videos to process |
 | `LOG_PATH` | `/logs` | Directory for processing logs |
-| `BATCH_SIZE` | `0` | Max videos per run (0 = unlimited) |
+| `BATCH_SIZE` | `0` | Max videos per run (0 = unlimited with FILE_LIST_PATH, otherwise defaults to 10) |
 | `LANGUAGE` | `en` | Language code (e.g., `en`, `es`, `fr`) |
 
 #### Feature Toggles

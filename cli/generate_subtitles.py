@@ -10,7 +10,7 @@ Environment Variables:
     DEEPGRAM_API_KEY: Required - Your Deepgram API key
     MEDIA_PATH: Path to scan for videos (default: /media)
     FILE_LIST_PATH: Optional path to text file with video paths to process
-    BATCH_SIZE: Max videos per run, 0=unlimited (default: 0)
+    BATCH_SIZE: Max videos per run, 0=unlimited with FILE_LIST_PATH, defaults to 10 for directory scans (default: 0)
     LANGUAGE: Language code for transcription (default: en)
 """
 

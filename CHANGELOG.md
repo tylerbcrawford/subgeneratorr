@@ -46,7 +46,7 @@ Initial public release.
 - **File Browser** — Navigate media directories with client-side filtering and API-backed global search across the entire library
 - **Batch Processing** — Queue multiple files with Celery/Redis, real-time progress tracking, and polling watchdog for reliability
 - **Overwrite Protection** — Confirmation dialog before regenerating existing subtitles
-- **Cost Tracking** — Real-time per-file and session cost estimates with detailed logging (~$0.0043/min)
+- **Cost Tracking** — Real-time per-file and session cost estimates with detailed logging (~$0.0057/min)
 - **Smart Skipping** — Automatically skip files that already have subtitles
 - **Docker Deployment** — Docker Compose with `MEDIA_PATH` env var, Dockerfile builds, health checks, and resource limits
 - **GHCR Docker Images** — Multi-arch (amd64 + arm64) pre-built images via GitHub Actions

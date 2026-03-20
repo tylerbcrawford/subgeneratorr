@@ -17,7 +17,7 @@ let estimateDebounceTimer = null; // Debounce timer for cost estimation
 // Chunked batch processing
 const CHUNK_SIZE = 25;
 const AVG_DURATION = 2700; // Average media file duration in seconds (~45 min)
-const DEEPGRAM_RATE = 0.0043; // $/minute for Nova-3
+const DEEPGRAM_RATE = 0.0057; // $/minute for Nova-3
 let chunkQueue = [];        // Array of file path arrays (chunks)
 let currentChunkIndex = 0;
 let chunkResults = [];       // Accumulated results across chunks
@@ -2106,12 +2106,12 @@ async function checkChunkStatus(batchId) {
             });
 
             if (data.state === 'SUCCESS') {
-                // Mark successful files as completed in localStorage
-                const successfulPaths = results
-                    .filter(r => r.status === 'ok')
+                // Mark processed files as completed in localStorage
+                const completedPaths = results
+                    .filter(r => r.status === 'ok' || r.status === 'skipped')
                     .map(r => r.video)
                     .filter(Boolean);
-                addCompletedFiles(successfulPaths);
+                addCompletedFiles(completedPaths);
 
                 // Update scan results view if visible
                 if (isLibraryScanView) {

@@ -35,9 +35,7 @@ class Config:
     
     # Cost per minute (USD) for Nova-3
     # Updated to match actual API charges (previous estimate was ~25% low)
-    # Nova-3: $0.0057/min, Nova-2: $0.0043/min
     COST_PER_MINUTE = 0.0057
-    NOVA_2_COST_PER_MINUTE = 0.0043
     
     @classmethod
     def validate(cls) -> bool:

@@ -302,7 +302,7 @@ def api_estimate():
         
     Returns:
         JSON with duration metadata and cost estimates
-        - Nova-3 pricing: $0.0043 per minute of audio
+        - Nova-3 pricing: $0.0057 per minute of audio
         - Estimated processing time: ~0.1x real-time (rough estimate)
     """
     # _require_auth()
@@ -311,8 +311,7 @@ def api_estimate():
     
     # Updated Nova-3 pricing to match actual API charges
     # Previous estimate was ~25% low (e.g., estimated $0.71 vs actual $0.94)
-    NOVA3_PRICE_PER_MINUTE = 0.0057  # Corrected from 0.0043
-    NOVA2_PRICE_PER_MINUTE = 0.0043
+    NOVA3_PRICE_PER_MINUTE = 0.0057
     PROCESSING_TIME_MULTIPLIER = 0.0109  # Based on real data: ~1.09% of video length (25 jobs, 23.3 hours analyzed)
     
     total_duration = 0.0
