@@ -61,26 +61,21 @@ class SubtitleGenerator:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}", flush=True)
     
-    def extract_audio(self, video_path: str, audio_path: str) -> bool:
+    def extract_audio(self, video_path: str) -> Optional[Path]:
         """
         Extract audio from video file using the core extract_audio function.
 
         Args:
             video_path: Path to source video file
-            audio_path: Path to save extracted audio (MP3)
 
         Returns:
-            True if extraction succeeded, False otherwise
+            Path to extracted audio file, or None if extraction failed
         """
         try:
-            tmp = core_extract_audio(Path(video_path), language=Config.LANGUAGE)
-            # Move the temp file to the expected audio_path
-            import shutil
-            shutil.move(str(tmp), audio_path)
-            return True
+            return core_extract_audio(Path(video_path), language=Config.LANGUAGE)
         except Exception as e:
             self.log(f"  ❌ Audio extraction error: {str(e)[:200]}")
-            return False
+            return None
     
     def get_video_duration(self, video_path: str) -> float:
         """
@@ -167,16 +162,15 @@ class SubtitleGenerator:
     
     def generate_srt(self, deepgram_response: dict) -> str:
         try:
-            # Debug: Save raw response for inspection
-            import json
-            debug_file = f"{Config.LOG_PATH}/deepgram_response_debug.json"
-            try:
-                response_data = deepgram_response.to_dict() if hasattr(deepgram_response, 'to_dict') else str(deepgram_response)
-                with open(debug_file, 'w') as f:
-                    json.dump(response_data, f, indent=2)
-                self.log(f"  🐛 Debug: Response saved to {debug_file}")
-            except Exception as e:
-                self.log(f"  ⚠️  Debug save failed: {e}")
+            if Config.SAVE_RAW_JSON:
+                debug_file = f"{Config.LOG_PATH}/deepgram_response_debug.json"
+                try:
+                    response_data = deepgram_response.to_dict() if hasattr(deepgram_response, 'to_dict') else str(deepgram_response)
+                    with open(debug_file, 'w') as f:
+                        json.dump(response_data, f, indent=2)
+                    self.log(f"  🐛 Debug: Response saved to {debug_file}")
+                except Exception as e:
+                    self.log(f"  ⚠️  Debug save failed: {e}")
             
             # Check if we have valid results
             if not deepgram_response:
@@ -217,6 +211,7 @@ class SubtitleGenerator:
     
     def process_video(self, video_path: Path) -> bool:
         srt_path = video_path.with_suffix('.eng.srt')
+        audio_path: Optional[Path] = None
         
         # Determine transcript path based on Transcripts folder structure
         if Config.ENABLE_TRANSCRIPT:
@@ -259,7 +254,8 @@ class SubtitleGenerator:
             self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: ${cost:.2f}")
             
             self.log("  📢 Extracting audio...")
-            if not self.extract_audio(str(video_path), Config.TEMP_AUDIO_PATH):
+            audio_path = self.extract_audio(str(video_path))
+            if not audio_path:
                 raise Exception("Audio extraction failed")
             
             # Track if SRT already existed
@@ -269,7 +265,7 @@ class SubtitleGenerator:
             if not srt_already_existed or Config.FORCE_REGENERATE:
                 self.log(f"  🧠 Transcribing (nova-3)...")
                 response = self.transcribe_audio(
-                    Config.TEMP_AUDIO_PATH,
+                    str(audio_path),
                     keyterms=keyterms,
                     numerals=Config.NUMERALS,
                     filler_words=Config.FILLER_WORDS,
@@ -301,6 +297,7 @@ class SubtitleGenerator:
                 self.log("  🗣️  Transcript feature enabled — generating diarized transcript...")
                 transcript_generated = self._generate_transcript(
                     video_path,
+                    audio_path,
                     response if not srt_already_existed or Config.FORCE_REGENERATE else None,
                     keyterms=keyterms
                 )
@@ -309,27 +306,30 @@ class SubtitleGenerator:
                     self.stats["processed"] += 1
                     self.stats["total_minutes"] += duration
             
-            if os.path.exists(Config.TEMP_AUDIO_PATH):
-                os.remove(Config.TEMP_AUDIO_PATH)
-            
             return True
             
         except Exception as e:
             self.log(f"  ❌ Error: {str(e)}")
             self.stats["failed"] += 1
             self.stats["failed_files"].append(str(video_path))
-            
-            if os.path.exists(Config.TEMP_AUDIO_PATH):
-                os.remove(Config.TEMP_AUDIO_PATH)
-            
             return False
+        finally:
+            if audio_path and audio_path.exists():
+                audio_path.unlink()
     
-    def _generate_transcript(self, video_path: Path, existing_response: dict = None, keyterms: list = None) -> bool:
+    def _generate_transcript(
+        self,
+        video_path: Path,
+        audio_path: Path,
+        existing_response: dict = None,
+        keyterms: list = None,
+    ) -> bool:
         """
         Generate speaker-labeled transcript for a video.
         
         Args:
             video_path: Path to the video file
+            audio_path: Path to extracted audio file
             existing_response: Optional existing Deepgram response (reuse if provided)
             keyterms: Optional keyterms for transcription
             
@@ -355,7 +355,7 @@ class SubtitleGenerator:
             else:
                 self.log(f"  🎤 Transcribing with speaker diarization...")
                 response = self.transcribe_audio(
-                    Config.TEMP_AUDIO_PATH,
+                    str(audio_path),
                     enable_diarization=True,
                     keyterms=keyterms,
                     numerals=Config.NUMERALS,
@@ -536,6 +536,10 @@ class SubtitleGenerator:
             self.log(f"📁 Mode: Directory Scan")
             self.log(f"📁 Media Path: {Config.MEDIA_PATH}")
             videos = self.find_videos_without_subtitles()
+        
+        if not Config.FILE_LIST_PATH and Config.BATCH_SIZE == 0:
+            Config.BATCH_SIZE = 10
+            self.log(f"⚠️  No BATCH_SIZE set for directory scan — defaulting to {Config.BATCH_SIZE}")
         
         if Config.BATCH_SIZE > 0:
             self.log(f"🎯 Batch Size: {Config.BATCH_SIZE} videos")
