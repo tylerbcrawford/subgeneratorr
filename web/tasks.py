@@ -8,6 +8,7 @@ Supports batched processing with Bazarr integration for subtitle rescanning.
 
 import os
 import json
+import redis as redis_lib
 import subprocess
 import time
 import sys
@@ -21,11 +22,12 @@ from core.transcribe import (
     is_video, is_media, extract_audio, transcribe_file, write_srt, get_transcripts_folder,
     get_json_folder, write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
     find_speaker_map, write_transcript, get_video_duration, write_intelligence_summary,
-    get_intelligence_folder, SUBTITLE_EXTS
+    get_intelligence_folder, has_sidecar_subtitle, SUBTITLE_EXTS
 )
 
 # Configuration from environment
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+_redis = redis_lib.from_url(REDIS_URL, decode_responses=True)
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
 LOG_ROOT = Path(os.environ.get("LOG_ROOT", "/logs"))
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "nova-3")
@@ -438,6 +440,7 @@ def library_scan_task(self, skip_embedded=False):
         dict with missing_files list, total_scanned, total_missing, scan_time_seconds
     """
     start = time.time()
+    cancel_key = f'library_scan_cancel:{self.request.id}'
 
     # Phase 0: Collect all media files and group by directory
     self.update_state(state='PROGRESS', meta={
@@ -473,18 +476,8 @@ def library_scan_task(self, skip_embedded=False):
     needs_embedded_check = []
     for f in all_files:
         scanned += 1
-        stem = f.stem
         filenames = dir_filenames.get(f.parent, set())
-        has_sidecar = False
-        for name in filenames:
-            if not name.startswith(stem):
-                continue
-            remainder = name[len(stem):]
-            if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
-                has_sidecar = True
-                break
-
-        if has_sidecar:
+        if has_sidecar_subtitle(f.stem, filenames):
             continue  # Has sidecar subtitles, skip
 
         if skip_embedded or not is_video(f):
@@ -498,6 +491,15 @@ def library_scan_task(self, skip_embedded=False):
             needs_embedded_check.append(f)
 
         if scanned % 100 == 0:
+            if _redis.exists(cancel_key):
+                _redis.delete(cancel_key)
+                return {
+                    'missing_files': missing,
+                    'total_scanned': scanned,
+                    'total_missing': len(missing),
+                    'scan_time_seconds': round(time.time() - start, 1),
+                    'cancelled': True
+                }
             self.update_state(state='PROGRESS', meta={
                 'phase': 'sidecar_scan', 'scanned': scanned,
                 'total': total, 'missing_so_far': len(missing)
@@ -527,6 +529,15 @@ def library_scan_task(self, skip_embedded=False):
                 })
 
             if (i + 1) % 50 == 0:
+                if _redis.exists(cancel_key):
+                    _redis.delete(cancel_key)
+                    return {
+                        'missing_files': missing,
+                        'total_scanned': scanned,
+                        'total_missing': len(missing),
+                        'scan_time_seconds': round(time.time() - start, 1),
+                        'cancelled': True
+                    }
                 self.update_state(state='PROGRESS', meta={
                     'phase': 'embedded_scan',
                     'scanned': total - len(needs_embedded_check) + i + 1,

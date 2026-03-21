@@ -65,6 +65,17 @@ def is_media(p: Path) -> bool:
     return is_video(p) or is_audio(p)
 
 
+def has_sidecar_subtitle(stem: str, dir_filenames: set) -> bool:
+    """Check if sidecar subtitle files exist for a given media file stem."""
+    for name in dir_filenames:
+        if not name.startswith(stem):
+            continue
+        remainder = name[len(stem):]
+        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
+            return True
+    return False
+
+
 def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
     """
     Check if a media file has subtitles (sidecar files or embedded tracks).
@@ -84,12 +95,8 @@ def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
     if dir_filenames is None:
         dir_filenames = {p.name for p in media_path.parent.iterdir() if p.is_file()}
 
-    for name in dir_filenames:
-        if not name.startswith(stem):
-            continue
-        remainder = name[len(stem):]
-        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
-            return {"has_subtitles": True, "subtitle_source": "sidecar"}
+    if has_sidecar_subtitle(stem, dir_filenames):
+        return {"has_subtitles": True, "subtitle_source": "sidecar"}
 
     # Step 2: Fallback — ffprobe for embedded subtitle tracks (~50-100ms)
     if is_video(media_path):

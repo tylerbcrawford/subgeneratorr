@@ -12,7 +12,7 @@
 
 I built this tool to solve a persistent problem in my media library: **hundreds of episodes missing subtitles**. While [Bazarr](https://www.bazarr.media/) does an excellent job finding subtitles for most content, there are always gaps like obscure shows, older episodes, or content that doesn't have community-contributed subtitles available.
 
-I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 model produces high-quality transcriptions at ~$0.006/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
+I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 model produces high-quality transcriptions at ~$0.0057/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
 
 **Subgeneratorr is for media enthusiasts** who care about complete subtitle coverage, accessibility, and having a polished library experience in Plex, Jellyfin, or Emby.
 

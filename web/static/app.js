@@ -18,12 +18,18 @@ let estimateDebounceTimer = null; // Debounce timer for cost estimation
 const CHUNK_SIZE = 25;
 const AVG_DURATION = 2700; // Average media file duration in seconds (~45 min)
 const DEEPGRAM_RATE = 0.0057; // $/minute for Nova-3
-let chunkQueue = [];        // Array of file path arrays (chunks)
+let chunkState = { queue: [], baseBody: null };
 let currentChunkIndex = 0;
 let chunkResults = [];       // Accumulated results across chunks
 let totalChunkCount = 0;
 let chunkTotalFiles = 0;     // Total files across all chunks
 let chunkEstimateData = null; // Cost/duration estimate for extrapolation
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
 
 /* ============================================
    INITIALIZATION
@@ -101,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Automatically load directory on page load
-    console.log('Initial path for browseDirectories:', initialPath);
     browseDirectories(initialPath);
 
     // Setup keyboard shortcuts
@@ -187,15 +192,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (activeChunk && activeChunk.activeBatchId) {
         // Restore chunk state and reconnect
         currentBatchId = activeChunk.activeBatchId;
-        chunkQueue = activeChunk.chunkQueue;
-        if (activeChunk.baseBody) chunkQueue._baseBody = activeChunk.baseBody;
+        chunkState.queue = activeChunk.queue;
+        chunkState.baseBody = activeChunk.baseBody;
         currentChunkIndex = activeChunk.currentChunkIndex;
         chunkResults = activeChunk.chunkResults;
         chunkTotalFiles = activeChunk.totalFiles;
         totalChunkCount = activeChunk.totalChunkCount;
         chunkEstimateData = activeChunk.estimateData;
 
-        const chunkSize = chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE;
+        const chunkSize = chunkState.queue[currentChunkIndex]?.length || CHUNK_SIZE;
         updateUnifiedStatus(`Reconnecting to chunk ${currentChunkIndex + 1}/${totalChunkCount}...`, true, 0);
         const cancelBtn = document.getElementById('cancelBtn');
         if (cancelBtn) cancelBtn.style.display = '';
@@ -222,7 +227,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Reset label ONLY if it shows auto-loaded or generated (not if it shows "saved")
                 const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
                 if (keyTermsLabel && (keyTermsLabel.textContent.includes('auto-loaded') || keyTermsLabel.textContent.includes('generated')) && !keyTermsLabel.textContent.includes('saved')) {
-                    console.log('Resetting keyterm label from:', keyTermsLabel.textContent);
                     resetKeytermLabel();
                 }
 
@@ -231,9 +235,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearTimeout(autoSaveTimeout);
                 }
 
-                console.log('Setting auto-save timer...');
                 autoSaveTimeout = setTimeout(() => {
-                    console.log('Auto-save timer triggered');
                     autoSaveKeyterms();
                 }, 1500); // Wait 1.5 seconds after user stops typing
             }
@@ -271,14 +273,19 @@ function updateBreadcrumb(path) {
         relevantParts.forEach((part, index) => {
             currentPath += '/' + part;
             const isLast = index === relevantParts.length - 1;
+            const escapedPart = escapeHtml(part);
             
             html += `<span class="breadcrumb-separator">/</span>`;
             
             if (isLast) {
-                html += `<span class="breadcrumb-item current">${part}</span>`;
+                html += `<span class="breadcrumb-item current">${escapedPart}</span>`;
             } else {
                 const pathCopy = currentPath;
-                html += `<button class="breadcrumb-item" onclick="navigateToPath('${pathCopy}')">${part}</button>`;
+                const escapedPath = pathCopy
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                html += `<button class="breadcrumb-item" onclick="navigateToPath('${escapedPath}')">${escapedPart}</button>`;
             }
         });
     }
@@ -328,7 +335,6 @@ async function browseDirectories(path) {
         isInitialLoad = false; // Reset flag after first load
     }
 
-    console.log('Browsing directory:', path);
     updateBreadcrumb(path);
     
     // Show skeleton loader
@@ -346,14 +352,11 @@ async function browseDirectories(path) {
     
     try {
         const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&show_all=${showAll}&only_folders_with_videos=${onlyFoldersWithVideos}`);
-        console.log('API Response status:', response.status);
-        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
         const data = await response.json();
-        console.log('API Response data:', data);
         
         // Hide skeleton loader
         skeleton = document.getElementById('skeleton');
@@ -378,10 +381,11 @@ async function browseDirectories(path) {
         if (data.directories.length > 0) {
             html += '<div class="browser-section">';
             data.directories.forEach(dir => {
+                const escapedDirName = escapeHtml(dir.name);
                 html += `
                     <button class="browser-item directory-item" data-path="${dir.path.replace(/"/g, '&quot;')}" data-video-count="${dir.video_count}">
                         <span class="item-icon">📁</span>
-                        <span class="item-name">${dir.name}</span>
+                        <span class="item-name">${escapedDirName}</span>
                         <span class="item-action">→</span>
                     </button>
                 `;
@@ -404,13 +408,14 @@ async function browseDirectories(path) {
                 const isSelected = selectedFiles.includes(file.path);
                 const statusIcon = getStatusIcon(file);
                 const escapedPath = file.path.replace(/"/g, '&quot;');
+                const escapedFileName = escapeHtml(file.name);
                 html += `
                     <label class="browser-item browser-file ${isSelected ? 'selected' : ''}" data-has-subtitles="${file.has_subtitles ? 'true' : 'false'}">
                         <input type="checkbox" class="item-checkbox" id="file-${index}" value="${escapedPath}"
                                ${isSelected ? 'checked' : ''}
                                onchange="toggleFileSelection(this.value)">
                         ${statusIcon}
-                        <span class="item-name">${file.name}</span>
+                        <span class="item-name">${escapedFileName}</span>
                     </label>
                 `;
             });
@@ -431,9 +436,7 @@ async function browseDirectories(path) {
             `;
         }
         
-        console.log('Setting innerHTML with', html.length, 'characters');
         directoryList.innerHTML = html;
-        console.log('Updated directory list, now has', directoryList.children.length, 'children');
         currentPathHasSubdirs = data.directories.length > 0;
 
         updateSelectionStatus();
@@ -445,7 +448,7 @@ async function browseDirectories(path) {
             skeletonEl.classList.add('hidden');
             skeletonEl.style.display = 'none';
         }
-        directoryList.innerHTML = `<div style="color: var(--color-red); text-align: center; padding: var(--space-l);">Error: ${error.message}</div>`;
+        directoryList.innerHTML = `<div style="color: var(--color-red); text-align: center; padding: var(--space-l);">Error: ${escapeHtml(error.message)}</div>`;
         showToast('error', `Failed to browse directory: ${error.message}`);
     }
 }
@@ -588,7 +591,7 @@ async function _searchBrowserAPI(query) {
                         </svg>
                     </div>
                     <h3 class="empty-title">No results</h3>
-                    <p class="empty-message">Nothing matching "${query}"</p>
+                    <p class="empty-message">Nothing matching "${escapeHtml(query)}"</p>
                 </div>`;
             return;
         }
@@ -597,13 +600,14 @@ async function _searchBrowserAPI(query) {
         if (data.directories.length > 0) {
             html += '<div class="browser-section">';
             data.directories.forEach(dir => {
+                const escapedDirName = escapeHtml(dir.name);
                 const contextHtml = dir.context
-                    ? `<span class="item-meta" style="opacity:0.5; font-size:0.8em; margin-left:auto; padding-right:var(--space-s)">${dir.context}/</span>`
+                    ? `<span class="item-meta" style="opacity:0.5; font-size:0.8em; margin-left:auto; padding-right:var(--space-s)">${escapeHtml(dir.context)}/</span>`
                     : '';
                 html += `
                     <button class="browser-item directory-item" data-path="${dir.path.replace(/"/g, '&quot;')}">
                         <span class="item-icon">📁</span>
-                        <span class="item-name">${dir.name}</span>
+                        <span class="item-name">${escapedDirName}</span>
                         ${contextHtml}
                         <span class="item-action">→</span>
                     </button>`;
@@ -616,13 +620,14 @@ async function _searchBrowserAPI(query) {
             data.files.forEach((file, index) => {
                 const isSelected = selectedFiles.includes(file.path);
                 const statusIcon = getStatusIcon(file);
+                const escapedFileName = escapeHtml(file.name);
                 html += `
                     <label class="browser-item browser-file ${isSelected ? 'selected' : ''}" data-has-subtitles="${file.has_subtitles}">
                         <input type="checkbox" class="item-checkbox" id="search-file-${index}" value="${file.path.replace(/"/g, '&quot;')}"
                                ${isSelected ? 'checked' : ''}
                                onchange="toggleFileSelection(this.value)">
                         ${statusIcon}
-                        <span class="item-name">${file.name}</span>
+                        <span class="item-name">${escapedFileName}</span>
                     </label>`;
             });
             html += '</div>';
@@ -632,7 +637,7 @@ async function _searchBrowserAPI(query) {
         updateSelectionStatus();
     } catch (err) {
         console.error('Search error:', err);
-        directoryList.innerHTML = `<div style="color: var(--color-red); text-align:center; padding: var(--space-l);">Search failed: ${err.message}</div>`;
+        directoryList.innerHTML = `<div style="color: var(--color-red); text-align:center; padding: var(--space-l);">Search failed: ${escapeHtml(err.message)}</div>`;
     }
 }
 
@@ -756,7 +761,6 @@ function saveCurrentSettings() {
         requestTag: document.getElementById('requestTag')?.value || ''
     };
 
-    console.log('Saving settings with currentPath:', currentPath);
     localStorage.setItem('deepgramSettings', JSON.stringify(settings));
 }
 
@@ -882,7 +886,6 @@ function loadSavedSettings() {
             if (settings.currentPath) {
                 currentPath = settings.currentPath;
                 restoredPath = settings.currentPath;
-                console.log('Restored currentPath from settings:', currentPath);
             }
 
             // Restore keyterms
@@ -977,7 +980,6 @@ async function autoSaveKeyterms() {
 
         if (response.ok) {
             const data = await response.json();
-            console.log(`Auto-saved ${data.keyterms_count} keyterms`);
 
             // Update label to show it was saved
             const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
@@ -1011,7 +1013,6 @@ async function loadKeytermsForSelection() {
         const response = await fetch(`/api/keyterms/load?video_path=${encodeURIComponent(firstFile)}`);
 
         if (!response.ok) {
-            console.log('No keyterms found for this video');
             updateGenerateKeytermButtonState();
             return;
         }
@@ -1036,9 +1037,6 @@ async function loadKeytermsForSelection() {
                         keyTermsInput._setAutoLoading(false);
                     }
                 }, 100);
-
-                // Show a subtle notification
-                console.log(`Auto-loaded ${data.count} keyterms from CSV`);
 
                 // Show persistent indicator that keyterms were auto-loaded
                 const keyTermsLabel = document.querySelector('label[for="keyTerms"]');
@@ -1295,7 +1293,7 @@ function showToast(type, message, options = {}) {
 
     // Errors get a close button; all toasts are click-to-dismiss
     const closeBtn = type === 'error' ? '<button class="toast-close" aria-label="Dismiss">&times;</button>' : '';
-    toast.innerHTML = `<span class="toast-message">${message}</span>${closeBtn}`;
+    toast.innerHTML = `<span class="toast-message">${escapeHtml(message)}</span>${closeBtn}`;
     toast.addEventListener('click', dismiss);
 
     document.body.appendChild(toast);
@@ -1665,9 +1663,7 @@ async function estimateLLMCostForBatch(files) {
    ============================================ */
 
 async function submitBatch() {
-    const selectedFilesList = Array.from(
-        document.querySelectorAll('.browser-file input[type="checkbox"]:checked')
-    ).map(cb => cb.value);
+    const selectedFilesList = [...selectedFiles];
 
     if (selectedFilesList.length === 0) {
         showToast('warning', 'Please select at least one file');
@@ -1869,21 +1865,21 @@ async function submitBatch() {
 
 async function startChunkedBatch(allFiles, baseRequestBody) {
     // Split files into chunks
-    chunkQueue = [];
+    chunkState.queue = [];
     for (let i = 0; i < allFiles.length; i += CHUNK_SIZE) {
-        chunkQueue.push(allFiles.slice(i, i + CHUNK_SIZE));
+        chunkState.queue.push(allFiles.slice(i, i + CHUNK_SIZE));
     }
     currentChunkIndex = 0;
     chunkResults = [];
-    totalChunkCount = chunkQueue.length;
+    totalChunkCount = chunkState.queue.length;
     chunkTotalFiles = allFiles.length;
 
     // Store the base request body (without files) for reuse across chunks
     const { files, ...baseBody } = baseRequestBody;
-    chunkQueue._baseBody = baseBody;
+    chunkState.baseBody = baseBody;
 
     // Get accurate estimate for the first chunk, extrapolate total
-    const confirmed = await showBatchConfirmation(allFiles, chunkQueue);
+    const confirmed = await showBatchConfirmation(allFiles, chunkState.queue);
     if (!confirmed) return;
 
     // Start first chunk
@@ -1891,13 +1887,14 @@ async function startChunkedBatch(allFiles, baseRequestBody) {
 }
 
 async function showBatchConfirmation(allFiles, chunks) {
-    return new Promise(async (resolve) => {
-        const firstChunkSize = chunks[0].length;
+    let overlay;
+    const confirmationPromise = new Promise((resolve) => {
+        const firstChunkSize = chunks[0]?.length || 0;
 
         // Get accurate estimate for the first chunk
         let estimateHtml = '<div style="color: var(--text-tertiary); font-size: var(--font-caption);">Calculating exact cost...</div>';
 
-        const overlay = document.createElement('div');
+        overlay = document.createElement('div');
         overlay.className = 'dialog-overlay';
         overlay.innerHTML = `
             <div class="dialog-box">
@@ -1938,64 +1935,69 @@ async function showBatchConfirmation(allFiles, chunks) {
         document.addEventListener('keydown', onKey);
         document.body.appendChild(overlay);
         requestAnimationFrame(() => overlay.classList.add('show'));
-
-        // Fetch real estimate for first chunk in background
-        try {
-            const response = await fetch('/api/estimate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ files: chunks[0] })
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-            chunkEstimateData = data;
-
-            const chunkCost = data.estimated_cost_usd;
-            const chunkDuration = data.total_duration_seconds;
-            const totalCost = (chunkCost / firstChunkSize) * allFiles.length;
-            const totalDuration = (chunkDuration / firstChunkSize) * allFiles.length;
-
-            const confirmEl = overlay.querySelector('#confirmEstimate');
-            if (confirmEl) {
-                confirmEl.innerHTML = `
-                    <div style="margin-bottom: var(--space-xs);">
-                        <strong>Total estimate:</strong> ${formatDurationGlobal(totalDuration)} • $${totalCost.toFixed(2)}
-                    </div>
-                    <div style="font-size: var(--font-caption); color: var(--text-secondary);">
-                        First chunk: ${firstChunkSize} files • ~${formatDurationGlobal(chunkDuration)} • ~$${chunkCost.toFixed(2)}
-                    </div>
-                `;
-            }
-
-            // Enable the start button
-            const startBtn = overlay.querySelector('[data-action="start"]');
-            if (startBtn) startBtn.disabled = false;
-        } catch (e) {
-            console.error('Estimate for confirmation failed:', e);
-            // Enable start anyway with rough estimate
-            const roughCost = (allFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
-            const confirmEl = overlay.querySelector('#confirmEstimate');
-            if (confirmEl) {
-                confirmEl.innerHTML = `<div><strong>Estimated:</strong> ~$${roughCost.toFixed(2)} (rough estimate)</div>`;
-            }
-            const startBtn = overlay.querySelector('[data-action="start"]');
-            if (startBtn) startBtn.disabled = false;
-        }
     });
+
+    fetchChunkEstimate(overlay, chunks, allFiles);
+    return confirmationPromise;
+}
+
+async function fetchChunkEstimate(overlay, chunks, allFiles) {
+    const firstChunkSize = chunks[0]?.length || 0;
+    if (!overlay || firstChunkSize === 0) return;
+
+    try {
+        const response = await fetch('/api/estimate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: chunks[0] })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = await response.json();
+        chunkEstimateData = data;
+
+        const chunkCost = data.estimated_cost_usd;
+        const chunkDuration = data.total_duration_seconds;
+        const totalCost = (chunkCost / firstChunkSize) * allFiles.length;
+        const totalDuration = (chunkDuration / firstChunkSize) * allFiles.length;
+
+        const confirmEl = overlay.querySelector('#confirmEstimate');
+        if (confirmEl) {
+            confirmEl.innerHTML = `
+                <div style="margin-bottom: var(--space-xs);">
+                    <strong>Total estimate:</strong> ${formatDurationGlobal(totalDuration)} • $${totalCost.toFixed(2)}
+                </div>
+                <div style="font-size: var(--font-caption); color: var(--text-secondary);">
+                    First chunk: ${firstChunkSize} files • ~${formatDurationGlobal(chunkDuration)} • ~$${chunkCost.toFixed(2)}
+                </div>
+            `;
+        }
+
+        const startBtn = overlay.querySelector('[data-action="start"]');
+        if (startBtn) startBtn.disabled = false;
+    } catch (e) {
+        console.error('Estimate for confirmation failed:', e);
+        const roughCost = (allFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
+        const confirmEl = overlay.querySelector('#confirmEstimate');
+        if (confirmEl) {
+            confirmEl.innerHTML = `<div><strong>Estimated:</strong> ~$${roughCost.toFixed(2)} (rough estimate)</div>`;
+        }
+        const startBtn = overlay.querySelector('[data-action="start"]');
+        if (startBtn) startBtn.disabled = false;
+    }
 }
 
 async function submitChunk(index) {
-    if (index >= chunkQueue.length) {
+    if (index >= chunkState.queue.length) {
         // All chunks complete
         showAllChunksComplete();
         return;
     }
 
     currentChunkIndex = index;
-    const chunkFiles = chunkQueue[index];
-    const baseBody = chunkQueue._baseBody;
+    const chunkFiles = chunkState.queue[index];
+    const baseBody = chunkState.baseBody;
 
     // Build request body for this chunk
     const requestBody = { ...baseBody, files: chunkFiles };
@@ -2080,7 +2082,7 @@ async function checkChunkStatus(batchId) {
                 statusText.style.cursor = 'pointer';
                 statusText.onclick = () => {
                     pollCount = 0;
-                    startChunkMonitoring(batchId, chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE);
+                    startChunkMonitoring(batchId, chunkState.queue[currentChunkIndex]?.length || CHUNK_SIZE);
                 };
             }
             return;
@@ -2193,7 +2195,7 @@ function showChunkCompletePrompt(chunkIndex, chunkData) {
         return;
     }
 
-    const nextChunkSize = chunkQueue[chunkIndex + 1]?.length || 0;
+    const nextChunkSize = chunkState.queue[chunkIndex + 1]?.length || 0;
 
     const overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
@@ -2290,7 +2292,8 @@ function showAllChunksComplete() {
             submitBtn.classList.remove('completed');
             submitBtn.textContent = 'Transcribe';
         }
-        chunkQueue = [];
+        chunkState.queue = [];
+        chunkState.baseBody = null;
         chunkResults = [];
         currentChunkIndex = 0;
         totalChunkCount = 0;
@@ -2334,7 +2337,8 @@ function stopChunkedBatch() {
     showToast('info', `Stopped. ${remaining} files remaining — resume anytime.`);
 
     // Reset chunk state
-    chunkQueue = [];
+    chunkState.queue = [];
+    chunkState.baseBody = null;
     chunkResults = [];
     currentChunkIndex = 0;
     totalChunkCount = 0;
@@ -2663,7 +2667,15 @@ function loadLibraryScanData() {
     try {
         const raw = localStorage.getItem('libraryScanData');
         if (!raw) return null;
-        return JSON.parse(raw);
+        const data = JSON.parse(raw);
+        if (data.scanDate) {
+            const age = Date.now() - new Date(data.scanDate).getTime();
+            if (age > 30 * 24 * 60 * 60 * 1000) {
+                localStorage.removeItem('libraryScanData');
+                return null;
+            }
+        }
+        return data;
     } catch (e) {
         console.error('Failed to load scan data:', e);
         localStorage.removeItem('libraryScanData');
@@ -2798,8 +2810,8 @@ function clearScanExcludeFilter() {
 function saveActiveChunkState() {
     const state = {
         activeBatchId: currentBatchId,
-        chunkQueue: chunkQueue,
-        baseBody: chunkQueue._baseBody || null,  // Array properties are lost by JSON.stringify
+        queue: chunkState.queue,
+        baseBody: chunkState.baseBody,
         currentChunkIndex: currentChunkIndex,
         chunkResults: chunkResults,
         totalFiles: chunkTotalFiles,
@@ -2813,7 +2825,14 @@ function loadActiveChunkState() {
     try {
         const raw = localStorage.getItem('activeChunkState');
         if (!raw) return null;
-        return JSON.parse(raw);
+        const data = JSON.parse(raw);
+        const legacyQueueKey = ['chunk', 'Queue'].join('');
+        const queue = Array.isArray(data.queue) ? data.queue : data[legacyQueueKey];
+        return {
+            ...data,
+            queue: Array.isArray(queue) ? queue : [],
+            baseBody: data.baseBody || null
+        };
     } catch (e) {
         console.error('Failed to load active chunk state:', e);
         localStorage.removeItem('activeChunkState');
@@ -2898,8 +2917,8 @@ function loadSavedScanResults() {
     if (activeChunk && activeChunk.activeBatchId) {
         // Reconnect to active batch
         currentBatchId = activeChunk.activeBatchId;
-        chunkQueue = activeChunk.chunkQueue;
-        if (activeChunk.baseBody) chunkQueue._baseBody = activeChunk.baseBody;
+        chunkState.queue = activeChunk.queue;
+        chunkState.baseBody = activeChunk.baseBody;
         currentChunkIndex = activeChunk.currentChunkIndex;
         chunkResults = activeChunk.chunkResults;
         chunkTotalFiles = activeChunk.totalFiles;
@@ -2909,7 +2928,7 @@ function loadSavedScanResults() {
         // Show scan results with progress, then reconnect monitoring
         displaySavedScanResults(scanData);
 
-        const chunkSize = chunkQueue[currentChunkIndex]?.length || CHUNK_SIZE;
+        const chunkSize = chunkState.queue[currentChunkIndex]?.length || CHUNK_SIZE;
         updateUnifiedStatus(`Reconnecting to chunk ${currentChunkIndex + 1}/${totalChunkCount}...`, true, 0);
         const cancelBtn = document.getElementById('cancelBtn');
         if (cancelBtn) cancelBtn.style.display = '';
@@ -3003,18 +3022,19 @@ function displaySavedScanResults(scanData) {
         const hasRemaining = dirFiles.some(f => !completedSet.has(f.path));
         if (!hasRemaining) return; // Skip directories where all files are completed
 
-        html += `<div class="scan-group-header">${displayDir}</div>`;
+        html += `<div class="scan-group-header">${escapeHtml(displayDir)}</div>`;
 
         dirFiles.forEach(file => {
             const escapedPath = file.path.replace(/"/g, '&quot;');
             const isCompleted = completedSet.has(file.path);
+            const escapedFileName = escapeHtml(file.name);
 
             if (isCompleted) {
                 html += `
                     <label class="browser-item browser-file scan-completed" data-has-subtitles="true">
                         <input type="checkbox" class="item-checkbox" value="${escapedPath}" disabled checked>
                         <span class="item-status" data-status="complete" title="Transcribed" aria-label="Transcribed"></span>
-                        <span class="item-name" style="opacity: 0.5; text-decoration: line-through;">${file.name}</span>
+                        <span class="item-name" style="opacity: 0.5; text-decoration: line-through;">${escapedFileName}</span>
                     </label>
                 `;
             } else {
@@ -3023,7 +3043,7 @@ function displaySavedScanResults(scanData) {
                         <input type="checkbox" class="item-checkbox" value="${escapedPath}"
                                onchange="toggleFileSelection(this.value)">
                         <span class="item-status" data-status="missing" title="Missing subtitles" aria-label="Missing subtitles"></span>
-                        <span class="item-name">${file.name}</span>
+                        <span class="item-name">${escapedFileName}</span>
                     </label>
                 `;
             }
@@ -3291,7 +3311,6 @@ function getCurrentVideoPath() {
 function updateSpinnerText(message) {
     // Since showSpinner doesn't exist yet, we'll use toast for now
     // In a real implementation, you'd modify the actual spinner element
-    console.log('Spinner update:', message);
 }
 
 /**

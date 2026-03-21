@@ -10,6 +10,7 @@ import os
 import io
 import csv
 import json
+import re
 import time
 from datetime import date
 from pathlib import Path
@@ -66,6 +67,14 @@ def _require_auth():
     if ALLOWED and user.lower() not in ALLOWED:
         abort(403)
     return user
+
+
+_TASK_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+
+
+def _validate_task_id(task_id):
+    if not _TASK_ID_RE.match(task_id):
+        abort(400, description='Invalid task ID format')
 
 
 @app.get("/")
@@ -705,7 +714,8 @@ def api_progress():
     # _require_auth()
     
     def stream():
-        while True:
+        max_pings = 7200  # 4 hours at 2-second intervals
+        for _ in range(max_pings):
             yield f"event: ping\ndata: {json.dumps({'t': time.time()})}\n\n"
             time.sleep(2)
     
@@ -951,20 +961,20 @@ def api_keyterms_generate():
         from core.media_metadata import extract_media_metadata
         metadata = extract_media_metadata(vp)
 
-        print(f"[DEBUG] Extracted metadata from path: {vp}")
-        print(f"[DEBUG] Media type: {metadata.media_type}")
-        print(f"[DEBUG] Name: {metadata.name}")
+        app.logger.debug(f"Extracted metadata from path: {vp}")
+        app.logger.debug(f"Media type: {metadata.media_type}")
+        app.logger.debug(f"Name: {metadata.name}")
         if metadata.media_type == 'tv':
-            print(f"[DEBUG] Season: {metadata.season}, Episode: {metadata.episode}")
+            app.logger.debug(f"Season: {metadata.season}, Episode: {metadata.episode}")
             if metadata.episode_title:
-                print(f"[DEBUG] Episode title: {metadata.episode_title}")
+                app.logger.debug(f"Episode title: {metadata.episode_title}")
 
         if not metadata.name or metadata.name.strip() == '':
-            print(f"[ERROR] Empty name extracted from path: {vp}")
+            app.logger.error(f"Empty name extracted from path: {vp}")
             return jsonify({'error': 'Could not extract show/movie name from video path. Please ensure video is in a properly named directory.'}), 400
 
     except Exception as e:
-        print(f"[ERROR] Exception extracting metadata: {str(e)}")
+        app.logger.error(f"Exception extracting metadata: {str(e)}")
         return jsonify({'error': f'Failed to extract metadata: {str(e)}'}), 400
     
     # Get API key from environment
@@ -988,28 +998,28 @@ def api_keyterms_generate():
         try:
             from core.keyterm_search import KeytermSearcher, LLMProvider, LLMModel
 
-            print(f"[DEBUG] Estimating cost for: '{metadata.name}'")
-            print(f"[DEBUG] Provider: {provider}, Model: {model}")
+            app.logger.debug(f"Estimating cost for: '{metadata.name}'")
+            app.logger.debug(f"Provider: {provider}, Model: {model}")
 
             # Use bracket notation to access enum by NAME, not by VALUE
             provider_enum = LLMProvider[provider.upper()]
             model_enum_name = model.upper().replace('-', '_').replace('.', '_')
-            print(f"[DEBUG] Looking up enum: LLMModel.{model_enum_name}")
+            app.logger.debug(f"Looking up enum: LLMModel.{model_enum_name}")
             model_enum = LLMModel[model_enum_name]
 
-            print(f"[DEBUG] Initializing KeytermSearcher...")
+            app.logger.debug("Initializing KeytermSearcher...")
             searcher = KeytermSearcher(provider_enum, model_enum, api_key)
 
-            print(f"[DEBUG] Calling estimate_cost...")
+            app.logger.debug("Calling estimate_cost...")
             estimate = searcher.estimate_cost(metadata)
 
-            print(f"[DEBUG] Cost estimation successful: {estimate}")
+            app.logger.debug(f"Cost estimation successful: {estimate}")
             return jsonify(estimate)
         except KeyError as e:
-            print(f"[ERROR] KeyError in cost estimation: {str(e)}")
+            app.logger.error(f"KeyError in cost estimation: {str(e)}")
             return jsonify({'error': f'Invalid provider or model: {provider}, {model}'}), 400
         except Exception as e:
-            print(f"[ERROR] Exception in cost estimation: {type(e).__name__}: {str(e)}")
+            app.logger.error(f"Exception in cost estimation: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
             return jsonify({'error': f'Cost estimation failed: {str(e)}'}), 500
@@ -1106,6 +1116,7 @@ def api_library_scan():
     Returns:
         JSON with task_id and status
     """
+    # _require_auth()
     body = request.get_json(force=True) or {}
     skip_embedded = body.get('skip_embedded', False)
 
@@ -1128,6 +1139,8 @@ def api_library_scan_status(task_id):
     Returns:
         JSON with state and progress/result data
     """
+    # _require_auth()
+    _validate_task_id(task_id)
     try:
         task = celery_app.AsyncResult(task_id)
 
@@ -1178,7 +1191,10 @@ def api_library_scan_cancel(task_id):
     Returns:
         JSON with cancellation status
     """
+    # _require_auth()
+    _validate_task_id(task_id)
     try:
+        _redis.setex(f'library_scan_cancel:{task_id}', 300, '1')
         celery_app.control.revoke(task_id, terminate=True, signal='SIGTERM')
         return jsonify({'status': 'cancelled', 'task_id': task_id})
     except Exception as e:
@@ -1196,6 +1212,8 @@ def api_library_scan_export(task_id):
     Returns:
         CSV file download with columns: path, name, directory
     """
+    # _require_auth()
+    _validate_task_id(task_id)
     try:
         task = celery_app.AsyncResult(task_id)
 
@@ -1209,7 +1227,13 @@ def api_library_scan_export(task_id):
         writer = csv.writer(buf)
         writer.writerow(['path', 'name', 'directory'])
         for f in missing_files:
-            writer.writerow([f.get('path', ''), f.get('name', ''), f.get('directory', '')])
+            try:
+                rel_path = str(Path(f.get('path', '')).relative_to(MEDIA_ROOT))
+                rel_dir = str(Path(f.get('directory', '')).relative_to(MEDIA_ROOT))
+            except ValueError:
+                rel_path = f.get('name', '')
+                rel_dir = ''
+            writer.writerow([rel_path, f.get('name', ''), rel_dir])
 
         output = io.BytesIO(buf.getvalue().encode('utf-8'))
         filename = f"missing-subtitles-{date.today().isoformat()}.csv"
