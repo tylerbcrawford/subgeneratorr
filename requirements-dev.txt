@@ -1,0 +1,3 @@
+pytest>=8.0
+pytest-timeout
+flask>=3.0

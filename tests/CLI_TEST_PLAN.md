@@ -261,7 +261,7 @@ docker compose run --profile cli --rm \
 - Remaining files left for next run
 - Batch size logged
 
-#### Test 7.2: Unlimited Batch
+#### Test 7.2: Zero Batch Size Fallback
 **Function:** `BATCH_SIZE=0`  
 **Command:**
 ```bash
@@ -271,8 +271,7 @@ docker compose run --profile cli --rm \
   cli
 ```
 **Expected Results:**
-- All videos processed
-- No artificial limit applied
+- Defaults to batch size of 10 when set to 0 (see CLI docs)
 
 ---
 
@@ -374,7 +373,7 @@ docker compose run --profile cli --rm \
 **Function:** Model selection  
 **Expected Results:**
 - Nova-3 model used
-- Cost per minute = $0.0043
+- Cost per minute = $0.0057/min
 - Model logged in statistics
 
 #### Test 10.3: Profanity Filter

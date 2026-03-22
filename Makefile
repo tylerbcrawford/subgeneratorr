@@ -1,4 +1,4 @@
-.PHONY: help build cli web-up web-down web-logs web-restart clean
+.PHONY: help build cli web-up web-down web-logs web-restart clean test
 
 # Default target
 help:
@@ -66,3 +66,8 @@ web-restart:
 clean:
 	docker compose down -v
 	@echo "All containers and volumes removed"
+
+test:
+	python3 -m venv .venv
+	.venv/bin/pip install -r requirements-dev.txt -q
+	.venv/bin/pytest tests/ -v

@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Batch confirmation dialog** with accurate cost/time estimate before first chunk
 - **Auto-pause prompt** between chunks showing cumulative results and remaining cost/time
 
+### Security
+- Re-enabled authentication on all API routes (`_require_auth()` was temporarily disabled during development)
+- Added `DISABLE_AUTH` environment variable as an explicit opt-out for local-only deployments without a reverse proxy
+- Example Docker Compose binds web port to loopback (`127.0.0.1`) by default to prevent unintended external exposure
+- Added security callout to README quick-start documenting safe vs unsafe deployment postures
+
+### Fixed
+- **Resume scan state for single-batch runs** — files processed in batches of ≤ 25 were not being marked complete in saved scan state; now correctly calls `addCompletedFiles()` to match chunked-batch behavior
+- `test_keyterms_consistency.py` import now succeeds without `deepgram` package installed (added dependency stubs matching the pattern in `test_check_subtitles.py`)
+- Corrected test path bug in `test_csv_format_consistency` — keyterms CSV was being created inside the Season folder instead of the show-level `Transcripts/Keyterms/` folder where `load_keyterms_from_csv()` looks
+
+### Added
+- `requirements-dev.txt` with `pytest`, `pytest-timeout`, and `flask` for test environments
+- `make test` target: creates a `.venv`, installs dev dependencies, runs `pytest tests/ -v`
+- `.github/workflows/ci.yml` — push/PR validation workflow: Python 3.11 unit tests + Docker build smoke test for both CLI and web images (runs on every push to every branch)
+- `library_scan_task` routed to a separate `scan` Celery queue, enabling dedicated scan workers in multi-worker deployments; the default single worker consumes both `transcribe,scan` queues (no isolation benefit at `WORKER_CONCURRENCY=1`)
+
 ### Changed
 - Moved `check_subtitles()` and `SUBTITLE_EXTS` from `web/app.py` to `core/transcribe.py` for reuse across modules
 - Debounced cost estimation to prevent API flooding on rapid file selection

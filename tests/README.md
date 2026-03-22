@@ -94,7 +94,7 @@ TEST 1.1: Basic Video Transcription
 [12:35:45] ✓ File exists: short_test.eng.srt
 [12:35:45] ✓ All patterns found in short_test.eng.srt
 [12:35:45] ✓ Processed: 1 files
-[12:35:45] ✓ Cost: $0.0043
+[12:35:45] ✓ Cost: at current Deepgram Nova-3 pricing
 [12:35:45] ✓ Test passed: Basic Video Transcription
 
 ... (more tests)

@@ -2449,6 +2449,11 @@ async function checkJobStatus(batchId) {
 
             if (data.state === 'SUCCESS') {
                 const results = data.data?.results || [];
+                const completedPaths = results
+                    .filter(r => r.status === 'ok' || r.status === 'skipped')
+                    .map(r => r.video)
+                    .filter(Boolean);
+                addCompletedFiles(completedPaths);
                 const successful = results.filter(r => r.status === 'ok').length;
                 const skipped = results.filter(r => r.status === 'skipped').length;
                 const failed = results.filter(r => r.status === 'error').length;

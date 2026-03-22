@@ -61,6 +61,8 @@ def _require_auth():
         401: If no authentication header is present
         403: If user's email is not in the allowlist
     """
+    if os.getenv('DISABLE_AUTH', '').lower() in ('1', 'true', 'yes'):
+        return 'local'
     user = request.headers.get("X-Auth-Request-Email") or request.headers.get("X-Forwarded-User")
     if not user:
         abort(401)
@@ -80,8 +82,7 @@ def _validate_task_id(task_id):
 @app.get("/")
 def index():
     """Serve the web UI (optional)."""
-    # Temporarily disabled for local testing - uncomment _require_auth() for production
-    # _require_auth()
+    _require_auth()
     return render_template("index.html")
 
 
@@ -98,7 +99,7 @@ def api_config():
     
     Returns default model and language settings plus API key configuration status.
     """
-    # _require_auth()
+    _require_auth()
     return jsonify({
         "default_model": DEFAULT_MODEL,
         "default_language": DEFAULT_LANGUAGE,
@@ -124,7 +125,7 @@ def api_browse():
     Security:
         - Path must be under MEDIA_ROOT
     """
-    # _require_auth()
+    _require_auth()
     path = request.args.get("path", str(MEDIA_ROOT))
     show_all = request.args.get("show_all", "false").lower() == "true"
     only_folders_with_videos = request.args.get("only_folders_with_videos", "true").lower() == "true"
@@ -277,7 +278,7 @@ def api_scan():
         - Path must be under MEDIA_ROOT
         - Limited to 500 results
     """
-    # _require_auth()
+    _require_auth()
     root = request.args.get("root", str(MEDIA_ROOT))
     show_all = request.args.get("show_all", "false").lower() == "true"
     root = Path(root).resolve()
@@ -314,7 +315,7 @@ def api_estimate():
         - Nova-3 pricing: $0.0057 per minute of audio
         - Estimated processing time: ~0.1x real-time (rough estimate)
     """
-    # _require_auth()
+    _require_auth()
     body = request.get_json(force=True) or {}
     raw_files = body.get("files", [])
     
@@ -378,8 +379,7 @@ def api_submit():
         - All file paths must be under MEDIA_ROOT
         - Files must exist before submission
     """
-    # user = _require_auth()
-    user = "local_user"
+    user = _require_auth()
     body = request.get_json(force=True) or {}
     
     model = body.get("model", "nova-3")  # Support model selection (nova-3, nova-3-medical)
@@ -497,7 +497,7 @@ def api_job(rid):
     Returns:
         JSON with job state and result data including detailed child task progress
     """
-    # _require_auth()
+    _require_auth()
     from celery.result import GroupResult
 
     # Try to get as GroupResult first (for batch jobs)
@@ -686,7 +686,7 @@ def api_cancel_job(rid):
     Returns:
         JSON with cancellation status
     """
-    # _require_auth()
+    _require_auth()
     from celery.result import GroupResult
     try:
         revoked_ids = [rid]
@@ -711,7 +711,7 @@ def api_progress():
     Sends periodic ping events to keep the connection alive.
     Clients can poll /api/job/<batch_id> to get actual job status.
     """
-    # _require_auth()
+    _require_auth()
     
     def stream():
         max_pings = 7200  # 4 hours at 2-second intervals
@@ -734,7 +734,7 @@ def api_keyterms_upload():
     Returns:
         JSON with success status and keyterms count
     """
-    # _require_auth()
+    _require_auth()
     
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -782,7 +782,7 @@ def api_keyterms_save():
     Returns:
         JSON with success status and keyterms count
     """
-    # _require_auth()
+    _require_auth()
 
     data = request.get_json()
     if not data:
@@ -833,7 +833,7 @@ def api_keyterms_load():
     Returns:
         JSON with keyterms array or empty array if none found
     """
-    # _require_auth()
+    _require_auth()
     
     video_path = request.args.get('video_path')
     
@@ -870,7 +870,7 @@ def api_keyterms_download():
     Returns:
         CSV file download or 404 if not found
     """
-    # _require_auth()
+    _require_auth()
     
     video_path = request.args.get('video_path')
     
@@ -937,7 +937,7 @@ def api_keyterms_generate():
         Otherwise:
             JSON with task_id for async generation
     """
-    # _require_auth()
+    _require_auth()
     
     body = request.get_json(force=True) or {}
     video_path = body.get('video_path')
@@ -1056,7 +1056,7 @@ def api_keyterms_generate_status(task_id):
         - SUCCESS: Task completed (includes keyterms, token_count, actual_cost)
         - FAILURE: Task failed (includes error message)
     """
-    # _require_auth()
+    _require_auth()
     
     try:
         task = celery_app.AsyncResult(task_id)
@@ -1116,7 +1116,7 @@ def api_library_scan():
     Returns:
         JSON with task_id and status
     """
-    # _require_auth()
+    _require_auth()
     body = request.get_json(force=True) or {}
     skip_embedded = body.get('skip_embedded', False)
 
@@ -1139,7 +1139,7 @@ def api_library_scan_status(task_id):
     Returns:
         JSON with state and progress/result data
     """
-    # _require_auth()
+    _require_auth()
     _validate_task_id(task_id)
     try:
         task = celery_app.AsyncResult(task_id)
@@ -1191,7 +1191,7 @@ def api_library_scan_cancel(task_id):
     Returns:
         JSON with cancellation status
     """
-    # _require_auth()
+    _require_auth()
     _validate_task_id(task_id)
     try:
         _redis.setex(f'library_scan_cancel:{task_id}', 300, '1')
@@ -1212,7 +1212,7 @@ def api_library_scan_export(task_id):
     Returns:
         CSV file download with columns: path, name, directory
     """
-    # _require_auth()
+    _require_auth()
     _validate_task_id(task_id)
     try:
         task = celery_app.AsyncResult(task_id)

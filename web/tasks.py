@@ -45,7 +45,7 @@ celery_app.conf.task_routes = {
     'transcribe_task': {'queue': 'transcribe'},
     'batch_finalize': {'queue': 'transcribe'},
     'generate_keyterms_task': {'queue': 'transcribe'},
-    'library_scan_task': {'queue': 'transcribe'},
+    'library_scan_task': {'queue': 'scan'},
 }
 
 

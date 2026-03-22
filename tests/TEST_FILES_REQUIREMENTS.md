@@ -262,12 +262,12 @@ Running the full test suite with recommended files:
 
 | File | Duration | Cost (Nova-3) |
 |------|----------|---------------|
-| Short video | 1 min | $0.0043 |
-| Medium video | 2.5 min | $0.0108 |
-| Spanish video | 1 min | $0.0043 |
-| Silent video | 0.5 min | $0.0022 |
-| Audio file | 1 min | $0.0043 |
-| **Total** | **6 min** | **~$0.026** |
+| Short video | 1 min | $0.0057 |
+| Medium video | 2.5 min | $0.0143 |
+| Spanish video | 1 min | $0.0057 |
+| Silent video | 0.5 min | $0.0029 |
+| Audio file | 1 min | $0.0057 |
+| **Total** | **6 min** | **~$0.0342** |
 
 **Note:** Some tests run multiple times (e.g., force regenerate), so actual cost may be $0.05-$0.10 for the full suite.
 

@@ -79,6 +79,8 @@ docker compose up -d
 docker compose run --profile cli --rm cli
 ```
 
+> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
+
 ### Basic Usage
 
 **Process entire media library (CLI):**
@@ -110,6 +112,8 @@ docker compose up -d
 ```
 
 Access at `http://localhost:5000` (or configure reverse proxy for remote access)
+
+> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
 
 ### Web UI Features
 

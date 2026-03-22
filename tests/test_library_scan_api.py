@@ -1,9 +1,14 @@
 import importlib
+import os
 import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+# Disable auth for tests — the app uses OAuth2-Proxy headers which aren't
+# present in the test environment. Tests validate API logic, not auth.
+os.environ['DISABLE_AUTH'] = 'true'
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

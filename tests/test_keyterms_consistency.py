@@ -12,6 +12,7 @@ This test ensures that both interfaces:
 import os
 import sys
 import tempfile
+import types
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
@@ -19,6 +20,30 @@ from unittest.mock import Mock, patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../cli'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../web'))
+
+
+def _install_core_dependency_stubs():
+    if "deepgram" not in sys.modules:
+        deepgram = types.ModuleType("deepgram")
+
+        class DeepgramClient:
+            pass
+
+        class PrerecordedOptions:
+            pass
+
+        deepgram.DeepgramClient = DeepgramClient
+        deepgram.PrerecordedOptions = PrerecordedOptions
+        sys.modules["deepgram"] = deepgram
+
+    if "deepgram_captions" not in sys.modules:
+        deepgram_captions = types.ModuleType("deepgram_captions")
+        deepgram_captions.DeepgramConverter = object
+        deepgram_captions.srt = object()
+        sys.modules["deepgram_captions"] = deepgram_captions
+
+
+_install_core_dependency_stubs()
 
 from core.transcribe import load_keyterms_from_csv, save_keyterms_to_csv, transcribe_file
 
@@ -48,8 +73,8 @@ class TestKeytermsConsistency:
             tmp_path = Path(tmpdir)
             tv_show, _ = self.setup_test_directory(tmp_path)
             
-            # Create keyterms CSV
-            keyterms_dir = tv_show / "Transcripts" / "Keyterms"
+            # Create keyterms CSV at show level (Transcripts sits alongside Season folders)
+            keyterms_dir = tv_show.parent / "Transcripts" / "Keyterms"
             keyterms_dir.mkdir(parents=True)
             
             csv_path = keyterms_dir / "Test Show_keyterms.csv"

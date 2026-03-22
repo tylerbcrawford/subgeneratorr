@@ -1016,7 +1016,7 @@ if tag:
 ### Web UI Security
 
 - Web UI can be protected with OAuth authentication (configured at reverse proxy level)
-- Media mounts should be **read-only** for web container, read-write for worker container
+- Both web and worker containers require read-write media mounts (web writes keyterms to `Transcripts/Keyterms/`, worker writes subtitles and transcripts)
 - Only `.eng.srt` subtitle and transcript files are created (next to source media files)
 - Email allowlist available for additional access control via `ALLOWED_EMAILS` environment variable
 - API key never exposed to browser (server-side only)
