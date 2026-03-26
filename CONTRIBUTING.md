@@ -52,10 +52,13 @@ docker compose logs -f web worker
 ### Testing
 
 ```bash
-# Validate project structure
+# Run the full test suite (preferred — this is what CI runs)
+make test
+
+# Validate project structure (no API key needed)
 python3 scripts/validate_setup.py
 
-# Test a single video (requires DEEPGRAM_API_KEY)
+# Test a single video end-to-end (requires DEEPGRAM_API_KEY)
 python3 tests/test_single_video.py /path/to/video.mkv
 ```
 
@@ -63,7 +66,7 @@ python3 tests/test_single_video.py /path/to/video.mkv
 
 1. **Keep PRs focused** — one feature or fix per PR
 2. **Write a clear description** — explain what changed and why
-3. **Test your changes** — verify with `validate_setup.py` at minimum
+3. **Test your changes** — run `make test` to execute the full test suite
 4. **Update docs** if your change affects configuration, CLI flags, or API endpoints
 
 ### PR Title Format

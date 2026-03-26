@@ -53,7 +53,7 @@ The Web UI adds asynchronous processing capabilities:
 2. Flask API creates Celery task group
 3. Workers process files in parallel (configurable concurrency)
 4. Progress updates sent via Server-Sent Events (SSE)
-5. Bazarr rescan triggered on completion (if configured)
+5. Results returned to the UI
 
 ---
 

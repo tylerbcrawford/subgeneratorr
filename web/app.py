@@ -202,6 +202,7 @@ def api_search():
         JSON with matching directories and files, each including a context path
         showing where the match lives relative to MEDIA_ROOT.
     """
+    _require_auth()
     query = request.args.get("q", "").strip()
     root = request.args.get("path", str(MEDIA_ROOT))
 

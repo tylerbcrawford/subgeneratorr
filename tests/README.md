@@ -2,6 +2,19 @@
 
 This directory contains comprehensive tests for the Subgeneratorr CLI tool.
 
+## Quick Run (Recommended)
+
+The fastest way to run all unit tests:
+
+```bash
+make test
+# or: pytest tests/ -v
+```
+
+This runs the full pytest suite without needing Docker or API keys. The detailed CLI integration tests described below require Docker and a Deepgram API key.
+
+---
+
 ## Contents
 
 - [`CLI_TEST_PLAN.md`](CLI_TEST_PLAN.md) - Detailed test plan with all test cases

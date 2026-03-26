@@ -83,25 +83,24 @@ docker compose run --profile cli --rm cli
 
 ### Basic Usage
 
-**Process entire media library (CLI):**
-```bash
-docker compose run --profile cli --rm cli
-```
-
-**Process specific show/season:**
-```bash
-docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
-```
-
-**Start the Web UI:**
+**Start the Web UI (recommended):**
 ```bash
 docker compose up -d
 # Open http://localhost:5000
 ```
 
+**Process via CLI (headless/batch):**
+```bash
+# Process entire media library
+docker compose run --profile cli --rm cli
+
+# Process specific show/season
+docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
+```
+
 ---
 
-## Web UI (Optional)
+## Web UI
 
 The Web UI provides a browser-based interface for remote management, batch processing, and AI-powered keyterm generation.
 
@@ -115,13 +114,17 @@ Access at `http://localhost:5000` (or configure reverse proxy for remote access)
 
 > **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
 
+### Screenshots
+
+<!-- Recommended: main browse page, scan results, transcription progress, settings panel -->
+*Screenshots coming soon.*
+
 ### Web UI Features
 
 - 🌐 **Remote access** from any device
 - 📊 **Real-time progress tracking** with per-file status
 - 🤖 **AI Keyterm Generation** with Claude, GPT, or Gemini (optional)
 - 📁 **Directory browser** with search and file filtering
-- 🔄 **Bazarr integration** for automatic subtitle rescans
 - ⚡ **Batch processing** with parallel workers
 - 🔍 **Find Missing Subtitles** — one-click async library scan with CSV export
 - ⚙️ **Full Nova-3 feature control** — model selection, redaction, dictation, multichannel, Audio Intelligence, and more via collapsible Transcription Settings panel
@@ -257,7 +260,7 @@ After generation, refresh your media library to detect new subtitles.
 1. Download new season via Sonarr/Radarr
 2. Run: `docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli`
 3. Subtitles generated automatically
-4. Bazarr rescan triggers (if Web UI integration enabled)
+4. Refresh your media server library to pick up new subtitles
 
 ### Complete Library Cleanup
 
@@ -305,6 +308,13 @@ id -g  # Get your GID
 - Check file location: `{Show}/Transcripts/Keyterms/{ShowName}_keyterms.csv`
 - Verify UTF-8 encoding
 - Ensure filename matches show directory name exactly
+
+---
+
+## Known Limitations
+
+- **Authentication**: `DISABLE_AUTH=true` is the default for local use. For remote access, place a reverse proxy with authentication in front of the app (see Security Note above).
+- **CLI vs Web UI**: The CLI processes files synchronously and does not support AI keyterm generation, library scanning, or progress tracking. The Web UI provides all features including async batch processing, real-time progress, and AI keyterm generation.
 
 ---
 

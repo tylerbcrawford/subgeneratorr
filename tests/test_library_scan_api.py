@@ -103,6 +103,15 @@ def test_scan_export_invalid_task_id():
     assert response.status_code == 400
 
 
+def test_search_requires_auth():
+    """Verify /api/search rejects unauthenticated requests when auth is enabled."""
+    with patch.dict(os.environ, {'DISABLE_AUTH': 'false'}, clear=False):
+        with app.test_client() as client:
+            response = client.get("/api/search?q=test")
+
+    assert response.status_code == 401
+
+
 def test_scan_status_valid_uuid_pending():
     task_result = SimpleNamespace(state="PENDING", info=None)
 

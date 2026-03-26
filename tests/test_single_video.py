@@ -39,7 +39,7 @@ def main():
         print(f"Please provide a valid video file path.")
         sys.exit(1)
     
-    srt_path = video_path.with_suffix('.srt')
+    srt_path = video_path.with_suffix('.eng.srt')
     if srt_path.exists():
         print(f"⚠️  Warning: SRT file already exists at {srt_path}")
         print(f"Delete it first to regenerate, or test with a different video.")
@@ -57,7 +57,7 @@ def main():
         print("="*70)
         print("✅ TEST SUCCESSFUL")
         print("="*70)
-        print(f"Generated subtitle file: {srt_path}")
+        print(f"Generated subtitle file: {video_path.with_suffix('.eng.srt')}")
         print()
         gen.print_summary()
         gen.save_stats()
