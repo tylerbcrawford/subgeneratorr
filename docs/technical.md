@@ -109,12 +109,14 @@ subgeneratorr/
 
 ## Subtitle File Naming
 
-Subgeneratorr generates subtitle files with proper ISO-639-2 language tags (e.g., `.eng.srt`) to ensure automatic recognition by Plex, Jellyfin, and other media servers.
+Subgeneratorr generates subtitle files with proper ISO-639-2 language tags (for example `.eng.srt` or `.spa.srt`) to ensure automatic recognition by Plex, Jellyfin, and other media servers. If a language cannot be resolved safely, Subgeneratorr falls back to `.und.srt` rather than mislabeling the subtitle as English.
 
 ### Generated Files
 
 **For a video file `Movie.mkv`:**
 - `Movie.eng.srt` - English subtitles (automatically recognized by media servers)
+- `Movie.spa.srt` - Spanish subtitles
+- `Movie.und.srt` - Neutral fallback when `LANGUAGE=multi` or auto-detect cannot map the detected language safely
 
 **If transcript generation is enabled (`ENABLE_TRANSCRIPT=1`):**
 
@@ -236,7 +238,7 @@ See `examples/video-list-example.txt` for a complete example.
 |----------|---------|-------------|
 | `DEEPGRAM_API_KEY` | (required) | Your Deepgram API key |
 | `MEDIA_PATH` | `/media` | Path to scan for videos (inside container) |
-| `FILE_LIST_PATH` | - | Path to text file with specific videos to process |
+| `FILE_LIST_PATH` | - | Path to text file with specific media files to process |
 | `LOG_PATH` | `/logs` | Directory for processing logs |
 | `BATCH_SIZE` | `0` | Max videos per run (0 = unlimited with FILE_LIST_PATH, otherwise defaults to 10) |
 | `LANGUAGE` | `en` | Language code (e.g., `en`, `es`, `fr`) |
@@ -271,8 +273,6 @@ See `examples/video-list-example.txt` for a complete example.
 | `DEFAULT_MODEL` | `nova-3` | Default transcription model |
 | `DEFAULT_LANGUAGE` | `en` | Default language |
 | `ALLOWED_EMAILS` | - | Comma-separated list of allowed email addresses for OAuth |
-| `BAZARR_BASE_URL` | - | Bazarr base URL (leave empty to disable integration) |
-| `BAZARR_API_KEY` | - | Bazarr API key |
 | `WORKER_CONCURRENCY` | `1` | Number of concurrent transcription jobs per worker |
 
 #### LLM API Keys (Optional)
@@ -1017,13 +1017,13 @@ if tag:
 
 - Web UI can be protected with OAuth authentication (configured at reverse proxy level)
 - Both web and worker containers require read-write media mounts (web writes keyterms to `Transcripts/Keyterms/`, worker writes subtitles and transcripts)
-- Only `.eng.srt` subtitle and transcript files are created (next to source media files)
+- Language-tagged `.srt` subtitle files are written next to source media files; transcript outputs are written under sibling `Transcripts/` folders
 - Email allowlist available for additional access control via `ALLOWED_EMAILS` environment variable
 - API key never exposed to browser (server-side only)
 
 ### File Permissions
 
-- CLI and workers need write access to create `.eng.srt` files
+- CLI and workers need write access to create language-tagged `.srt` files
 - Web UI needs read access to browse media
 - Use `PUID`/`PGID` on Linux to match your user
 - On macOS/Windows, Docker Desktop handles permissions automatically

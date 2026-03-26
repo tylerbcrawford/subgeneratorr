@@ -25,6 +25,87 @@ VIDEO_EXTS = {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.wmv', '.flv'}
 # Supported audio file extensions (Deepgram compatible)
 AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.ogg', '.opus', '.m4a', '.aac', '.wma'}
 
+# Neutral language tag used when the output language cannot be resolved safely
+NEUTRAL_SUBTITLE_LANG = "und"
+
+# Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
+# Regional variants are normalized to their base language for filename purposes.
+_SUBTITLE_LANG_MAP = {
+    "ar": "ara",
+    "bg": "bul",
+    "ca": "cat",
+    "cs": "cze",
+    "da": "dan",
+    "de": "ger",
+    "el": "gre",
+    "en": "eng",
+    "es": "spa",
+    "et": "est",
+    "fi": "fin",
+    "fr": "fre",
+    "hi": "hin",
+    "hu": "hun",
+    "id": "ind",
+    "it": "ita",
+    "ja": "jpn",
+    "ko": "kor",
+    "lt": "lit",
+    "lv": "lav",
+    "ms": "may",
+    "nl": "dut",
+    "no": "nor",
+    "pl": "pol",
+    "pt": "por",
+    "ro": "rum",
+    "ru": "rus",
+    "sk": "slo",
+    "sv": "swe",
+    "th": "tha",
+    "tr": "tur",
+    "uk": "ukr",
+    "vi": "vie",
+    "zh": "chi",
+}
+
+# ISO 639-1/BCP-47 request codes → stream tags to match during ffprobe selection.
+# Includes both /B and /T variants where they differ.
+_STREAM_LANG_MAP = {
+    "ar": {"ar", "ara"},
+    "bg": {"bg", "bul"},
+    "ca": {"ca", "cat"},
+    "cs": {"cs", "cze", "ces"},
+    "da": {"da", "dan"},
+    "de": {"de", "ger", "deu"},
+    "el": {"el", "gre", "ell"},
+    "en": {"en", "eng"},
+    "es": {"es", "spa"},
+    "et": {"et", "est"},
+    "fi": {"fi", "fin"},
+    "fr": {"fr", "fre", "fra"},
+    "hi": {"hi", "hin"},
+    "hu": {"hu", "hun"},
+    "id": {"id", "ind"},
+    "it": {"it", "ita"},
+    "ja": {"ja", "jpn"},
+    "ko": {"ko", "kor"},
+    "lt": {"lt", "lit"},
+    "lv": {"lv", "lav"},
+    "ms": {"ms", "may", "msa"},
+    "nl": {"nl", "dut", "nld"},
+    "no": {"no", "nor"},
+    "pl": {"pl", "pol"},
+    "pt": {"pt", "por"},
+    "ro": {"ro", "rum", "ron"},
+    "ru": {"ru", "rus"},
+    "sk": {"sk", "slo", "slk"},
+    "sv": {"sv", "swe"},
+    "th": {"th", "tha"},
+    "tr": {"tr", "tur"},
+    "uk": {"uk", "ukr"},
+    "vi": {"vi", "vie"},
+    "zh": {"zh", "chi", "zho"},
+}
+
 
 def is_video(p: Path) -> bool:
     """
@@ -63,6 +144,134 @@ def is_media(p: Path) -> bool:
         True if the file has a supported media extension
     """
     return is_video(p) or is_audio(p)
+
+
+def normalize_language_code(language: Optional[str]) -> Optional[str]:
+    """Normalize request/response language codes to lowercase BCP-47 style."""
+    if not language:
+        return None
+
+    normalized = str(language).strip().lower().replace("_", "-")
+    return normalized or None
+
+
+def get_detected_language(resp) -> Optional[str]:
+    """
+    Extract Deepgram's detected language code from a response object or dict.
+
+    For prerecorded requests with detect_language enabled, Deepgram returns the
+    dominant language at results.channels[*].detected_language.
+    """
+    if not resp:
+        return None
+
+    results = getattr(resp, "results", None)
+    if results is None and isinstance(resp, dict):
+        results = resp.get("results")
+
+    channels = getattr(results, "channels", None)
+    if channels is None and isinstance(results, dict):
+        channels = results.get("channels")
+
+    if not channels:
+        return None
+
+    for channel in channels:
+        detected = getattr(channel, "detected_language", None)
+        if detected is None and isinstance(channel, dict):
+            detected = channel.get("detected_language")
+        normalized = normalize_language_code(detected)
+        if normalized:
+            return normalized
+
+    return None
+
+
+def resolve_subtitle_language_tag(
+    requested_language: Optional[str] = None,
+    *,
+    detect_language: bool = False,
+    detected_language: Optional[str] = None,
+    resp=None,
+) -> str:
+    """
+    Resolve the subtitle filename language suffix.
+
+    Explicit language requests use the requested language. Auto-detect uses
+    Deepgram's detected_language field when available. Multilingual and unknown
+    languages fall back to the neutral `.und.srt` suffix instead of mislabeling
+    the output as English.
+    """
+    requested = normalize_language_code(requested_language)
+    detected = normalize_language_code(detected_language) or get_detected_language(resp)
+
+    if detect_language:
+        if detected:
+            candidate = detected
+        else:
+            return NEUTRAL_SUBTITLE_LANG
+    else:
+        candidate = requested
+
+    if not candidate or candidate == "multi":
+        return NEUTRAL_SUBTITLE_LANG
+
+    base = candidate.split("-", 1)[0]
+    return _SUBTITLE_LANG_MAP.get(candidate) or _SUBTITLE_LANG_MAP.get(base) or NEUTRAL_SUBTITLE_LANG
+
+
+def resolve_subtitle_path(
+    media_path: Path,
+    requested_language: Optional[str] = None,
+    *,
+    detect_language: bool = False,
+    detected_language: Optional[str] = None,
+    resp=None,
+) -> Path:
+    """Build the final sidecar subtitle path for a media file."""
+    lang = resolve_subtitle_language_tag(
+        requested_language,
+        detect_language=detect_language,
+        detected_language=detected_language,
+        resp=resp,
+    )
+    return media_path.with_name(f"{media_path.stem}.{lang}.srt")
+
+
+def resolve_synced_marker_path(
+    media_path: Path,
+    requested_language: Optional[str] = None,
+    *,
+    detect_language: bool = False,
+    detected_language: Optional[str] = None,
+    resp=None,
+) -> Path:
+    """Build the matching Subsyncarr marker path for a resolved subtitle file."""
+    return resolve_subtitle_path(
+        media_path,
+        requested_language,
+        detect_language=detect_language,
+        detected_language=detected_language,
+        resp=resp,
+    ).with_suffix(".synced")
+
+
+def get_audio_selection_language(
+    requested_language: Optional[str],
+    *,
+    detect_language: bool = False,
+) -> Optional[str]:
+    """
+    Return the language hint to use for audio-stream selection.
+
+    Auto-detect and multilingual requests should not pre-select a specific
+    stream; they need the default stream so language resolution can happen from
+    the actual transcription response.
+    """
+    normalized = normalize_language_code(requested_language)
+    if detect_language or not normalized or normalized == "multi":
+        return None
+    return normalized
 
 
 def has_sidecar_subtitle(stem: str, dir_filenames: set) -> bool:
@@ -139,32 +348,6 @@ def get_video_duration(video: Path) -> float:
         return 0.0
 
 
-# ISO 639-1 (Deepgram) → ISO 639-2/B (MKV tags) mapping
-# Includes both /B and /T variants where they differ
-_LANG_MAP = {
-    "en": ["eng"],
-    "es": ["spa"],
-    "fr": ["fra", "fre"],
-    "de": ["deu", "ger"],
-    "it": ["ita"],
-    "pt": ["por"],
-    "ja": ["jpn"],
-    "ko": ["kor"],
-    "zh": ["zho", "chi"],
-    "ru": ["rus"],
-    "ar": ["ara"],
-    "hi": ["hin"],
-    "nl": ["nld", "dut"],
-    "sv": ["swe"],
-    "pl": ["pol"],
-    "da": ["dan"],
-    "no": ["nor"],
-    "fi": ["fin"],
-    "tr": ["tur"],
-    "uk": ["ukr"],
-}
-
-
 def get_audio_stream_index(video: Path, language: str) -> Optional[int]:
     """
     Find the audio stream index matching a target language using ffprobe.
@@ -177,12 +360,13 @@ def get_audio_stream_index(video: Path, language: str) -> Optional[int]:
         Absolute stream index for the matching audio track, or None if
         no match found (caller should fall back to default behavior)
     """
-    if language == "multi":
+    normalized = normalize_language_code(language)
+    if not normalized or normalized == "multi":
         return None
 
-    target_codes = _LANG_MAP.get(language)
-    if not target_codes:
-        return None
+    base = normalized.split("-", 1)[0]
+    target_codes = set(_STREAM_LANG_MAP.get(base, {base}))
+    target_codes.add(normalized)
 
     try:
         cmd = [
@@ -409,20 +593,21 @@ def transcribe_file(buf: bytes, api_key: str, model: str, language: str,
     return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts)
 
 
-def write_srt(resp: dict, dest: Path, lang: str = "eng"):
+def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):
     """
     Generate and write SRT subtitle file from Deepgram response.
     
     Args:
         resp: Deepgram transcription response
         dest: Path where SRT file should be written
-        lang: Language code for subtitle file (default: "eng" for English)
+        lang: Optional language code to force into the filename
         
     Raises:
         Exception: If SRT generation or writing fails
     """
-    # Ensure the destination has the proper .lang.srt extension
-    if not dest.name.endswith(f".{lang}.srt"):
+    # Ensure the destination has the proper .lang.srt extension when a suffix
+    # is explicitly provided. Otherwise, trust the caller's resolved path.
+    if lang and not dest.name.endswith(f".{lang}.srt"):
         dest = dest.parent / f"{dest.stem}.{lang}.srt"
 
     # Guard against empty transcripts (e.g., music-only or silent files)

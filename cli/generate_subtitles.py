@@ -2,15 +2,15 @@
 """
 Subgeneratorr CLI
 
-Automatically generate SRT subtitle files for video content using Deepgram's AI-powered
-speech-to-text API. Extracts audio from videos, transcribes with Deepgram, and creates
+Automatically generate SRT subtitle files for media content using Deepgram's AI-powered
+speech-to-text API. Extracts audio from media files, transcribes with Deepgram, and creates
 properly formatted SRT subtitle files.
 
 Environment Variables:
     DEEPGRAM_API_KEY: Required - Your Deepgram API key
-    MEDIA_PATH: Path to scan for videos (default: /media)
-    FILE_LIST_PATH: Optional path to text file with video paths to process
-    BATCH_SIZE: Max videos per run, 0=unlimited with FILE_LIST_PATH, defaults to 10 for directory scans (default: 0)
+    MEDIA_PATH: Path to scan for media files (default: /media)
+    FILE_LIST_PATH: Optional path to text file with media paths to process
+    BATCH_SIZE: Max files per run, 0=unlimited with FILE_LIST_PATH, defaults to 10 for directory scans (default: 0)
     LANGUAGE: Language code for transcription (default: en)
 """
 
@@ -31,7 +31,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.transcribe import (
     get_transcripts_folder, get_json_folder, write_raw_json,
     load_keyterms_from_csv, save_keyterms_to_csv, find_speaker_map,
-    extract_audio as core_extract_audio
+    extract_audio as core_extract_audio,
+    get_audio_selection_language,
+    is_media,
+    resolve_subtitle_path,
+    resolve_synced_marker_path,
 )
 
 
@@ -63,16 +67,22 @@ class SubtitleGenerator:
     
     def extract_audio(self, video_path: str) -> Optional[Path]:
         """
-        Extract audio from video file using the core extract_audio function.
+        Extract audio from a media file using the core extract_audio function.
 
         Args:
-            video_path: Path to source video file
+            video_path: Path to source media file
 
         Returns:
             Path to extracted audio file, or None if extraction failed
         """
         try:
-            return core_extract_audio(Path(video_path), language=Config.LANGUAGE)
+            return core_extract_audio(
+                Path(video_path),
+                language=get_audio_selection_language(
+                    Config.LANGUAGE,
+                    detect_language=Config.DETECT_LANGUAGE,
+                ),
+            )
         except Exception as e:
             self.log(f"  ❌ Audio extraction error: {str(e)[:200]}")
             return None
@@ -210,8 +220,13 @@ class SubtitleGenerator:
             raise Exception(f"SRT generation error: {str(e)}")
     
     def process_video(self, video_path: Path) -> bool:
-        srt_path = video_path.with_suffix('.eng.srt')
+        srt_path = resolve_subtitle_path(
+            video_path,
+            Config.LANGUAGE,
+            detect_language=Config.DETECT_LANGUAGE,
+        )
         audio_path: Optional[Path] = None
+        response = None
         
         # Determine transcript path based on Transcripts folder structure
         if Config.ENABLE_TRANSCRIPT:
@@ -220,20 +235,24 @@ class SubtitleGenerator:
         else:
             transcript_path = video_path.with_suffix('.transcript.speakers.txt')
         
-        synced_marker_path = video_path.with_suffix('.eng.synced')
+        synced_marker_path = resolve_synced_marker_path(
+            video_path,
+            Config.LANGUAGE,
+            detect_language=Config.DETECT_LANGUAGE,
+        )
         
         # Skip logic depends on whether transcript generation is enabled and force regenerate flag
         if not Config.FORCE_REGENERATE:
             if Config.ENABLE_TRANSCRIPT:
                 # When transcript mode is enabled, skip only if BOTH exist
                 if srt_path.exists() and transcript_path.exists():
-                    self.log(f"⏭️  Skipping: {video_path.name} (SRT and transcript exist)")
+                    self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} and transcript exist)")
                     self.stats["skipped"] += 1
                     return False
             else:
                 # When transcript mode is disabled, skip if SRT exists
                 if srt_path.exists():
-                    self.log(f"⏭️  Skipping: {video_path.name} (SRT exists)")
+                    self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} exists)")
                     self.stats["skipped"] += 1
                     return False
         else:
@@ -258,8 +277,11 @@ class SubtitleGenerator:
             if not audio_path:
                 raise Exception("Audio extraction failed")
             
-            # Track if SRT already existed
+            # Track if the pre-transcription target already existed. In auto-detect
+            # mode this may be a neutral fallback path until Deepgram resolves the
+            # actual language.
             srt_already_existed = srt_path.exists()
+            srt_written = False
             
             # Generate SRT if it doesn't exist OR if force regenerate is enabled
             if not srt_already_existed or Config.FORCE_REGENERATE:
@@ -278,36 +300,61 @@ class SubtitleGenerator:
                 self.log("  💾 Generating SRT...")
                 srt_content = self.generate_srt(response)
                 
-                with open(srt_path, 'w', encoding='utf-8') as f:
-                    f.write(srt_content)
-                
-                # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
-                if synced_marker_path.exists():
-                    synced_marker_path.unlink()
-                    self.log(f"  🗑️  Removed Subsyncarr marker: {synced_marker_path.name}")
-                
-                self.log(f"  ✅ SRT {'regenerated' if srt_already_existed else 'created'}: {srt_path.name}")
-                self.stats["processed"] += 1
-                self.stats["total_minutes"] += duration
+                resolved_srt_path = resolve_subtitle_path(
+                    video_path,
+                    Config.LANGUAGE,
+                    detect_language=Config.DETECT_LANGUAGE,
+                    resp=response,
+                )
+                resolved_synced_marker_path = resolve_synced_marker_path(
+                    video_path,
+                    Config.LANGUAGE,
+                    detect_language=Config.DETECT_LANGUAGE,
+                    resp=response,
+                )
+
+                if resolved_srt_path.exists() and not Config.FORCE_REGENERATE:
+                    self.log(f"  ⏭️  SRT exists: {resolved_srt_path.name}")
+                    srt_path = resolved_srt_path
+                    synced_marker_path = resolved_synced_marker_path
+                    srt_already_existed = True
+                else:
+                    srt_path = resolved_srt_path
+                    synced_marker_path = resolved_synced_marker_path
+
+                    with open(srt_path, 'w', encoding='utf-8') as f:
+                        f.write(srt_content)
+
+                    # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
+                    if synced_marker_path.exists():
+                        synced_marker_path.unlink()
+                        self.log(f"  🗑️  Removed Subsyncarr marker: {synced_marker_path.name}")
+
+                    self.log(f"  ✅ SRT {'regenerated' if srt_already_existed else 'created'}: {srt_path.name}")
+                    self.stats["processed"] += 1
+                    self.stats["total_minutes"] += duration
+                    srt_written = True
+                    srt_already_existed = False
+
             else:
                 self.log(f"  ⏭️  SRT exists: {srt_path.name}")
-            
+
             # Generate transcript if enabled
             if Config.ENABLE_TRANSCRIPT:
                 self.log("  🗣️  Transcript feature enabled — generating diarized transcript...")
                 transcript_generated = self._generate_transcript(
                     video_path,
                     audio_path,
-                    response if not srt_already_existed or Config.FORCE_REGENERATE else None,
+                    response,
                     keyterms=keyterms
                 )
-                # Count as processed if we generated a transcript for an existing SRT
-                if transcript_generated and srt_already_existed:
+                # Count as processed if transcript generation was the only new output.
+                if transcript_generated and not srt_written:
                     self.stats["processed"] += 1
                     self.stats["total_minutes"] += duration
-            
+
             return True
-            
+
         except Exception as e:
             self.log(f"  ❌ Error: {str(e)}")
             self.stats["failed"] += 1
@@ -325,10 +372,10 @@ class SubtitleGenerator:
         keyterms: list = None,
     ) -> bool:
         """
-        Generate speaker-labeled transcript for a video.
+        Generate speaker-labeled transcript for a media file.
         
         Args:
-            video_path: Path to the video file
+            video_path: Path to the media file
             audio_path: Path to extracted audio file
             existing_response: Optional existing Deepgram response (reuse if provided)
             keyterms: Optional keyterms for transcription
@@ -388,9 +435,9 @@ class SubtitleGenerator:
             return False
     
     def read_video_list_from_file(self, file_path: str) -> List[Path]:
-        """Read video file paths from a text file (one path per line)"""
+        """Read media file paths from a text file (one path per line)."""
         self.log(f"📄 Reading file list from: {file_path}")
-        video_paths = []
+        media_paths = []
         
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -409,13 +456,17 @@ class SubtitleGenerator:
                         self.log(f"  ⚠️  Line {line_num}: File not found: {line}")
                         continue
                     
-                    # Check if it's a video file
-                    if video_path.suffix.lower() not in Config.VIDEO_EXTENSIONS:
-                        self.log(f"  ⚠️  Line {line_num}: Not a video file: {line}")
+                    # Check if it's a supported media file
+                    if not is_media(video_path):
+                        self.log(f"  ⚠️  Line {line_num}: Not a supported media file: {line}")
                         continue
                     
                     # Check if files already exist based on mode (unless force regenerate is enabled)
-                    srt_path = video_path.with_suffix('.eng.srt')
+                    srt_path = resolve_subtitle_path(
+                        video_path,
+                        Config.LANGUAGE,
+                        detect_language=Config.DETECT_LANGUAGE,
+                    )
                     
                     # Check for transcript in Transcripts folder if transcript mode is enabled
                     if Config.ENABLE_TRANSCRIPT:
@@ -428,20 +479,20 @@ class SubtitleGenerator:
                         if Config.ENABLE_TRANSCRIPT:
                             # When transcript mode is enabled, skip only if BOTH exist
                             if srt_path.exists() and transcript_path.exists():
-                                self.log(f"  ⏭️  Line {line_num}: SRT and transcript exist, skipping: {video_path.name}")
+                                self.log(f"  ⏭️  Line {line_num}: {srt_path.name} and transcript exist, skipping: {video_path.name}")
                                 self.stats["skipped"] += 1
                                 continue
                         else:
                             # When transcript mode is disabled, skip if SRT exists
                             if srt_path.exists():
-                                self.log(f"  ⏭️  Line {line_num}: SRT exists, skipping: {video_path.name}")
+                                self.log(f"  ⏭️  Line {line_num}: {srt_path.name} exists, skipping: {video_path.name}")
                                 self.stats["skipped"] += 1
                                 continue
                     
-                    video_paths.append(video_path)
+                    media_paths.append(video_path)
             
-            self.log(f"📊 Found {len(video_paths)} videos to process from file list")
-            return video_paths
+            self.log(f"📊 Found {len(media_paths)} media files to process from file list")
+            return media_paths
             
         except FileNotFoundError:
             self.log(f"❌ File list not found: {file_path}")
@@ -456,9 +507,13 @@ class SubtitleGenerator:
         
         for root, dirs, files in os.walk(Config.MEDIA_PATH):
             for file in files:
-                if Path(file).suffix.lower() in Config.VIDEO_EXTENSIONS:
+                if is_media(Path(file)):
                     video_path = Path(root) / file
-                    srt_path = video_path.with_suffix('.eng.srt')
+                    srt_path = resolve_subtitle_path(
+                        video_path,
+                        Config.LANGUAGE,
+                        detect_language=Config.DETECT_LANGUAGE,
+                    )
                     
                     # Check for transcript in Transcripts folder if transcript mode is enabled
                     if Config.ENABLE_TRANSCRIPT:
@@ -480,11 +535,11 @@ class SubtitleGenerator:
                             videos_needing_processing.append(video_path)
         
         if Config.FORCE_REGENERATE:
-            self.log(f"📊 Found {len(videos_needing_processing)} videos to force regenerate")
+            self.log(f"📊 Found {len(videos_needing_processing)} media files to force regenerate")
         elif Config.ENABLE_TRANSCRIPT:
-            self.log(f"📊 Found {len(videos_needing_processing)} videos needing processing")
+            self.log(f"📊 Found {len(videos_needing_processing)} media files needing processing")
         else:
-            self.log(f"📊 Found {len(videos_needing_processing)} videos without subtitles")
+            self.log(f"📊 Found {len(videos_needing_processing)} media files without subtitles")
         return videos_needing_processing
     
     def save_stats(self):

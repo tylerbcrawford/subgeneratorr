@@ -20,7 +20,7 @@ This runs the full pytest suite without needing Docker or API keys. The detailed
 - [`CLI_TEST_PLAN.md`](CLI_TEST_PLAN.md) - Detailed test plan with all test cases
 - [`TEST_FILES_REQUIREMENTS.md`](TEST_FILES_REQUIREMENTS.md) - Specifications for required test files
 - [`test_cli_comprehensive.py`](test_cli_comprehensive.py) - Automated test script
-- [`test_single_video.py`](test_single_video.py) - Simple single video test
+- [`test_single_video.py`](test_single_video.py) - Simple single-file media test
 
 ## Quick Start
 
@@ -66,7 +66,7 @@ The test script will:
 
 The comprehensive test suite covers:
 
-1. **Core Transcription** - Basic video transcription, audio extraction, SRT generation
+1. **Core Transcription** - Basic media transcription, audio extraction, SRT generation
 2. **File Discovery** - Directory scanning, file extension filtering, file list processing
 3. **Skip Logic** - Existing file detection, force regeneration
 4. **Transcript Generation** - Speaker diarization, speaker name mapping
@@ -128,7 +128,7 @@ Detailed Results:
   [PASSED] Setup Check
     └─ Environment validation
   [PASSED] Basic Video Transcription
-    └─ SRT file created and formatted correctly
+    └─ Language-tagged SRT file created and formatted correctly
   [PASSED] Skip Existing SRT
     └─ Existing files skipped correctly
   ... (more results)
@@ -179,7 +179,7 @@ After testing, clean up generated files:
 
 ```bash
 # Remove all generated SRT and transcript files
-find test_data -name "*.eng.srt" -delete
+find test_data -name "*.srt" -delete
 find test_data -name "*.transcript.speakers.txt" -delete
 find test_data -type d -name "Transcripts" -exec rm -rf {} +
 

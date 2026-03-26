@@ -8,7 +8,7 @@ let eventSource = null;
 let pollInterval = null;
 let pollCount = 0;
 let currentMaxPolls = 200; // Dynamic per-batch; default 200 polls × 3s = 10 minutes
-let onlyFoldersWithVideos = true; // Default to filtering empty folders
+let onlyFoldersWithVideos = false; // Default to fast, unfiltered browsing
 let isInitialLoad = true; // Flag to prevent clearing keyterms on initial page load
 let currentPathHasSubdirs = false; // True when current view has subdirectories (not a leaf file listing)
 let searchDebounceTimer = null; // Debounce timer for API-backed search
@@ -400,9 +400,9 @@ async function browseDirectories(path) {
             folderCount.textContent = `${data.directories.length} ${folderText}`;
         }
         
-        // Add video files with checkboxes
+        // Add media files with checkboxes
         if (data.files.length > 0) {
-            html += '<h3 class="section-header">Videos</h3>';
+            html += '<h3 class="section-header">Media</h3>';
             html += '<div class="browser-section">';
             data.files.forEach((file, index) => {
                 const isSelected = selectedFiles.includes(file.path);
@@ -430,8 +430,8 @@ async function browseDirectories(path) {
                             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                         </svg>
                     </div>
-                    <h3 class="empty-title">No videos found</h3>
-                    <p class="empty-message">This folder doesn't contain any video files</p>
+                    <h3 class="empty-title">No media found</h3>
+                    <p class="empty-message">This folder doesn't contain any supported media files</p>
                 </div>
             `;
         }
@@ -2069,6 +2069,31 @@ function startChunkMonitoring(batchId, fileCount) {
     checkChunkStatus(batchId);
 }
 
+function getTerminalBatchResults(data) {
+    return Array.isArray(data?.data?.results) ? data.data.results : [];
+}
+
+function summarizeBatchResults(results) {
+    return {
+        processed: results.filter(r => r.status === 'ok').length,
+        skipped: results.filter(r => r.status === 'skipped').length,
+        failed: results.filter(r => r.status === 'error').length,
+    };
+}
+
+function persistCompletedBatchResults(results) {
+    const completedPaths = results
+        .filter(r => r.status === 'ok' || r.status === 'skipped')
+        .map(r => r.video)
+        .filter(Boolean);
+
+    if (completedPaths.length > 0) {
+        addCompletedFiles(completedPaths);
+    }
+
+    return completedPaths;
+}
+
 async function checkChunkStatus(batchId) {
     try {
         pollCount++;
@@ -2100,21 +2125,17 @@ async function checkChunkStatus(batchId) {
             if (eventSource) eventSource.close();
 
             // Accumulate results
-            const results = data.data?.results || [];
+            const results = getTerminalBatchResults(data);
+            const summary = summarizeBatchResults(results);
+            const hasPartialSuccess = summary.processed + summary.skipped > 0;
             chunkResults.push({
                 chunkIndex: currentChunkIndex,
                 results: results,
                 state: data.state
             });
 
-            if (data.state === 'SUCCESS') {
-                // Mark processed files as completed in localStorage
-                const completedPaths = results
-                    .filter(r => r.status === 'ok' || r.status === 'skipped')
-                    .map(r => r.video)
-                    .filter(Boolean);
-                addCompletedFiles(completedPaths);
-
+            if (data.state === 'SUCCESS' || hasPartialSuccess) {
+                persistCompletedBatchResults(results);
                 // Update scan results view if visible
                 if (isLibraryScanView) {
                     const scanData = loadLibraryScanData();
@@ -2135,13 +2156,30 @@ async function checkChunkStatus(batchId) {
             }
 
             // If cancelled/revoked/failed, stop the whole queue
-            if (data.state === 'REVOKED' || data.state === 'FAILURE' || data.state === 'TIMEOUT') {
+            if (data.state === 'REVOKED' || data.state === 'TIMEOUT') {
                 showToast('info', data.state === 'REVOKED' ? 'Chunk cancelled' : `Chunk ${data.state.toLowerCase()}`);
                 stopChunkedBatch();
                 return;
             }
 
-            // Show the auto-pause prompt (SUCCESS only)
+            if (data.state === 'FAILURE' && !hasPartialSuccess) {
+                const failedChild = data.children?.find(c => c.error);
+                const errorMsg = failedChild?.error || 'Chunk failed';
+                updateUnifiedStatus(`Chunk failed: ${errorMsg}`, false);
+                showToast('error', errorMsg);
+                stopChunkedBatch();
+                return;
+            }
+
+            if (data.state === 'FAILURE') {
+                updateUnifiedStatus(
+                    `Chunk complete with errors: ${summary.processed} processed, ${summary.skipped} skipped, ${summary.failed} failed`,
+                    false
+                );
+                showToast('error', `Chunk complete with errors (${summary.failed} failed)`);
+            }
+
+            // Show the auto-pause prompt for successful and mixed-result chunks
             showChunkCompletePrompt(currentChunkIndex, data);
         }
 
@@ -2151,10 +2189,8 @@ async function checkChunkStatus(batchId) {
 }
 
 function showChunkCompletePrompt(chunkIndex, chunkData) {
-    const results = chunkData.data?.results || [];
-    const processed = results.filter(r => r.status === 'ok').length;
-    const skipped = results.filter(r => r.status === 'skipped').length;
-    const failed = results.filter(r => r.status === 'error').length;
+    const results = getTerminalBatchResults(chunkData);
+    const { processed, skipped, failed } = summarizeBatchResults(results);
 
     // Calculate cumulative totals
     let totalProcessed = 0, totalSkipped = 0, totalFailed = 0;
@@ -2196,12 +2232,13 @@ function showChunkCompletePrompt(chunkIndex, chunkData) {
     }
 
     const nextChunkSize = chunkState.queue[chunkIndex + 1]?.length || 0;
+    const dialogTitle = failed > 0 ? `Chunk ${chunkIndex + 1}/${totalChunkCount} Complete With Errors` : `Chunk ${chunkIndex + 1}/${totalChunkCount} Complete`;
 
     const overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
     overlay.innerHTML = `
         <div class="dialog-box">
-            <div class="dialog-title">Chunk ${chunkIndex + 1}/${totalChunkCount} Complete</div>
+            <div class="dialog-title">${dialogTitle}</div>
             <div class="dialog-message">
                 <div style="margin-bottom: var(--space-xs);">
                     This chunk: ${processed} processed, ${skipped} skipped, ${failed} failed
@@ -2446,19 +2483,14 @@ async function checkJobStatus(batchId) {
                 eventSource.close();
             }
             document.getElementById('submitBtn').disabled = false;
+            const results = getTerminalBatchResults(data);
+            const summary = summarizeBatchResults(results);
+            const hasPartialSuccess = summary.processed + summary.skipped > 0;
 
             if (data.state === 'SUCCESS') {
-                const results = data.data?.results || [];
-                const completedPaths = results
-                    .filter(r => r.status === 'ok' || r.status === 'skipped')
-                    .map(r => r.video)
-                    .filter(Boolean);
-                addCompletedFiles(completedPaths);
-                const successful = results.filter(r => r.status === 'ok').length;
-                const skipped = results.filter(r => r.status === 'skipped').length;
-                const failed = results.filter(r => r.status === 'error').length;
+                persistCompletedBatchResults(results);
 
-                updateUnifiedStatus(`Complete: ${successful} processed, ${skipped} skipped, ${failed} failed`, false);
+                updateUnifiedStatus(`Complete: ${summary.processed} processed, ${summary.skipped} skipped, ${summary.failed} failed`, false);
                 showToast('success', 'Batch complete');
                 announceToScreenReader('Batch processing completed');
 
@@ -2479,6 +2511,14 @@ async function checkJobStatus(batchId) {
                         browseDirectories(currentPath);
                     }
                 }, 10000);
+            } else if (data.state === 'FAILURE' && hasPartialSuccess) {
+                persistCompletedBatchResults(results);
+                updateUnifiedStatus(
+                    `Complete with errors: ${summary.processed} processed, ${summary.skipped} skipped, ${summary.failed} failed`,
+                    false
+                );
+                showToast('error', `Batch complete with errors (${summary.failed} failed)`);
+                announceToScreenReader('Batch processing completed with errors');
             } else if (data.state === 'FAILURE') {
                 // Extract actual error message from children if available
                 let errorMsg = 'Batch failed';
@@ -2621,7 +2661,13 @@ function updateJobDisplay(data) {
             submitBtn.textContent = 'Done!';
         }
     } else if (data.state === 'FAILURE') {
-        updateUnifiedStatus('Batch failed', false);
+        const results = getTerminalBatchResults(data);
+        const { processed, skipped } = summarizeBatchResults(results);
+        if (processed + skipped > 0) {
+            updateUnifiedStatus('Complete with errors', false);
+        } else {
+            updateUnifiedStatus('Batch failed', false);
+        }
         if (cancelBtn) cancelBtn.style.display = 'none';
         if (submitBtn) {
             submitBtn.classList.remove('processing');
@@ -3207,6 +3253,18 @@ async function pollLibraryScanStatus(taskId) {
         } else if (data.state === 'SUCCESS') {
             clearInterval(libraryScanPollInterval);
             displayLibraryScanResults(data);
+        } else if (data.state === 'CANCELLED') {
+            clearInterval(libraryScanPollInterval);
+            updateUnifiedStatus('Scan cancelled', false);
+            const cancelBtn = document.getElementById('cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+                cancelBtn.onclick = () => cancelJob();
+            }
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = false;
+            libraryScanTaskId = null;
+            browseDirectories(currentPath);
         } else if (data.state === 'FAILURE') {
             clearInterval(libraryScanPollInterval);
             updateUnifiedStatus('Scan failed: ' + (data.error || 'Unknown error'), false);

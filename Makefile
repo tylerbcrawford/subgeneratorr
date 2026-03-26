@@ -1,4 +1,4 @@
-.PHONY: help build cli web-up web-down web-logs web-restart clean test
+.PHONY: help build cli cli-batch web-up web-down web-logs web-restart clean test
 
 # Default target
 help:
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean          Remove all containers and volumes"
+	@echo "  make test           Run the local pytest suite"
 	@echo ""
 
 # Build Docker images
@@ -68,6 +69,4 @@ clean:
 	@echo "All containers and volumes removed"
 
 test:
-	python3 -m venv .venv
-	.venv/bin/pip install -r requirements-dev.txt -q
-	.venv/bin/pytest tests/ -v
+	./scripts/test.sh $(PYTEST_ARGS)

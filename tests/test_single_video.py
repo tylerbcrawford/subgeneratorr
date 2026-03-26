@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to process a single video file.
+Test script to process a single media file.
 
 Usage:
     python test_single_video.py /path/to/video.mp4
@@ -14,10 +14,13 @@ from pathlib import Path
 
 # Add CLI directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'cli'))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from config import Config
+from core.transcribe import resolve_subtitle_path
 from generate_subtitles import SubtitleGenerator
 
-# Default video path - update this to test with your video
+# Default media path - update this to test with your file
 VIDEO_PATH = "/media/tv/YourShow/Season 01/Episode01.mkv"
 
 def main():
@@ -35,11 +38,15 @@ def main():
     print()
     
     if not video_path.exists():
-        print(f"❌ Error: Video file not found!")
-        print(f"Please provide a valid video file path.")
+        print(f"❌ Error: Media file not found!")
+        print(f"Please provide a valid media file path.")
         sys.exit(1)
     
-    srt_path = video_path.with_suffix('.eng.srt')
+    srt_path = resolve_subtitle_path(
+        video_path,
+        Config.LANGUAGE,
+        detect_language=Config.DETECT_LANGUAGE,
+    )
     if srt_path.exists():
         print(f"⚠️  Warning: SRT file already exists at {srt_path}")
         print(f"Delete it first to regenerate, or test with a different video.")
@@ -57,7 +64,7 @@ def main():
         print("="*70)
         print("✅ TEST SUCCESSFUL")
         print("="*70)
-        print(f"Generated subtitle file: {video_path.with_suffix('.eng.srt')}")
+        print(f"Generated subtitle file: {srt_path}")
         print()
         gen.print_summary()
         gen.save_stats()

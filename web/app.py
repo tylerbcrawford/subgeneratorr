@@ -72,11 +72,53 @@ def _require_auth():
 
 
 _TASK_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+_TERMINAL_CHILD_STATES = {"SUCCESS", "FAILURE", "REVOKED"}
 
 
 def _validate_task_id(task_id):
     if not _TASK_ID_RE.match(task_id):
         abort(400, description='Invalid task ID format')
+
+
+def _extract_terminal_child_info(task_result):
+    """Normalize a finished child task into the payload shape the UI expects."""
+    child_info = {
+        "id": task_result.id,
+        "state": task_result.state,
+    }
+
+    if task_result.state == "SUCCESS":
+        result = task_result.get(propagate=False)
+        if isinstance(result, dict):
+            child_info["status"] = result.get("status", "ok")
+            child_info["filename"] = result.get("filename", "")
+            child_info["video"] = result.get("video", "")
+            if result.get("error"):
+                child_info["error"] = result["error"]
+    elif task_result.state == "FAILURE":
+        result = task_result.get(propagate=False)
+        child_info["status"] = "error"
+        child_info["error"] = str(result)
+    elif task_result.state == "REVOKED":
+        child_info["status"] = "error"
+        child_info["error"] = "Task cancelled"
+
+    return child_info
+
+
+def _build_terminal_results(children_info):
+    return {
+        "results": [
+            {
+                "status": child_info.get("status", "ok"),
+                "filename": child_info.get("filename", ""),
+                "video": child_info.get("video", ""),
+                "error": child_info.get("error", ""),
+            }
+            for child_info in children_info
+            if child_info.get("state") in _TERMINAL_CHILD_STATES
+        ]
+    }
 
 
 @app.get("/")
@@ -112,15 +154,15 @@ def api_config():
 @app.get("/api/browse")
 def api_browse():
     """
-    Browse directories and video files within MEDIA_ROOT.
+    Browse directories and media files within MEDIA_ROOT.
     
     Query Parameters:
         path: Subdirectory to list (default: MEDIA_ROOT)
-        show_all: Include videos with existing subtitles (default: false)
-        only_folders_with_videos: Filter out empty folders (default: true)
+        show_all: Include media files with existing subtitles (default: false)
+        only_folders_with_videos: Filter out folders with no direct media files (default: false)
         
     Returns:
-        JSON with list of subdirectories and video files
+        JSON with list of subdirectories and media files
         
     Security:
         - Path must be under MEDIA_ROOT
@@ -128,7 +170,7 @@ def api_browse():
     _require_auth()
     path = request.args.get("path", str(MEDIA_ROOT))
     show_all = request.args.get("show_all", "false").lower() == "true"
-    only_folders_with_videos = request.args.get("only_folders_with_videos", "true").lower() == "true"
+    only_folders_with_videos = request.args.get("only_folders_with_videos", "false").lower() == "true"
     path = Path(path).resolve()
     media_root_resolved = MEDIA_ROOT.resolve()
     
@@ -155,8 +197,8 @@ def api_browse():
 
         for item in dir_entries:
             if item.is_dir() and not item.name.startswith('.'):
-                # Count media files in this directory (recursive)
-                media_count = sum(1 for p in item.rglob("*") if p.is_file() and is_media(p))
+                # Keep browse cheap: count direct child media files only.
+                media_count = sum(1 for p in item.iterdir() if p.is_file() and is_media(p))
 
                 # Apply folder filter if enabled
                 if only_folders_with_videos and media_count == 0:
@@ -266,14 +308,14 @@ def api_search():
 @app.get("/api/scan")
 def api_scan():
     """
-    Scan a directory for videos.
+    Scan a directory for media files.
     
     Query Parameters:
         root: Directory path to scan (default: MEDIA_ROOT)
-        show_all: Include videos with existing subtitles (default: false)
+        show_all: Include media files with existing subtitles (default: false)
         
     Returns:
-        JSON with count and list of video files
+        JSON with count and list of media files
         
     Security:
         - Path must be under MEDIA_ROOT
@@ -521,6 +563,7 @@ def api_job(rid):
         children_info = []
         completed_count = 0
         failed_count = 0
+        revoked_count = 0
         started_count = 0
         pending_count = 0
 
@@ -539,25 +582,15 @@ def api_job(rid):
                         child_info['stage'] = child.info.get('stage', '')
                 elif child.state == 'SUCCESS':
                     completed_count += 1
-                    try:
-                        result = child.get(propagate=False)
-                        if isinstance(result, dict):
-                            child_info['filename'] = result.get('filename', '')
-                            child_info['status'] = result.get('status', '')
-                            child_info['video'] = result.get('video', '')
-                    except Exception as e:
-                        print(f"Error getting result for {child.id}: {e}")
+                    child_info = _extract_terminal_child_info(child)
                 elif child.state == 'STARTED':
                     started_count += 1
                 elif child.state == 'FAILURE':
                     failed_count += 1
-                    try:
-                        result = child.get(propagate=False)
-                        if isinstance(result, Exception):
-                            child_info['error'] = str(result)
-                            child_info['status'] = 'error'
-                    except Exception as e:
-                        print(f"Error getting failure info for {child.id}: {e}")
+                    child_info = _extract_terminal_child_info(child)
+                elif child.state == 'REVOKED':
+                    revoked_count += 1
+                    child_info = _extract_terminal_child_info(child)
                 elif child.state == 'PENDING':
                     pending_count += 1
 
@@ -570,12 +603,15 @@ def api_job(rid):
 
         # Determine overall state
         total = len(group_result.results)
+        terminal_count = completed_count + failed_count + revoked_count
 
         if total == 0:
             state = 'PENDING'
+        elif revoked_count == total:
+            state = 'REVOKED'
         elif completed_count == total:
             state = 'SUCCESS'
-        elif failed_count == total:
+        elif terminal_count == total and (failed_count > 0 or revoked_count > 0):
             state = 'FAILURE'
         elif started_count > 0 or completed_count > 0:
             state = 'STARTED'
@@ -589,20 +625,10 @@ def api_job(rid):
 
         print(f"Batch {rid}: {state} ({completed_count}/{total} done, {failed_count} failed)")
 
-        # Build results array for SUCCESS state
         # The frontend expects data.data.results with status='ok'|'skipped'|'error'
         results_data = None
-        if state == 'SUCCESS':
-            results_data = {
-                'results': [
-                    {
-                        'status': child_info.get('status', 'ok'),
-                        'filename': child_info.get('filename', ''),
-                        'video': child_info.get('video', '')
-                    }
-                    for child_info in children_info
-                ]
-            }
+        if state in ('SUCCESS', 'FAILURE', 'REVOKED'):
+            results_data = _build_terminal_results(children_info)
 
         response_data = {
             "state": state,
@@ -1163,8 +1189,17 @@ def api_library_scan_status(task_id):
                 'state': 'FAILURE',
                 'error': error_msg
             })
+        elif task.state == 'REVOKED':
+            return jsonify({'state': 'CANCELLED'})
         elif task.state == 'SUCCESS':
             result = task.info or {}
+            if isinstance(result, dict) and result.get('cancelled'):
+                return jsonify({
+                    'state': 'CANCELLED',
+                    'total_scanned': result.get('total_scanned', 0),
+                    'total_missing': result.get('total_missing', 0),
+                    'scan_time_seconds': result.get('scan_time_seconds', 0)
+                })
             return jsonify({
                 'state': 'SUCCESS',
                 **result

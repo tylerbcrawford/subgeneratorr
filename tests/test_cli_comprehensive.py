@@ -139,11 +139,10 @@ class CLITestRunner:
         self.log("Cleaning up test outputs...")
         
         patterns_to_remove = [
-            "*.eng.srt",
-            "*.spa.srt",
+            "*.srt",
             "*.transcript.speakers.txt",
             "*.deepgram.json",
-            "*.eng.synced"
+            "*.synced"
         ]
         
         for pattern in patterns_to_remove:

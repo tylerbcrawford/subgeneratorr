@@ -33,7 +33,7 @@ I looked around for options with free trials but most only gave a couple hours f
 - 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0057/min)
 - ⚡ **Smart Skipping** - Skip files that already have subtitles
 - 🔍 **Library-Wide Scan** - Find all files missing subtitles across your entire media library
-- 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby (`.eng.srt` format)
+- 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby with language-tagged sidecars (`.eng.srt`, `.spa.srt`, `.und.srt`, etc.)
 
 ---
 
@@ -97,6 +97,16 @@ docker compose run --profile cli --rm cli
 # Process specific show/season
 docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
 ```
+
+### Run Tests Locally
+
+For the local pytest suite, you do not need Docker, Redis, or API keys.
+
+```bash
+make test
+```
+
+This bootstraps a local `.venv`, installs `requirements-dev.txt`, and runs the tests in `tests/`. The heavier CLI integration checks described in `tests/README.md` still require Docker and a Deepgram API key.
 
 ---
 
@@ -174,7 +184,7 @@ Auto-detected when you enable transcript generation (`ENABLE_TRANSCRIPT=1`)
 
 When you have thousands of files across TV shows, movies, and audiobooks, you have no idea which ones actually need subtitles. Manually clicking through folders isn't realistic. This scans your entire library and tells you exactly what's missing.
 
-The scan uses a two-phase approach. Phase 1 checks for sidecar subtitle files (`.eng.srt` next to the video) — this is pure filename matching and finishes in seconds. Phase 2 uses ffprobe to detect embedded subtitle tracks inside video containers, running at ~50-100ms per file. You can skip Phase 2 for a quick scan if you only care about sidecar files.
+The scan uses a two-phase approach. Phase 1 checks for sidecar subtitle files next to the media file — this is pure filename matching and finishes in seconds. Phase 2 uses ffprobe to detect embedded subtitle tracks inside video containers, running at ~50-100ms per file. You can skip Phase 2 for a quick scan if you only care about sidecar files.
 
 Results come back grouped by directory, so you can see at a glance which shows or seasons need work. Select files directly from the results to send them to transcription, or export the full list as CSV. Results persist across page reloads, so you can start a scan, close your laptop, and come back to it later. For large selections, the Web UI auto-chunks files into 25-file batches with a cost summary between each so you stay in control.
 
@@ -235,12 +245,11 @@ Deepgram Nova-3 charges ~$0.0057 per minute of audio:
 
 ## Media Server Integration
 
-Generated `.eng.srt` files are automatically recognized by:
+Generated language-tagged `.srt` files are automatically recognized by:
 
-- **Plex** - Shows as "English (SRT External)"
+- **Plex** - Recognizes external subtitles using the resolved language tag
 - **Jellyfin** - Auto-detected with proper language tags
 - **Emby** - Supports ISO-639-2 language codes
-- **Bazarr** - Use as fallback when online subtitles unavailable
 
 After generation, refresh your media library to detect new subtitles.
 
@@ -279,15 +288,15 @@ You can work through it show by show over a few days, or batch everything at onc
 1. Create keyterms CSV with character names
 2. Create speaker map CSV
 3. Run with transcripts enabled: `docker compose run --profile cli --rm -e ENABLE_TRANSCRIPT=1 cli`
-4. Get both `.eng.srt` subtitles and `.transcript.speakers.txt` files
+4. Get language-tagged `.srt` subtitles beside the media file plus `.transcript.speakers.txt` output in the sibling `Transcripts/` folder
 
 ---
 
 ## Troubleshooting
 
-### Videos Being Skipped
+### Media Being Skipped
 
-Files are skipped if `.eng.srt` already exists. Use `FORCE_REGENERATE=1` to reprocess.
+Files are skipped if the resolved subtitle target already exists. English requests use `.eng.srt`, non-English requests use the matching language tag (for example `.spa.srt`), and `multi` or unresolved auto-detect requests fall back to `.und.srt`. Use `FORCE_REGENERATE=1` to reprocess.
 
 ### Permission Errors (Linux)
 

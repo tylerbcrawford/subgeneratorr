@@ -54,7 +54,7 @@ docker compose run --profile cli --rm \
 **Expected Results:**
 - Audio extracted successfully
 - Deepgram API called
-- `short_test.eng.srt` created
+- `short_test.eng.srt` created for the default English case
 - Cost logged correctly
 - Processing statistics saved
 
@@ -70,7 +70,7 @@ docker compose run --profile cli --rm \
 **Expected Results:**
 - Audio file detected and processed
 - No FFmpeg extraction needed
-- SRT file created for audio
+- Language-tagged SRT file created for audio
 
 #### Test 1.3: Video Duration Detection
 **Function:** `get_video_duration()`  
@@ -92,15 +92,15 @@ docker compose run --profile cli --rm \
   cli
 ```
 **Expected Results:**
-- All video files discovered
+- All supported media files discovered
 - Existing SRT files detected
-- Only files without SRT processed
+- Only files without matching subtitle sidecars processed
 
 #### Test 2.2: File Extension Filtering
-**Function:** Video extension detection  
+**Function:** Media extension detection  
 **Expected Results:**
-- `.mkv`, `.mp4`, `.avi`, `.mov` detected
-- Non-video files ignored
+- `.mkv`, `.mp4`, `.avi`, `.mov`, `.mp3`, `.wav`, `.flac`, `.m4a` detected
+- Non-media files ignored
 - Hidden files ignored
 
 #### Test 2.3: File List Processing
@@ -241,7 +241,7 @@ docker compose run --profile cli --rm \
 **Expected Results:**
 - Language set to "es"
 - Spanish transcription accurate
-- `.spa.srt` file created (if implemented)
+- `.spa.srt` file created
 
 ---
 
@@ -391,7 +391,7 @@ docker compose run --profile cli --rm \
 #### Test 11.1: SRT File Naming
 **Function:** Proper language tagging  
 **Expected Results:**
-- Files named `video.eng.srt`
+- Files named with the resolved language tag (`video.eng.srt`, `video.spa.srt`, `video.und.srt`, etc.)
 - Language code matches setting
 - Files placed next to source video
 

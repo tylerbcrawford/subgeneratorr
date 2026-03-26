@@ -3,7 +3,7 @@
 Celery tasks for background transcription processing.
 
 Handles asynchronous video transcription jobs using Celery workers.
-Supports batched processing with Bazarr integration for subtitle rescanning.
+Supports batched processing with per-file progress tracking.
 """
 
 import os
@@ -22,7 +22,8 @@ from core.transcribe import (
     is_video, is_media, extract_audio, transcribe_file, write_srt, get_transcripts_folder,
     get_json_folder, write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
     find_speaker_map, write_transcript, get_video_duration, write_intelligence_summary,
-    get_intelligence_folder, has_sidecar_subtitle, SUBTITLE_EXTS
+    get_intelligence_folder, get_audio_selection_language, has_sidecar_subtitle,
+    resolve_subtitle_path, resolve_synced_marker_path, SUBTITLE_EXTS
 )
 
 # Configuration from environment
@@ -123,9 +124,11 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
     vp = Path(video_path)
     if not DG_KEY:
         raise RuntimeError("DEEPGRAM_API_KEY not set — configure it in .env")
-    srt_out = vp.with_suffix(".eng.srt")
-    synced_marker = vp.with_suffix(".eng.synced")
-    
+    srt_out = resolve_subtitle_path(
+        vp,
+        language,
+        detect_language=detect_language,
+    )
     # Determine transcript path based on Transcripts folder structure
     if enable_transcript:
         transcripts_folder = get_transcripts_folder(vp)
@@ -168,7 +171,13 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
     try:
         # Extract audio
         self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'extracting_audio'})
-        audio_tmp = extract_audio(vp, language=language)
+        audio_tmp = extract_audio(
+            vp,
+            language=get_audio_selection_language(
+                language,
+                detect_language=detect_language,
+            ),
+        )
         
         # Transcribe with optional parameters
         self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'transcribing'})
@@ -203,12 +212,29 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         
         # Generate SRT
         self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'generating_srt'})
-        write_srt(resp, srt_out)
+        resolved_srt_out = resolve_subtitle_path(
+            vp,
+            language,
+            detect_language=detect_language,
+            resp=resp,
+        )
+        resolved_synced_marker = resolve_synced_marker_path(
+            vp,
+            language,
+            detect_language=detect_language,
+            resp=resp,
+        )
+        meta["srt"] = str(resolved_srt_out)
+
+        if resolved_srt_out.exists() and not force_regenerate:
+            return {"status": "skipped", **meta}
+
+        write_srt(resp, resolved_srt_out)
         
         # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
-        if synced_marker.exists():
-            synced_marker.unlink()
-            print(f"Removed Subsyncarr marker: {synced_marker}")
+        if resolved_synced_marker.exists():
+            resolved_synced_marker.unlink()
+            print(f"Removed Subsyncarr marker: {resolved_synced_marker}")
         
         # Save keyterms to CSV if enabled and keyterms were provided
         if auto_save_keyterms and keyterms:
@@ -286,10 +312,10 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
 @celery_app.task(name="batch_finalize")
 def batch_finalize(results):
     """
-    Finalize a batch of transcription jobs.
-    
-    Called automatically after all jobs in a batch complete via Celery chord.
-    Triggers Bazarr rescan if configured.
+    Legacy batch finalizer kept for deferred Bazarr rescan work.
+
+    The current release path uses plain Celery groups for progress tracking,
+    so this task is not attached automatically when a batch completes.
     
     Args:
         results: List of results from transcribe_task
@@ -531,9 +557,10 @@ def library_scan_task(self, skip_embedded=False):
             if (i + 1) % 50 == 0:
                 if _redis.exists(cancel_key):
                     _redis.delete(cancel_key)
+                    embedded_scanned = total - len(needs_embedded_check) + i + 1
                     return {
                         'missing_files': missing,
-                        'total_scanned': scanned,
+                        'total_scanned': embedded_scanned,
                         'total_missing': len(missing),
                         'scan_time_seconds': round(time.time() - start, 1),
                         'cancelled': True

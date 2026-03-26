@@ -38,6 +38,12 @@ def _install_app_dependency_stubs():
         redis_module = types.ModuleType("redis")
 
         class DummyRedis:
+            def get(self, *args, **kwargs):
+                return None
+
+            def set(self, *args, **kwargs):
+                return True
+
             def setex(self, *args, **kwargs):
                 return True
 
@@ -127,3 +133,109 @@ def test_scan_status_valid_uuid_pending():
     mock_async_result.assert_called_once_with(
         "123e4567-e89b-12d3-a456-426614174000"
     )
+
+
+def test_scan_status_maps_cancelled_payload_to_cancelled_state():
+    task_result = SimpleNamespace(
+        state="SUCCESS",
+        info={
+            "cancelled": True,
+            "total_scanned": 42,
+            "total_missing": 7,
+            "scan_time_seconds": 3.2,
+        },
+    )
+
+    with app.test_client() as client, patch.object(
+        app_module.celery_app, "AsyncResult", return_value=task_result
+    ):
+        response = client.get(
+            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "state": "CANCELLED",
+        "total_scanned": 42,
+        "total_missing": 7,
+        "scan_time_seconds": 3.2,
+    }
+
+
+def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
+    class FakeChild:
+        def __init__(self, task_id, state, result=None, info=None):
+            self.id = task_id
+            self.state = state
+            self._result = result
+            self.info = info
+
+        def get(self, propagate=False):
+            return self._result
+
+    mixed_group = SimpleNamespace(results=[
+        FakeChild(
+            "child-success",
+            "SUCCESS",
+            {
+                "status": "ok",
+                "filename": "episode1.mkv",
+                "video": "/media/Show/episode1.mkv",
+            },
+        ),
+        FakeChild(
+            "child-failure",
+            "FAILURE",
+            RuntimeError("Deepgram request failed"),
+        ),
+    ])
+
+    celery_result_module = types.ModuleType("celery.result")
+
+    class FakeGroupResult:
+        @staticmethod
+        def restore(task_id, app=None):
+            return mixed_group
+
+    celery_result_module.GroupResult = FakeGroupResult
+    celery_module = types.ModuleType("celery")
+    celery_module.result = celery_result_module
+
+    with app.test_client() as client, \
+        patch.dict(sys.modules, {"celery": celery_module, "celery.result": celery_result_module}), \
+        patch.object(app_module, "_redis", SimpleNamespace(get=lambda *_: None)):
+        response = client.get("/api/job/mixed-batch-id")
+
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["state"] == "FAILURE"
+    assert payload["data"]["results"] == [
+        {
+            "status": "ok",
+            "filename": "episode1.mkv",
+            "video": "/media/Show/episode1.mkv",
+            "error": "",
+        },
+        {
+            "status": "error",
+            "filename": "",
+            "video": "",
+            "error": "Deepgram request failed",
+        },
+    ]
+    assert payload["children"] == [
+        {
+            "id": "child-success",
+            "state": "SUCCESS",
+            "status": "ok",
+            "filename": "episode1.mkv",
+            "video": "/media/Show/episode1.mkv",
+        },
+        {
+            "id": "child-failure",
+            "state": "FAILURE",
+            "status": "error",
+            "error": "Deepgram request failed",
+        },
+    ]
