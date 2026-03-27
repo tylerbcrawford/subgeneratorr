@@ -153,3 +153,15 @@ def test_transcribe_task_keeps_generating_transcript_when_resolved_subtitle_exis
     assert result["status"] == "ok"
     assert transcript_path.exists()
     write_srt.assert_not_called()
+
+
+def test_save_job_log_does_not_raise_when_log_root_is_unwritable(monkeypatch, tmp_path, capsys):
+    blocked_path = tmp_path / "logs"
+    blocked_path.write_text("not a directory", encoding="utf-8")
+
+    monkeypatch.setattr(tasks_module, "LOG_ROOT", blocked_path)
+
+    tasks_module._save_job_log({"status": "ok"})
+
+    captured = capsys.readouterr()
+    assert "Failed to write job log" in captured.err

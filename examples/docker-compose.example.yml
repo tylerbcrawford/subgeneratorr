@@ -16,7 +16,6 @@ services:
   # ==========================================================================
   redis:
     image: redis:7-alpine
-    container_name: subgeneratorr-redis
     restart: unless-stopped
     deploy:
       resources:
@@ -38,7 +37,6 @@ services:
       dockerfile: web/Dockerfile
     # Pre-built image (uncomment to skip building):
     # image: ghcr.io/tylerbcrawford/subgeneratorr-web:latest
-    container_name: subgeneratorr-web
     environment:
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
@@ -83,7 +81,6 @@ services:
       dockerfile: web/Dockerfile
     # Pre-built image (uncomment to skip building):
     # image: ghcr.io/tylerbcrawford/subgeneratorr-worker:latest
-    container_name: subgeneratorr-worker
     command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=${WORKER_CONCURRENCY:-1}
     environment:
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
@@ -121,7 +118,6 @@ services:
       dockerfile: cli/Dockerfile
     # Pre-built image (uncomment to skip building):
     # image: ghcr.io/tylerbcrawford/subgeneratorr-cli:latest
-    container_name: subgeneratorr-cli
     profiles:
       - cli
     environment:

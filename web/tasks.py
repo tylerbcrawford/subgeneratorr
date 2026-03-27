@@ -58,10 +58,13 @@ def _save_job_log(payload: dict):
     Args:
         payload: Job result data to log
     """
-    LOG_ROOT.mkdir(parents=True, exist_ok=True)
-    timestamp = int(time.time() * 1000)
-    log_file = LOG_ROOT / f"job_{timestamp}.json"
-    log_file.write_text(json.dumps(payload, indent=2))
+    try:
+        LOG_ROOT.mkdir(parents=True, exist_ok=True)
+        timestamp = int(time.time() * 1000)
+        log_file = LOG_ROOT / f"job_{timestamp}.json"
+        log_file.write_text(json.dumps(payload, indent=2))
+    except Exception as exc:
+        print(f"Warning: Failed to write job log to {LOG_ROOT}: {exc}", file=sys.stderr)
 
 
 @celery_app.task(bind=True, name="transcribe_task")
