@@ -111,6 +111,8 @@ subgeneratorr/
 
 Subgeneratorr generates subtitle files with proper ISO-639-2 language tags (for example `.eng.srt` or `.spa.srt`) to ensure automatic recognition by Plex, Jellyfin, and other media servers. If a language cannot be resolved safely, Subgeneratorr falls back to `.und.srt` rather than mislabeling the subtitle as English.
 
+Skip decisions use the same shared output inspection path in both the CLI and Celery worker. That means auto-detect preflight recognizes existing same-stem language-tagged sidecars before transcription starts, and transcript-enabled reruns only skip fully when both the resolved subtitle output and transcript already exist.
+
 ### Generated Files
 
 **For a video file `Movie.mkv`:**

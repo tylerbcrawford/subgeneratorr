@@ -76,6 +76,10 @@ The comprehensive test suite covers:
 8. **Error Handling** - Silent videos, invalid files, API errors
 9. **Statistics** - JSON log generation, cost tracking
 
+Recent regression coverage in the unit suite also locks down two release-critical cases:
+- auto-detect discovery must skip files that already have a resolved language-tagged sidecar like `.spa.srt`
+- transcript-enabled worker runs must still create the transcript when the resolved subtitle already exists
+
 ## Expected Results
 
 - **Total Tests:** ~11-15 depending on available test files

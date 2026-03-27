@@ -267,7 +267,8 @@ methylamine
 2. Model analyzes audio and returns:
    - `detected_language`: Language code (e.g., "en", "es", "ja")
    - `language_confidence`: Score from 0-1 (higher = more confident)
-3. Subgeneratorr writes the subtitle using the matching language tag when that code can be mapped safely (for example `.spa.srt`). If the request is `multi` or the detected language is unavailable or ambiguous for filename tagging, it falls back to `.und.srt`.
+3. Before transcription starts, Subgeneratorr treats any existing same-stem language-tagged sidecar (for example `Episode.spa.srt`) as already satisfying subtitle output for auto-detect runs.
+4. If a new transcription is needed, Subgeneratorr writes the subtitle using the matching language tag when that code can be mapped safely (for example `.spa.srt`). If the request is `multi` or the detected language is unavailable or ambiguous for filename tagging, it falls back to `.und.srt`.
 
 ### Supported Languages (35 Total)
 All major Nova-3 languages except some regional variants:

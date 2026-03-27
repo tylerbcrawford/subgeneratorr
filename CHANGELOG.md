@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Resume scan state for single-batch runs** — files processed in batches of ≤ 25 were not being marked complete in saved scan state; now correctly calls `addCompletedFiles()` to match chunked-batch behavior
 - **Language-aware subtitle naming** — CLI and Celery worker no longer hardcode `.eng.srt`; explicit language requests map to the correct media-server tag, auto-detect uses Deepgram's detected language, and `multi` or unmappable cases fall back to `.und.srt`
+- **Auto-detect skip + transcript resume logic** — shared output inspection now recognizes existing language-tagged sidecars during CLI and worker preflight, and transcript-enabled worker runs no longer return early `skipped` after a resolved subtitle collision
 - **CLI audio discovery parity** — file-list and directory-scan modes now accept supported audio inputs through shared media detection instead of a CLI-only video extension list
 - **Browse performance default** — `/api/browse` no longer recursively counts every visible subtree on load; normal navigation now uses direct-child counts and keeps the "folders with media" filter opt-in
 - `test_keyterms_consistency.py` import now succeeds without `deepgram` package installed (added dependency stubs matching the pattern in `test_check_subtitles.py`)

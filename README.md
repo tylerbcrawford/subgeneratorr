@@ -31,7 +31,7 @@ I looked around for options with free trials but most only gave a couple hours f
 - 🐳 **Docker-Based** - Easy deployment with CLI and optional Web UI
 - 📁 **Flexible Processing** - Batch process directories, specific files, or from lists
 - 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0057/min)
-- ⚡ **Smart Skipping** - Skip files that already have subtitles
+- ⚡ **Smart Skipping** - Skip only when the requested outputs already exist, including auto-detect language-tagged sidecars and transcript-aware reruns
 - 🔍 **Library-Wide Scan** - Find all files missing subtitles across your entire media library
 - 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby with language-tagged sidecars (`.eng.srt`, `.spa.srt`, `.und.srt`, etc.)
 
@@ -296,7 +296,9 @@ You can work through it show by show over a few days, or batch everything at onc
 
 ### Media Being Skipped
 
-Files are skipped if the resolved subtitle target already exists. English requests use `.eng.srt`, non-English requests use the matching language tag (for example `.spa.srt`), and `multi` or unresolved auto-detect requests fall back to `.und.srt`. Use `FORCE_REGENERATE=1` to reprocess.
+Files are skipped only when all requested outputs already exist. English requests use `.eng.srt`, non-English requests use the matching language tag (for example `.spa.srt`), and `multi` or unresolved auto-detect requests fall back to `.und.srt`.
+
+In auto-detect mode, Subgeneratorr also treats an existing same-stem language-tagged sidecar like `Episode.spa.srt` as already satisfied before it starts a new Deepgram request. If subtitles already exist but the transcript is still missing, transcript-enabled runs continue and create the transcript instead of returning an early `skipped` result. Use `FORCE_REGENERATE=1` to overwrite existing outputs.
 
 ### Permission Errors (Linux)
 

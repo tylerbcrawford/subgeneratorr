@@ -256,6 +256,107 @@ def resolve_synced_marker_path(
     ).with_suffix(".synced")
 
 
+def find_existing_sidecar_subtitle(
+    media_path: Path,
+    dir_filenames: Optional[set] = None,
+) -> Optional[Path]:
+    """
+    Return an existing same-stem sidecar subtitle path, if any.
+
+    Used by auto-detect preflight checks where the final language-tagged output
+    path is not known yet.
+    """
+    stem = media_path.stem
+
+    if dir_filenames is None:
+        dir_filenames = {
+            p.name for p in media_path.parent.iterdir()
+            if p.is_file()
+        }
+
+    for name in sorted(dir_filenames):
+        if not name.startswith(stem):
+            continue
+        remainder = name[len(stem):]
+        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
+            return media_path.with_name(name)
+
+    return None
+
+
+def _resolve_transcripts_folder_path(video_path: Path) -> Path:
+    """Resolve the Transcripts folder path without touching the filesystem."""
+    video_parent = video_path.parent
+    path_str = str(video_path).lower()
+    parent_name_lower = video_parent.name.lower()
+
+    if 'season' in path_str or parent_name_lower.startswith('season') or parent_name_lower == 'specials':
+        return video_parent.parent / "Transcripts"
+
+    return video_parent / "Transcripts"
+
+
+def resolve_transcript_path(video_path: Path) -> Path:
+    """Build the transcript path for a media file without creating directories."""
+    transcripts_folder = _resolve_transcripts_folder_path(video_path)
+    return transcripts_folder / f"{video_path.stem}.transcript.speakers.txt"
+
+
+def inspect_requested_outputs(
+    media_path: Path,
+    requested_language: Optional[str] = None,
+    *,
+    detect_language: bool = False,
+    enable_transcript: bool = False,
+    force_regenerate: bool = False,
+    dir_filenames: Optional[set] = None,
+    detected_language: Optional[str] = None,
+    resp=None,
+) -> dict:
+    """
+    Inspect which requested outputs already exist for a media file.
+
+    Auto-detect preflight treats any same-stem sidecar subtitle as satisfying
+    subtitle output, because the final resolved language tag is not known until
+    Deepgram returns.
+    """
+    transcript_path = resolve_transcript_path(media_path) if enable_transcript else None
+
+    existing_sidecar = None
+    if detect_language and not resp and not detected_language:
+        existing_sidecar = find_existing_sidecar_subtitle(
+            media_path,
+            dir_filenames=dir_filenames,
+        )
+
+    if existing_sidecar:
+        subtitle_path = existing_sidecar
+        subtitle_exists = True
+    else:
+        subtitle_path = resolve_subtitle_path(
+            media_path,
+            requested_language,
+            detect_language=detect_language,
+            detected_language=detected_language,
+            resp=resp,
+        )
+        subtitle_exists = subtitle_path.exists()
+
+    transcript_exists = transcript_path.exists() if transcript_path else False
+    needs_subtitle = force_regenerate or not subtitle_exists
+    needs_transcript = bool(enable_transcript and (force_regenerate or not transcript_exists))
+
+    return {
+        "subtitle_path": subtitle_path,
+        "subtitle_exists": subtitle_exists,
+        "transcript_path": transcript_path,
+        "transcript_exists": transcript_exists,
+        "needs_subtitle": needs_subtitle,
+        "needs_transcript": needs_transcript,
+        "should_skip": not needs_subtitle and not needs_transcript,
+    }
+
+
 def get_audio_selection_language(
     requested_language: Optional[str],
     *,
@@ -276,13 +377,7 @@ def get_audio_selection_language(
 
 def has_sidecar_subtitle(stem: str, dir_filenames: set) -> bool:
     """Check if sidecar subtitle files exist for a given media file stem."""
-    for name in dir_filenames:
-        if not name.startswith(stem):
-            continue
-        remainder = name[len(stem):]
-        if remainder.startswith('.') and any(remainder.endswith(ext) for ext in SUBTITLE_EXTS):
-            return True
-    return False
+    return find_existing_sidecar_subtitle(Path(stem), dir_filenames=dir_filenames) is not None
 
 
 def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
@@ -641,26 +736,9 @@ def get_transcripts_folder(video_path: Path) -> Path:
     Returns:
         Path to the Transcripts folder (created if doesn't exist)
     """
-    # Get the parent directory of the video file
-    video_parent = video_path.parent
-    
-    # Try to detect if this is a TV show (has "Season" or "Specials" in path) or movie
+    transcripts_folder = _resolve_transcripts_folder_path(video_path)
     path_str = str(video_path).lower()
-    parent_name_lower = video_parent.name.lower()
-    
-    # For TV shows, Transcripts folder should be at the show level (one level up from season/specials)
-    # Path pattern: /media/tv/Show Name/Season 01/episode.mkv
-    # Path pattern: /media/tv/Show Name/Specials/episode.mkv
-    # Transcripts: /media/tv/Show Name/Transcripts/ (alongside Season/Specials folders)
-    if 'season' in path_str or parent_name_lower.startswith('season') or parent_name_lower == 'specials':
-        # Go up one more level to get to the show folder
-        show_folder = video_parent.parent
-        transcripts_folder = show_folder / "Transcripts"
-    else:
-        # For movies, Transcripts folder at the movie directory level
-        # Path pattern: /media/movies/Movie (2024)/movie.mkv
-        # Transcripts: /media/movies/Movie (2024)/Transcripts/
-        transcripts_folder = video_parent / "Transcripts"
+    parent_name_lower = video_path.parent.name.lower()
     
     # Create folder if it doesn't exist with proper permissions
     transcripts_folder.mkdir(parents=True, exist_ok=True)

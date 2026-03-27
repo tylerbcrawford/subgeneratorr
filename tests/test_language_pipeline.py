@@ -124,6 +124,26 @@ def test_read_video_list_accepts_audio_files(monkeypatch, tmp_path):
     assert results == [audio_file, video_file]
 
 
+def test_read_video_list_skips_existing_language_tagged_sidecar_in_auto_detect(monkeypatch, tmp_path):
+    media_file = tmp_path / "episode.mkv"
+    media_file.write_text("video")
+    (tmp_path / "episode.spa.srt").write_text("subtitle")
+
+    file_list = tmp_path / "files.txt"
+    file_list.write_text(f"{media_file}\n")
+
+    monkeypatch.setattr(Config, "LANGUAGE", "en")
+    monkeypatch.setattr(Config, "DETECT_LANGUAGE", True)
+    monkeypatch.setattr(Config, "ENABLE_TRANSCRIPT", False)
+    monkeypatch.setattr(Config, "FORCE_REGENERATE", False)
+
+    generator = _make_generator()
+    results = generator.read_video_list_from_file(str(file_list))
+
+    assert results == []
+    assert generator.stats["skipped"] == 1
+
+
 def test_directory_scan_uses_resolved_language_tag_for_audio(monkeypatch, tmp_path):
     audio_file = tmp_path / "album" / "track.m4a"
     audio_file.parent.mkdir(parents=True)
@@ -146,11 +166,11 @@ def test_directory_scan_uses_resolved_language_tag_for_audio(monkeypatch, tmp_pa
     assert results == [video_file]
 
 
-def test_directory_scan_uses_neutral_tag_for_detect_language(monkeypatch, tmp_path):
+def test_directory_scan_skips_language_tagged_sidecar_in_auto_detect(monkeypatch, tmp_path):
     media_file = tmp_path / "podcasts" / "episode.mp3"
     media_file.parent.mkdir(parents=True)
     media_file.write_text("audio")
-    (media_file.parent / "episode.und.srt").write_text("subtitle")
+    (media_file.parent / "episode.spa.srt").write_text("subtitle")
 
     monkeypatch.setattr(Config, "MEDIA_PATH", str(tmp_path))
     monkeypatch.setattr(Config, "LANGUAGE", "en")

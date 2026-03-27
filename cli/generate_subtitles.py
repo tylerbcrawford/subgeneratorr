@@ -33,8 +33,8 @@ from core.transcribe import (
     load_keyterms_from_csv, save_keyterms_to_csv, find_speaker_map,
     extract_audio as core_extract_audio,
     get_audio_selection_language,
+    inspect_requested_outputs,
     is_media,
-    resolve_subtitle_path,
     resolve_synced_marker_path,
 )
 
@@ -220,44 +220,34 @@ class SubtitleGenerator:
             raise Exception(f"SRT generation error: {str(e)}")
     
     def process_video(self, video_path: Path) -> bool:
-        srt_path = resolve_subtitle_path(
+        output_state = inspect_requested_outputs(
             video_path,
             Config.LANGUAGE,
             detect_language=Config.DETECT_LANGUAGE,
+            enable_transcript=Config.ENABLE_TRANSCRIPT,
+            force_regenerate=Config.FORCE_REGENERATE,
         )
+        srt_path = output_state["subtitle_path"]
         audio_path: Optional[Path] = None
         response = None
-        
-        # Determine transcript path based on Transcripts folder structure
-        if Config.ENABLE_TRANSCRIPT:
-            transcripts_folder = get_transcripts_folder(video_path)
-            transcript_path = transcripts_folder / f"{video_path.stem}.transcript.speakers.txt"
-        else:
-            transcript_path = video_path.with_suffix('.transcript.speakers.txt')
+        transcript_path = output_state["transcript_path"]
         
         synced_marker_path = resolve_synced_marker_path(
             video_path,
             Config.LANGUAGE,
             detect_language=Config.DETECT_LANGUAGE,
         )
-        
-        # Skip logic depends on whether transcript generation is enabled and force regenerate flag
-        if not Config.FORCE_REGENERATE:
+
+        if output_state["should_skip"]:
             if Config.ENABLE_TRANSCRIPT:
-                # When transcript mode is enabled, skip only if BOTH exist
-                if srt_path.exists() and transcript_path.exists():
-                    self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} and transcript exist)")
-                    self.stats["skipped"] += 1
-                    return False
+                self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} and transcript exist)")
             else:
-                # When transcript mode is disabled, skip if SRT exists
-                if srt_path.exists():
-                    self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} exists)")
-                    self.stats["skipped"] += 1
-                    return False
-        else:
+                self.log(f"⏭️  Skipping: {video_path.name} ({srt_path.name} exists)")
+            self.stats["skipped"] += 1
+            return False
+        elif Config.FORCE_REGENERATE:
             # Force regenerate mode - always process
-            if srt_path.exists() or transcript_path.exists():
+            if output_state["subtitle_exists"] or output_state["transcript_exists"]:
                 self.log(f"🔄 Force regenerating: {video_path.name}")
         
         self.log(f"🎬 Processing: {video_path.name}")
@@ -277,14 +267,11 @@ class SubtitleGenerator:
             if not audio_path:
                 raise Exception("Audio extraction failed")
             
-            # Track if the pre-transcription target already existed. In auto-detect
-            # mode this may be a neutral fallback path until Deepgram resolves the
-            # actual language.
-            srt_already_existed = srt_path.exists()
+            srt_already_existed = output_state["subtitle_exists"]
             srt_written = False
             
             # Generate SRT if it doesn't exist OR if force regenerate is enabled
-            if not srt_already_existed or Config.FORCE_REGENERATE:
+            if output_state["needs_subtitle"] or output_state["needs_transcript"]:
                 self.log(f"  🧠 Transcribing (nova-3)...")
                 response = self.transcribe_audio(
                     str(audio_path),
@@ -300,12 +287,15 @@ class SubtitleGenerator:
                 self.log("  💾 Generating SRT...")
                 srt_content = self.generate_srt(response)
                 
-                resolved_srt_path = resolve_subtitle_path(
+                post_response_state = inspect_requested_outputs(
                     video_path,
                     Config.LANGUAGE,
                     detect_language=Config.DETECT_LANGUAGE,
+                    enable_transcript=Config.ENABLE_TRANSCRIPT,
+                    force_regenerate=Config.FORCE_REGENERATE,
                     resp=response,
                 )
+                resolved_srt_path = post_response_state["subtitle_path"]
                 resolved_synced_marker_path = resolve_synced_marker_path(
                     video_path,
                     Config.LANGUAGE,
@@ -313,7 +303,7 @@ class SubtitleGenerator:
                     resp=response,
                 )
 
-                if resolved_srt_path.exists() and not Config.FORCE_REGENERATE:
+                if not post_response_state["needs_subtitle"]:
                     self.log(f"  ⏭️  SRT exists: {resolved_srt_path.name}")
                     srt_path = resolved_srt_path
                     synced_marker_path = resolved_synced_marker_path
@@ -339,8 +329,8 @@ class SubtitleGenerator:
             else:
                 self.log(f"  ⏭️  SRT exists: {srt_path.name}")
 
-            # Generate transcript if enabled
-            if Config.ENABLE_TRANSCRIPT:
+            # Generate transcript if enabled and still missing (or forced)
+            if Config.ENABLE_TRANSCRIPT and (Config.FORCE_REGENERATE or not transcript_path.exists()):
                 self.log("  🗣️  Transcript feature enabled — generating diarized transcript...")
                 transcript_generated = self._generate_transcript(
                     video_path,
@@ -461,33 +451,22 @@ class SubtitleGenerator:
                         self.log(f"  ⚠️  Line {line_num}: Not a supported media file: {line}")
                         continue
                     
-                    # Check if files already exist based on mode (unless force regenerate is enabled)
-                    srt_path = resolve_subtitle_path(
+                    output_state = inspect_requested_outputs(
                         video_path,
                         Config.LANGUAGE,
                         detect_language=Config.DETECT_LANGUAGE,
+                        enable_transcript=Config.ENABLE_TRANSCRIPT,
+                        force_regenerate=Config.FORCE_REGENERATE,
                     )
-                    
-                    # Check for transcript in Transcripts folder if transcript mode is enabled
-                    if Config.ENABLE_TRANSCRIPT:
-                        transcripts_folder = get_transcripts_folder(video_path)
-                        transcript_path = transcripts_folder / f"{video_path.stem}.transcript.speakers.txt"
-                    else:
-                        transcript_path = video_path.with_suffix('.transcript.speakers.txt')
-                    
-                    if not Config.FORCE_REGENERATE:
+
+                    if output_state["should_skip"]:
+                        srt_path = output_state["subtitle_path"]
                         if Config.ENABLE_TRANSCRIPT:
-                            # When transcript mode is enabled, skip only if BOTH exist
-                            if srt_path.exists() and transcript_path.exists():
-                                self.log(f"  ⏭️  Line {line_num}: {srt_path.name} and transcript exist, skipping: {video_path.name}")
-                                self.stats["skipped"] += 1
-                                continue
+                            self.log(f"  ⏭️  Line {line_num}: {srt_path.name} and transcript exist, skipping: {video_path.name}")
                         else:
-                            # When transcript mode is disabled, skip if SRT exists
-                            if srt_path.exists():
-                                self.log(f"  ⏭️  Line {line_num}: {srt_path.name} exists, skipping: {video_path.name}")
-                                self.stats["skipped"] += 1
-                                continue
+                            self.log(f"  ⏭️  Line {line_num}: {srt_path.name} exists, skipping: {video_path.name}")
+                        self.stats["skipped"] += 1
+                        continue
                     
                     media_paths.append(video_path)
             
@@ -506,33 +485,24 @@ class SubtitleGenerator:
         videos_needing_processing = []
         
         for root, dirs, files in os.walk(Config.MEDIA_PATH):
+            dir_filenames = set(files)
             for file in files:
                 if is_media(Path(file)):
                     video_path = Path(root) / file
-                    srt_path = resolve_subtitle_path(
+                    output_state = inspect_requested_outputs(
                         video_path,
                         Config.LANGUAGE,
                         detect_language=Config.DETECT_LANGUAGE,
+                        enable_transcript=Config.ENABLE_TRANSCRIPT,
+                        force_regenerate=Config.FORCE_REGENERATE,
+                        dir_filenames=dir_filenames,
                     )
-                    
-                    # Check for transcript in Transcripts folder if transcript mode is enabled
-                    if Config.ENABLE_TRANSCRIPT:
-                        transcripts_folder = get_transcripts_folder(video_path)
-                        transcript_path = transcripts_folder / f"{video_path.stem}.transcript.speakers.txt"
-                    else:
-                        transcript_path = video_path.with_suffix('.transcript.speakers.txt')
                     
                     if Config.FORCE_REGENERATE:
                         # Force regenerate mode - include all videos
                         videos_needing_processing.append(video_path)
-                    elif Config.ENABLE_TRANSCRIPT:
-                        # When transcript mode is enabled, find videos missing either file
-                        if not srt_path.exists() or not transcript_path.exists():
-                            videos_needing_processing.append(video_path)
-                    else:
-                        # When transcript mode is disabled, find videos without SRT
-                        if not srt_path.exists():
-                            videos_needing_processing.append(video_path)
+                    elif not output_state["should_skip"]:
+                        videos_needing_processing.append(video_path)
         
         if Config.FORCE_REGENERATE:
             self.log(f"📊 Found {len(videos_needing_processing)} media files to force regenerate")

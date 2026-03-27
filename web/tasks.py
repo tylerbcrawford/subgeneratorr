@@ -19,11 +19,12 @@ from celery import group, chord
 # Add parent directory to path to import core module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.transcribe import (
-    is_video, is_media, extract_audio, transcribe_file, write_srt, get_transcripts_folder,
-    get_json_folder, write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
+    is_video, is_media, extract_audio, transcribe_file, write_srt,
+    write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
     find_speaker_map, write_transcript, get_video_duration, write_intelligence_summary,
-    get_intelligence_folder, get_audio_selection_language, has_sidecar_subtitle,
-    resolve_subtitle_path, resolve_synced_marker_path, SUBTITLE_EXTS
+    get_audio_selection_language, has_sidecar_subtitle,
+    inspect_requested_outputs,
+    resolve_synced_marker_path, SUBTITLE_EXTS
 )
 
 # Configuration from environment
@@ -124,17 +125,15 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
     vp = Path(video_path)
     if not DG_KEY:
         raise RuntimeError("DEEPGRAM_API_KEY not set — configure it in .env")
-    srt_out = resolve_subtitle_path(
+    output_state = inspect_requested_outputs(
         vp,
         language,
         detect_language=detect_language,
+        enable_transcript=enable_transcript,
+        force_regenerate=force_regenerate,
     )
-    # Determine transcript path based on Transcripts folder structure
-    if enable_transcript:
-        transcripts_folder = get_transcripts_folder(vp)
-        txt_out = transcripts_folder / f"{vp.stem}.transcript.speakers.txt"
-    else:
-        txt_out = None
+    srt_out = output_state["subtitle_path"]
+    txt_out = output_state["transcript_path"]
     
     # Start timing
     start_time = time.time()
@@ -156,8 +155,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
     # Update task state to show current file
     self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'checking'})
     
-    # Skip if SRT already exists (unless force_regenerate)
-    if srt_out.exists() and not force_regenerate:
+    if output_state["should_skip"]:
         return {"status": "skipped", **meta}
     
     # Auto-load keyterms from CSV if no keyterms provided
@@ -212,12 +210,15 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         
         # Generate SRT
         self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'generating_srt'})
-        resolved_srt_out = resolve_subtitle_path(
+        post_response_state = inspect_requested_outputs(
             vp,
             language,
             detect_language=detect_language,
+            enable_transcript=enable_transcript,
+            force_regenerate=force_regenerate,
             resp=resp,
         )
+        resolved_srt_out = post_response_state["subtitle_path"]
         resolved_synced_marker = resolve_synced_marker_path(
             vp,
             language,
@@ -226,15 +227,18 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         )
         meta["srt"] = str(resolved_srt_out)
 
-        if resolved_srt_out.exists() and not force_regenerate:
-            return {"status": "skipped", **meta}
+        produced_outputs = []
 
-        write_srt(resp, resolved_srt_out)
-        
-        # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
-        if resolved_synced_marker.exists():
-            resolved_synced_marker.unlink()
-            print(f"Removed Subsyncarr marker: {resolved_synced_marker}")
+        if post_response_state["needs_subtitle"]:
+            write_srt(resp, resolved_srt_out)
+            produced_outputs.append("subtitle")
+            
+            # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
+            if resolved_synced_marker.exists():
+                resolved_synced_marker.unlink()
+                print(f"Removed Subsyncarr marker: {resolved_synced_marker}")
+        else:
+            print(f"Skipping subtitle write for existing file: {resolved_srt_out}")
         
         # Save keyterms to CSV if enabled and keyterms were provided
         if auto_save_keyterms and keyterms:
@@ -247,21 +251,29 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         
         # Generate transcript if requested
         if enable_transcript:
+            txt_out = post_response_state["transcript_path"]
+            meta["transcript"] = str(txt_out)
             self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'generating_transcript'})
 
-            # Auto-detect speaker map from Transcripts/Speakermap/
-            speaker_map_path = find_speaker_map(vp)
+            if post_response_state["needs_transcript"]:
+                # Auto-detect speaker map from Transcripts/Speakermap/
+                speaker_map_path = find_speaker_map(vp)
 
-            if speaker_map_path:
-                print(f"Using speaker map: {speaker_map_path}")
+                if speaker_map_path:
+                    print(f"Using speaker map: {speaker_map_path}")
 
-            write_transcript(resp, txt_out, speaker_map_path)
+                write_transcript(resp, txt_out, speaker_map_path)
+                if txt_out.exists():
+                    produced_outputs.append("transcript")
+            else:
+                print(f"Skipping transcript write for existing file: {txt_out}")
         
         # Save raw JSON if enabled (either globally or per-request)
         if SAVE_RAW_JSON or save_raw_json:
             self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_raw_json'})
             try:
                 write_raw_json(resp, vp)
+                produced_outputs.append("raw_json")
             except Exception as e:
                 print(f"Warning: Failed to save raw JSON: {e}")
 
@@ -271,6 +283,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_intelligence'})
             try:
                 write_intelligence_summary(resp, vp)
+                produced_outputs.append("intelligence")
             except Exception as e:
                 print(f"Warning: Failed to save intelligence summary: {e}")
         
@@ -290,10 +303,12 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             "video_duration_formatted": f"{int(video_duration // 60)}:{int(video_duration % 60):02d}"
         }
         
+        status = "ok" if produced_outputs else "skipped"
+
         # Log success with timing data
-        _save_job_log({"status": "ok", **meta, **timing_data})
+        _save_job_log({"status": status, **meta, **timing_data})
         
-        return {"status": "ok", **meta, **timing_data}
+        return {"status": status, **meta, **timing_data}
         
     except Exception as e:
         # Log error
