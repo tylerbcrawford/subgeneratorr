@@ -329,6 +329,32 @@ id -g  # Get your GID
 
 ---
 
+## Troubleshooting
+
+### Docker build hangs on `apt-get update`
+
+If `docker compose build` hangs at the APT layer or containers cannot resolve external hosts from Docker's default bridge network, but `--network host` works, the problem is your Docker networking or DNS, not Subgeneratorr itself.
+
+On Linux, you can use the included host-network override:
+
+```bash
+cp examples/docker-compose.example.yml docker-compose.yml
+
+docker compose \
+  -f docker-compose.yml \
+  -f examples/docker-compose.hostnet.override.yml \
+  up -d --build
+```
+
+Notes:
+- This is a Linux-only workaround.
+- Services run on the host network directly, so the web UI binds to `127.0.0.1:${WEB_PORT}` from the base compose file.
+- The override also switches Redis access from `redis://redis:6379/0` to `redis://127.0.0.1:6379/0`.
+
+If you prefer not to use host networking, fix Docker's bridge-network DNS on the host and then use the normal compose file.
+
+---
+
 ## Contributing
 
 Contributions welcome! Please feel free to submit issues or pull requests.
