@@ -492,9 +492,35 @@ def library_scan_task(self, skip_embedded=False):
     })
 
     all_files = []
-    for p in MEDIA_ROOT.rglob("*"):
+    for i, p in enumerate(MEDIA_ROOT.rglob("*"), start=1):
+        if i % 100 == 0:
+            if _redis.exists(cancel_key):
+                _redis.delete(cancel_key)
+                return {
+                    'missing_files': [],
+                    'total_scanned': len(all_files),
+                    'total_missing': 0,
+                    'scan_time_seconds': round(time.time() - start, 1),
+                    'cancelled': True
+                }
+            self.update_state(state='PROGRESS', meta={
+                'phase': 'collecting',
+                'scanned': len(all_files),
+                'total': 0,
+                'missing_so_far': 0
+            })
         if p.is_file() and is_media(p):
             all_files.append(p)
+
+    if _redis.exists(cancel_key):
+        _redis.delete(cancel_key)
+        return {
+            'missing_files': [],
+            'total_scanned': len(all_files),
+            'total_missing': 0,
+            'scan_time_seconds': round(time.time() - start, 1),
+            'cancelled': True
+        }
 
     total = len(all_files)
     if total == 0:
@@ -520,6 +546,15 @@ def library_scan_task(self, skip_embedded=False):
     needs_embedded_check = []
     for f in all_files:
         scanned += 1
+        if scanned % 100 == 0 and _redis.exists(cancel_key):
+            _redis.delete(cancel_key)
+            return {
+                'missing_files': missing,
+                'total_scanned': scanned,
+                'total_missing': len(missing),
+                'scan_time_seconds': round(time.time() - start, 1),
+                'cancelled': True
+            }
         filenames = dir_filenames.get(f.parent, set())
         if has_sidecar_subtitle(f.stem, filenames):
             continue  # Has sidecar subtitles, skip
@@ -552,6 +587,16 @@ def library_scan_task(self, skip_embedded=False):
     # Phase 2: Embedded subtitle check via ffprobe (slower)
     if needs_embedded_check:
         for i, f in enumerate(needs_embedded_check):
+            embedded_scanned = total - len(needs_embedded_check) + i
+            if _redis.exists(cancel_key):
+                _redis.delete(cancel_key)
+                return {
+                    'missing_files': missing,
+                    'total_scanned': embedded_scanned,
+                    'total_missing': len(missing),
+                    'scan_time_seconds': round(time.time() - start, 1),
+                    'cancelled': True
+                }
             has_embedded = False
             try:
                 result = subprocess.run(

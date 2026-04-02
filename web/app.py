@@ -1175,13 +1175,15 @@ def api_library_scan_status(task_id):
             return jsonify({'state': 'PENDING'})
         elif task.state == 'PROGRESS':
             info = task.info or {}
+            total = info.get('total', 0) if isinstance(info, dict) else 0
+            scanned = info.get('scanned', 0) if isinstance(info, dict) else 0
             return jsonify({
                 'state': 'PROGRESS',
                 'phase': info.get('phase', '') if isinstance(info, dict) else '',
-                'scanned': info.get('scanned', 0) if isinstance(info, dict) else 0,
-                'total': info.get('total', 0) if isinstance(info, dict) else 0,
+                'scanned': scanned,
+                'total': total,
                 'missing_so_far': info.get('missing_so_far', 0) if isinstance(info, dict) else 0,
-                'progress': round(info.get('scanned', 0) / max(info.get('total', 1), 1) * 100, 1) if isinstance(info, dict) else 0
+                'progress': round(scanned / total * 100, 1) if total > 0 else 0
             })
         elif task.state == 'FAILURE':
             error_msg = str(task.info) if task.info else 'Unknown error'
@@ -1190,15 +1192,16 @@ def api_library_scan_status(task_id):
                 'error': error_msg
             })
         elif task.state == 'REVOKED':
-            return jsonify({'state': 'CANCELLED'})
+            return jsonify({
+                'state': 'CANCELLED',
+                'cancelled': True
+            })
         elif task.state == 'SUCCESS':
             result = task.info or {}
             if isinstance(result, dict) and result.get('cancelled'):
                 return jsonify({
                     'state': 'CANCELLED',
-                    'total_scanned': result.get('total_scanned', 0),
-                    'total_missing': result.get('total_missing', 0),
-                    'scan_time_seconds': result.get('scan_time_seconds', 0)
+                    **result
                 })
             return jsonify({
                 'state': 'SUCCESS',

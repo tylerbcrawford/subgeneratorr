@@ -209,6 +209,11 @@ document.addEventListener('DOMContentLoaded', function() {
         startChunkMonitoring(currentBatchId, chunkSize);
     }
 
+    const activeScan = loadActiveLibraryScanState();
+    if ((!activeChunk || !activeChunk.activeBatchId) && activeScan && activeScan.taskId) {
+        reconnectLibraryScan(activeScan.taskId);
+    }
+
     // Update cost estimate when keyterms change
     const keytermsField = document.getElementById('keyTerms');
     if (keytermsField) {
@@ -1378,6 +1383,20 @@ function updateUnifiedStatus(text, showProgress = false, progressPercent = 0) {
     } else {
         if (statusProgress) statusProgress.style.display = 'none';
     }
+}
+
+function clearStatusTextAction() {
+    const statusText = document.getElementById('statusText');
+    if (!statusText) return;
+    statusText.style.cursor = '';
+    statusText.onclick = null;
+}
+
+function setStatusTextAction(handler) {
+    const statusText = document.getElementById('statusText');
+    if (!statusText) return;
+    statusText.style.cursor = 'pointer';
+    statusText.onclick = handler;
 }
 
 /* ============================================
@@ -2694,6 +2713,7 @@ let libraryScanPollInterval = null;
 let libraryScanPollCount = 0;
 let isLibraryScanView = false;
 const MAX_LIBRARY_SCAN_POLLS = 600; // 600 × 2s = 20 minutes
+const ACTIVE_LIBRARY_SCAN_KEY = 'activeLibraryScanState';
 
 // --- localStorage persistence for scan results ---
 
@@ -2734,6 +2754,43 @@ function loadLibraryScanData() {
     }
 }
 
+function saveActiveLibraryScanState(taskId) {
+    localStorage.setItem(ACTIVE_LIBRARY_SCAN_KEY, JSON.stringify({
+        taskId,
+        startedAt: new Date().toISOString()
+    }));
+    updateGearMenuScanState();
+}
+
+function loadActiveLibraryScanState() {
+    try {
+        const raw = localStorage.getItem(ACTIVE_LIBRARY_SCAN_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data.taskId) {
+            localStorage.removeItem(ACTIVE_LIBRARY_SCAN_KEY);
+            return null;
+        }
+        if (data.startedAt) {
+            const age = Date.now() - new Date(data.startedAt).getTime();
+            if (age > 24 * 60 * 60 * 1000) {
+                localStorage.removeItem(ACTIVE_LIBRARY_SCAN_KEY);
+                return null;
+            }
+        }
+        return data;
+    } catch (e) {
+        console.error('Failed to load active library scan state:', e);
+        localStorage.removeItem(ACTIVE_LIBRARY_SCAN_KEY);
+        return null;
+    }
+}
+
+function clearActiveLibraryScanState() {
+    localStorage.removeItem(ACTIVE_LIBRARY_SCAN_KEY);
+    updateGearMenuScanState();
+}
+
 function clearLibraryScanData() {
     localStorage.removeItem('libraryScanData');
     localStorage.removeItem('activeChunkState');
@@ -2763,6 +2820,49 @@ function getRemainingFiles(scanData) {
     if (!scanData) return [];
     const completedSet = new Set(scanData.completedFiles);
     return scanData.missingFiles.filter(f => !completedSet.has(f.path));
+}
+
+function toRelativeMediaPath(path) {
+    if (!path) return '';
+    if (path === '/media') return '';
+    return path.startsWith('/media/') ? path.slice(7) : path;
+}
+
+function csvEscape(value) {
+    const str = String(value || '');
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+function downloadTextFile(contents, filename, mimeType) {
+    const blob = new Blob([contents], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportLibraryScanCsv() {
+    const scanData = loadLibraryScanData();
+    if (!scanData) {
+        showToast('warning', 'No saved scan data found');
+        return;
+    }
+
+    const rows = ['path,name,directory'];
+    (scanData.missingFiles || []).forEach(file => {
+        rows.push([
+            toRelativeMediaPath(file.path),
+            file.name || '',
+            toRelativeMediaPath(file.directory)
+        ].map(csvEscape).join(','));
+    });
+
+    const filename = `missing-subtitles-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadTextFile(rows.join('\n'), filename, 'text/csv;charset=utf-8');
 }
 
 // --- Scan results keyword exclusion filter ---
@@ -2903,6 +3003,20 @@ function updateGearMenuScanState() {
 
     const scanData = loadLibraryScanData();
     const activeChunk = loadActiveChunkState();
+    const activeScan = loadActiveLibraryScanState();
+
+    if (activeScan && activeScan.taskId) {
+        const age = getScanAge(activeScan.startedAt || new Date().toISOString());
+        actionDiv.innerHTML = `
+            <button class="btn-secondary btn-full-width" onclick="reconnectLibraryScan()">
+                Resume Active Scan
+            </button>
+            <div style="text-align: center; padding: var(--space-xs) 0; color: var(--text-tertiary); font-size: var(--font-caption);">
+                scan started ${age}
+            </div>
+        `;
+        return;
+    }
 
     if (!scanData) {
         // No saved scan — default button
@@ -2950,6 +3064,41 @@ function updateGearMenuScanState() {
             </button>
         `;
     }
+}
+
+function reconnectLibraryScan(taskId = null) {
+    const popover = document.getElementById('gearPopover');
+    if (popover) popover.classList.add('hidden');
+
+    const activeScan = loadActiveLibraryScanState();
+    const resumeTaskId = taskId || activeScan?.taskId;
+    if (!resumeTaskId) {
+        showToast('warning', 'No active scan found');
+        return;
+    }
+
+    libraryScanTaskId = resumeTaskId;
+    libraryScanPollCount = 0;
+    clearInterval(libraryScanPollInterval);
+    clearStatusTextAction();
+    updateUnifiedStatus('Reconnecting to active scan...', true, 0);
+
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.style.display = '';
+        cancelBtn.onclick = cancelLibraryScan;
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    const directoryList = document.getElementById('directoryList');
+    if (directoryList) {
+        directoryList.innerHTML = '<div style="text-align:center; padding: var(--space-xl); color: var(--text-secondary);">Reconnecting to library scan...</div>';
+    }
+
+    libraryScanPollInterval = setInterval(() => pollLibraryScanStatus(resumeTaskId), 2000);
+    pollLibraryScanStatus(resumeTaskId);
 }
 
 function loadSavedScanResults() {
@@ -3019,7 +3168,7 @@ function displaySavedScanResults(scanData) {
     html += `<div class="scan-results-banner">
         <span><strong>${remaining.length}</strong> remaining of <strong>${total}</strong> missing (${completed} transcribed)<span id="scanExcludeInfo"></span></span>
         <span>
-            ${scanData.taskId ? `<button class="btn-link scan-export-btn" onclick="window.location='/api/library-scan/export/${scanData.taskId}'">CSV</button> • ` : ''}
+            <button class="btn-link scan-export-btn" onclick="exportLibraryScanCsv()">CSV</button> •
             <button class="btn-link" onclick="selectAllInFolder()">Select All</button> • <button class="btn-link" onclick="selectNone()">Clear</button>
         </span>
     </div>`;
@@ -3177,6 +3326,9 @@ async function startLibraryScan() {
     // Clear current selection
     selectedFiles = [];
     updateSelectionStatus();
+    clearStatusTextAction();
+    clearLibraryScanData();
+    clearActiveLibraryScanState();
 
     // Show scanning status
     updateUnifiedStatus('Starting library scan...', true, 0);
@@ -3206,6 +3358,7 @@ async function startLibraryScan() {
         const data = await response.json();
         libraryScanTaskId = data.task_id;
         libraryScanPollCount = 0;
+        saveActiveLibraryScanState(libraryScanTaskId);
 
         // Start polling
         libraryScanPollInterval = setInterval(() => pollLibraryScanStatus(libraryScanTaskId), 2000);
@@ -3215,6 +3368,7 @@ async function startLibraryScan() {
         console.error('Library scan error:', error);
         showToast('error', `Failed to start scan: ${error.message}`);
         updateUnifiedStatus('', false);
+        clearActiveLibraryScanState();
         if (cancelBtn) cancelBtn.style.display = 'none';
         if (submitBtn) submitBtn.disabled = false;
         browseDirectories(currentPath);
@@ -3227,12 +3381,10 @@ async function pollLibraryScanStatus(taskId) {
 
         if (libraryScanPollCount > MAX_LIBRARY_SCAN_POLLS) {
             clearInterval(libraryScanPollInterval);
-            updateUnifiedStatus('Scan timed out — polling stopped after 20 minutes', false);
-            showToast('error', 'Library scan timed out');
-            const cancelBtn = document.getElementById('cancelBtn');
-            if (cancelBtn) cancelBtn.style.display = 'none';
-            const submitBtn = document.getElementById('submitBtn');
-            if (submitBtn) submitBtn.disabled = false;
+            updateUnifiedStatus('Scan still running. Click here to reconnect.', false);
+            setStatusTextAction(() => reconnectLibraryScan(taskId));
+            showToast('warning', 'Scan polling paused after 20 minutes. You can reconnect or cancel.');
+            updateGearMenuScanState();
             return;
         }
 
@@ -3242,20 +3394,29 @@ async function pollLibraryScanStatus(taskId) {
         const data = await response.json();
 
         if (data.state === 'PROGRESS') {
+            clearStatusTextAction();
             const pct = data.progress || 0;
             const phase = data.phase === 'embedded_scan' ? 'Checking embedded subtitles' :
                           data.phase === 'sidecar_scan' ? 'Checking sidecar files' :
                           'Collecting files';
+            const progressText = data.total > 0
+                ? `${phase}... ${data.scanned}/${data.total} files (${data.missing_so_far} missing)`
+                : `${phase}... ${data.scanned} files found so far`;
             updateUnifiedStatus(
-                `${phase}... ${data.scanned}/${data.total} files (${data.missing_so_far} missing)`,
+                progressText,
                 true, pct
             );
         } else if (data.state === 'SUCCESS') {
             clearInterval(libraryScanPollInterval);
+            clearActiveLibraryScanState();
+            clearStatusTextAction();
             displayLibraryScanResults(data);
-        } else if (data.state === 'CANCELLED') {
+        } else if (data.state === 'CANCELLED' || data.state === 'REVOKED') {
             clearInterval(libraryScanPollInterval);
+            clearActiveLibraryScanState();
+            clearStatusTextAction();
             updateUnifiedStatus('Scan cancelled', false);
+            showToast('info', 'Library scan cancelled');
             const cancelBtn = document.getElementById('cancelBtn');
             if (cancelBtn) {
                 cancelBtn.style.display = 'none';
@@ -3267,6 +3428,8 @@ async function pollLibraryScanStatus(taskId) {
             browseDirectories(currentPath);
         } else if (data.state === 'FAILURE') {
             clearInterval(libraryScanPollInterval);
+            clearActiveLibraryScanState();
+            clearStatusTextAction();
             updateUnifiedStatus('Scan failed: ' + (data.error || 'Unknown error'), false);
             showToast('error', 'Library scan failed');
             const cancelBtn = document.getElementById('cancelBtn');
@@ -3291,6 +3454,8 @@ function displayLibraryScanResults(data) {
     }
 
     isLibraryScanView = true;
+    clearActiveLibraryScanState();
+    clearStatusTextAction();
 
     const totalMissing = data.total_missing || 0;
     const totalScanned = data.total_scanned || 0;
@@ -3332,6 +3497,8 @@ async function cancelLibraryScan() {
     try {
         await fetch(`/api/library-scan/${libraryScanTaskId}/cancel`, { method: 'POST' });
         clearInterval(libraryScanPollInterval);
+        clearActiveLibraryScanState();
+        clearStatusTextAction();
         showToast('info', 'Library scan cancelled');
         updateUnifiedStatus('Scan cancelled', false);
 

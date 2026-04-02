@@ -156,10 +156,34 @@ def test_scan_status_maps_cancelled_payload_to_cancelled_state():
     assert response.status_code == 200
     assert response.get_json() == {
         "state": "CANCELLED",
+        "cancelled": True,
         "total_scanned": 42,
         "total_missing": 7,
         "scan_time_seconds": 3.2,
     }
+
+
+def test_scan_status_valid_uuid_collecting_progress_stays_zero_without_total():
+    task_result = SimpleNamespace(
+        state="PROGRESS",
+        info={
+            "phase": "collecting",
+            "scanned": 237,
+            "total": 0,
+            "missing_so_far": 0,
+        },
+    )
+
+    with app.test_client() as client, patch.object(
+        app_module.celery_app, "AsyncResult", return_value=task_result
+    ):
+        response = client.get(
+            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["state"] == "PROGRESS"
+    assert response.get_json()["progress"] == 0
 
 
 def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
@@ -239,3 +263,68 @@ def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
             "error": "Deepgram request failed",
         },
     ]
+
+
+def test_scan_status_valid_uuid_revoked_maps_to_cancelled():
+    task_result = SimpleNamespace(state="REVOKED", info=None)
+
+    with app.test_client() as client, patch.object(
+        app_module.celery_app, "AsyncResult", return_value=task_result
+    ):
+        response = client.get(
+            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["state"] == "CANCELLED"
+    assert response.get_json()["cancelled"] is True
+
+
+def test_scan_status_valid_uuid_cancelled():
+    task_result = SimpleNamespace(
+        state="SUCCESS",
+        info={
+            "cancelled": True,
+            "missing_files": [],
+            "total_scanned": 12,
+            "total_missing": 0,
+        },
+    )
+
+    with app.test_client() as client, patch.object(
+        app_module.celery_app, "AsyncResult", return_value=task_result
+    ):
+        response = client.get(
+            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
+        )
+
+    assert response.status_code == 200
+    assert response.get_json()["state"] == "CANCELLED"
+    assert response.get_json()["cancelled"] is True
+
+
+def test_scan_export_success_relative_paths():
+    task_result = SimpleNamespace(
+        state="SUCCESS",
+        info={
+            "missing_files": [
+                {
+                    "path": "/media/tv/Show/episode1.mkv",
+                    "name": "episode1.mkv",
+                    "directory": "/media/tv/Show",
+                }
+            ]
+        },
+    )
+
+    with app.test_client() as client, patch.object(
+        app_module.celery_app, "AsyncResult", return_value=task_result
+    ):
+        response = client.get(
+            "/api/library-scan/export/123e4567-e89b-12d3-a456-426614174000"
+        )
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "path,name,directory" in body
+    assert "tv/Show/episode1.mkv,episode1.mkv,tv/Show" in body
