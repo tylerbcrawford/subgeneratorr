@@ -30,7 +30,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 docker compose up -d redis web worker
 
 # Run CLI tool
-docker compose run --profile cli --rm cli
+docker compose run --rm cli
 
 # View logs
 docker compose logs -f web worker

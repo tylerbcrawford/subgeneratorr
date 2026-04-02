@@ -353,7 +353,7 @@ Regional variants are trained on local accents, vocabulary, and pronunciation pa
 
 ```bash
 # CLI Tool
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/media/tv/KoreanDrama \
   -e LANGUAGE=ko \
   cli
@@ -370,7 +370,7 @@ docker compose run --profile cli --rm \
 ### Example 2: Regional Variant (British TV)
 
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/media/tv/Doctor\ Who \
   -e LANGUAGE=en-GB \
   cli
@@ -379,7 +379,7 @@ docker compose run --profile cli --rm \
 ### Example 3: Multilingual Content
 
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/media/movies/Multilingual \
   -e LANGUAGE=multi \
   cli
@@ -390,7 +390,7 @@ docker compose run --profile cli --rm \
 ### Example 4: Auto-Detection for Unknown Content
 
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/media/archive/unknown \
   -e DETECT_LANGUAGE=1 \
   cli
@@ -402,7 +402,7 @@ Subtitles are written with the detected language tag when possible; otherwise th
 ### Example 5: Latin American Spanish Content
 
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/media/tv/LatAm \
   -e LANGUAGE=es-419 \
   cli

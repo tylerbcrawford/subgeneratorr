@@ -76,7 +76,7 @@ docker compose up -d
 # Open http://localhost:5000
 
 # OR run CLI directly
-docker compose run --profile cli --rm cli
+docker compose run --rm cli
 ```
 
 > **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
@@ -92,10 +92,10 @@ docker compose up -d
 **Process via CLI (headless/batch):**
 ```bash
 # Process entire media library
-docker compose run --profile cli --rm cli
+docker compose run --rm cli
 
 # Process specific show/season
-docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
+docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
 ```
 
 ### Run Tests Locally
@@ -267,7 +267,7 @@ After generation, refresh your media library to detect new subtitles.
 ### Batch Process New TV Season
 
 1. Download new season via Sonarr/Radarr
-2. Run: `docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli`
+2. Run: `docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli`
 3. Subtitles generated automatically
 4. Refresh your media server library to pick up new subtitles
 
@@ -287,7 +287,7 @@ You can work through it show by show over a few days, or batch everything at onc
 
 1. Create keyterms CSV with character names
 2. Create speaker map CSV
-3. Run with transcripts enabled: `docker compose run --profile cli --rm -e ENABLE_TRANSCRIPT=1 cli`
+3. Run with transcripts enabled: `docker compose run --rm -e ENABLE_TRANSCRIPT=1 cli`
 4. Get language-tagged `.srt` subtitles beside the media file plus `.transcript.speakers.txt` output in the sibling `Transcripts/` folder
 
 ---

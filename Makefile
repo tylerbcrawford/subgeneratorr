@@ -30,11 +30,11 @@ build:
 
 # Run CLI tool to process all videos
 cli:
-	docker compose run --profile cli --rm cli
+	docker compose run --rm cli
 
 # Run CLI with batch size limit
 cli-batch:
-	docker compose run --profile cli --rm -e BATCH_SIZE=10 cli
+	docker compose run --rm -e BATCH_SIZE=10 cli
 
 # ============================================================================
 # Web UI Commands

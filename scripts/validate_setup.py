@@ -209,7 +209,7 @@ def main():
         print("3. Edit .env: set DEEPGRAM_API_KEY and MEDIA_PATH")
         print("4. docker compose build")
         print("5. docker compose up -d          (Web UI at http://localhost:5000)")
-        print("6. docker compose run --profile cli --rm cli   (CLI tool)")
+        print("6. docker compose run --rm cli   (CLI tool)")
         print()
         print("Docs: README.md | docs/technical.md | docs/languages.md")
         print()

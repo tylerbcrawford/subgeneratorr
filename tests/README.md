@@ -107,7 +107,7 @@ TEST: Setup Check
 TEST 1.1: Basic Video Transcription
 ============================================================
 
-[12:35:00] ℹ Running: docker compose run --profile cli --rm -e MEDIA_PATH=/path/test_data/videos -e BATCH_SIZE=1 cli
+[12:35:00] ℹ Running: docker compose run --rm -e MEDIA_PATH=/path/test_data/videos -e BATCH_SIZE=1 cli
 [12:35:45] ✓ File exists: short_test.eng.srt
 [12:35:45] ✓ All patterns found in short_test.eng.srt
 [12:35:45] ✓ Processed: 1 files

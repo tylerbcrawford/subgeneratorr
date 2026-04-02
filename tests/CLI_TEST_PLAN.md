@@ -46,7 +46,7 @@ test_data/
 **Function:** `extract_audio()`, `transcribe_audio()`, `generate_srt()`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e BATCH_SIZE=1 \
   cli
@@ -63,7 +63,7 @@ docker compose run --profile cli --rm \
 **Setup:** Place MP3 file in test directory
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/audio \
   cli
 ```
@@ -87,7 +87,7 @@ docker compose run --profile cli --rm \
 **Function:** `find_videos_without_subtitles()`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   cli
 ```
@@ -107,7 +107,7 @@ docker compose run --profile cli --rm \
 **Function:** `read_video_list_from_file()`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e FILE_LIST_PATH=/test_data/file_lists/test_list.txt \
   cli
 ```
@@ -126,7 +126,7 @@ docker compose run --profile cli --rm \
 **Setup:** Create existing SRT file
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   cli
 ```
@@ -140,7 +140,7 @@ docker compose run --profile cli --rm \
 **Setup:** Existing SRT files present
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e FORCE_REGENERATE=1 \
   cli
@@ -159,7 +159,7 @@ docker compose run --profile cli --rm \
 **Function:** `_generate_transcript()`, `write_transcript()`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e ENABLE_TRANSCRIPT=1 \
   cli
@@ -175,7 +175,7 @@ docker compose run --profile cli --rm \
 **Setup:** Create speaker map CSV
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e ENABLE_TRANSCRIPT=1 \
   cli
@@ -201,7 +201,7 @@ docker compose run --profile cli --rm \
 **Setup:** Create keyterms CSV file
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   cli
 ```
@@ -233,7 +233,7 @@ docker compose run --profile cli --rm \
 **Function:** Language parameter override  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e LANGUAGE=es \
   cli
@@ -251,7 +251,7 @@ docker compose run --profile cli --rm \
 **Function:** `BATCH_SIZE` parameter  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e BATCH_SIZE=2 \
   cli
@@ -265,7 +265,7 @@ docker compose run --profile cli --rm \
 **Function:** `BATCH_SIZE=0`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e BATCH_SIZE=0 \
   cli
@@ -282,7 +282,7 @@ docker compose run --profile cli --rm \
 **Setup:** Video with no speech
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   cli
 ```
@@ -337,7 +337,7 @@ docker compose run --profile cli --rm \
 **Function:** `write_raw_json()`, `SAVE_RAW_JSON`  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e SAVE_RAW_JSON=1 \
   -e ENABLE_TRANSCRIPT=1 \
@@ -418,7 +418,7 @@ docker compose run --profile cli --rm \
 **Function:** Complete end-to-end  
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e BATCH_SIZE=1 \
   -e ENABLE_TRANSCRIPT=1 \
@@ -439,7 +439,7 @@ docker compose run --profile cli --rm \
 **Setup:** Multiple videos with speaker maps and keyterms
 **Command:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e MEDIA_PATH=/test_data/videos \
   -e ENABLE_TRANSCRIPT=1 \
   cli

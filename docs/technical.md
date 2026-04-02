@@ -687,47 +687,47 @@ Generate keyterms using AI.
 
 **Process entire library:**
 ```bash
-docker compose run --profile cli --rm cli
+docker compose run --rm cli
 ```
 
 **Process specific directory:**
 ```bash
-docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName cli
+docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName cli
 ```
 
 **Process specific season:**
 ```bash
-docker compose run --profile cli --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
+docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
 ```
 
 **Process from file list:**
 ```bash
-docker compose run --profile cli --rm -e FILE_LIST_PATH=/config/video-list.txt cli
+docker compose run --rm -e FILE_LIST_PATH=/config/video-list.txt cli
 ```
 
 **Batch processing (limit to 10 files):**
 ```bash
-docker compose run --profile cli --rm -e BATCH_SIZE=10 cli
+docker compose run --rm -e BATCH_SIZE=10 cli
 ```
 
 **Process non-English content:**
 ```bash
-docker compose run --profile cli --rm -e LANGUAGE=es cli
+docker compose run --rm -e LANGUAGE=es cli
 ```
 
 **Generate speaker-labeled transcripts:**
 ```bash
-docker compose run --profile cli --rm -e ENABLE_TRANSCRIPT=1 cli
+docker compose run --rm -e ENABLE_TRANSCRIPT=1 cli
 ```
 
 **Force regenerate SRT files:**
 ```bash
-docker compose run --profile cli --rm -e FORCE_REGENERATE=1 cli
+docker compose run --rm -e FORCE_REGENERATE=1 cli
 ```
 
 **Enable all Nova-3 quality features:**
 ```bash
-docker compose run --profile cli --rm \
+docker compose run --rm \
   -e NUMERALS=1 \
   -e MEASUREMENTS=1 \
   -e DETECT_LANGUAGE=1 \
@@ -740,14 +740,14 @@ Process new videos daily:
 
 ```bash
 # Add to crontab
-0 5 * * * cd /path/to/subgeneratorr && docker compose run --profile cli --rm -e BATCH_SIZE=50 cli
+0 5 * * * cd /path/to/subgeneratorr && docker compose run --rm -e BATCH_SIZE=50 cli
 ```
 
 Weekly scan for missing subtitles:
 
 ```bash
 # Every Sunday at 3 AM
-0 3 * * 0 cd /path/to/subgeneratorr && docker compose run --profile cli --rm cli
+0 3 * * 0 cd /path/to/subgeneratorr && docker compose run --rm cli
 ```
 
 ---
@@ -1053,7 +1053,7 @@ environment:
 Limit processing to avoid overwhelming your system or API:
 
 ```bash
-docker compose run --profile cli --rm -e BATCH_SIZE=10 cli
+docker compose run --rm -e BATCH_SIZE=10 cli
 ```
 
 ### Processing Speed

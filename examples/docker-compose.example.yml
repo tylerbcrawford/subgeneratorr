@@ -8,7 +8,7 @@
 #   4. docker compose up -d    (Web UI at http://localhost:5000)
 #
 # CLI usage:
-#   docker compose run --profile cli --rm cli
+#   docker compose run --rm cli
 
 services:
   # ==========================================================================
@@ -111,7 +111,7 @@ services:
   # ==========================================================================
   # CLI Tool - One-shot batch subtitle generation (run manually)
   # ==========================================================================
-  # Usage: docker compose run --profile cli --rm cli
+  # Usage: docker compose run --rm cli
   cli:
     build:
       context: .
