@@ -7,22 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-03
+
 ### Added
-- **Scan results keyword filter** — exclude files by keyword (e.g. "trailer, extras") with persistent filter across sessions
 - **Find All Missing Subtitles** — Library-wide async scan from gear menu with progress tracking, grouped results, and CSV export
 - Four new API endpoints: `POST /api/library-scan`, `GET /api/library-scan/status/<task_id>`, `POST /api/library-scan/<task_id>/cancel`, `GET /api/library-scan/export/<task_id>`
 - `library_scan_task` Celery task with two-phase scan (fast sidecar check + optional ffprobe embedded check)
+- `library_scan_task` routed to a separate `scan` Celery queue, enabling dedicated scan workers in multi-worker deployments; the default single worker consumes both `transcribe,scan` queues (no isolation benefit at `WORKER_CONCURRENCY=1`)
+- **Scan results keyword filter** — exclude files by keyword (e.g. "trailer, extras") with persistent filter across sessions
 - **Persistent scan results** — library scan data saved to localStorage, survives page reload and browser close
 - **Resume scan** — gear menu shows "Resume Scan (N remaining)" when previous scan data exists
 - **Chunked batch processing** — large selections auto-split into 25-file chunks with auto-pause between each
 - **Batch confirmation dialog** with accurate cost/time estimate before first chunk
 - **Auto-pause prompt** between chunks showing cumulative results and remaining cost/time
+- `requirements-dev.txt` with `pytest`, `pytest-timeout`, and `flask` for test environments
+- `make test` target: creates a `.venv`, installs dev dependencies, runs `pytest tests/ -v`
+- `.github/workflows/ci.yml` — push/PR validation workflow: Python 3.11 unit tests + Docker build smoke test for both CLI and web images (runs on every push to every branch)
 
-### Security
-- Re-enabled authentication on all API routes (`_require_auth()` was temporarily disabled during development)
-- Added `DISABLE_AUTH` environment variable as an explicit opt-out for local-only deployments without a reverse proxy
-- Example Docker Compose binds web port to loopback (`127.0.0.1`) by default to prevent unintended external exposure
-- Added security callout to README quick-start documenting safe vs unsafe deployment postures
+### Changed
+- Moved `check_subtitles()` and `SUBTITLE_EXTS` from `web/app.py` to `core/transcribe.py` for reuse across modules
+- Debounced cost estimation to prevent API flooding on rapid file selection
+- Polling watchdog scales with batch size instead of fixed 10-minute timeout
+- LLM cost estimation uses single-file extrapolation for large batches (prevents request flooding)
+- Scan results update in-place after each chunk (completed files marked, counts updated)
+- Reduced noisy per-child logging in batch status polling
+- Test/docs wording now reflects media-wide input support and language-tagged subtitle outputs
 
 ### Fixed
 - **Resume scan state for single-batch runs** — files processed in batches of ≤ 25 were not being marked complete in saved scan state; now correctly calls `addCompletedFiles()` to match chunked-batch behavior
@@ -33,20 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `test_keyterms_consistency.py` import now succeeds without `deepgram` package installed (added dependency stubs matching the pattern in `test_check_subtitles.py`)
 - Corrected test path bug in `test_csv_format_consistency` — keyterms CSV was being created inside the Season folder instead of the show-level `Transcripts/Keyterms/` folder where `load_keyterms_from_csv()` looks
 
-### Added
-- `requirements-dev.txt` with `pytest`, `pytest-timeout`, and `flask` for test environments
-- `make test` target: creates a `.venv`, installs dev dependencies, runs `pytest tests/ -v`
-- `.github/workflows/ci.yml` — push/PR validation workflow: Python 3.11 unit tests + Docker build smoke test for both CLI and web images (runs on every push to every branch)
-- `library_scan_task` routed to a separate `scan` Celery queue, enabling dedicated scan workers in multi-worker deployments; the default single worker consumes both `transcribe,scan` queues (no isolation benefit at `WORKER_CONCURRENCY=1`)
-
-### Changed
-- Moved `check_subtitles()` and `SUBTITLE_EXTS` from `web/app.py` to `core/transcribe.py` for reuse across modules
-- Debounced cost estimation to prevent API flooding on rapid file selection
-- Polling watchdog scales with batch size instead of fixed 10-minute timeout
-- LLM cost estimation uses single-file extrapolation for large batches (prevents request flooding)
-- Scan results update in-place after each chunk (completed files marked, counts updated)
-- Reduced noisy per-child logging in batch status polling
-- Test/docs wording now reflects media-wide input support and language-tagged subtitle outputs
+### Security
+- Re-enabled authentication on all API routes (`_require_auth()` was temporarily disabled during development)
+- Added `DISABLE_AUTH` environment variable as an explicit opt-out for local-only deployments without a reverse proxy
+- Example Docker Compose binds web port to loopback (`127.0.0.1`) by default to prevent unintended external exposure
+- Added security callout to README quick-start documenting safe vs unsafe deployment postures
 
 ## [2.0.0] - 2026-02-25
 
@@ -82,5 +82,6 @@ Initial public release.
 - **Path traversal protection** — Input validation on file paths to prevent directory escape
 - **Error path hardening** — Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/tylerbcrawford/subgeneratorr/releases/tag/v2.0.0

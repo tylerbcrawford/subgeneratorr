@@ -13,7 +13,7 @@ Consolidate Redis, Flask, and Celery into a single Docker container for simpler 
 Translate existing subtitles to other languages using Claude, GPT, or Gemini. Preserve SRT timing while translating dialogue. Generate multi-language subtitle files from a single transcription.
 
 ### Bazarr Auto-Fallback
-Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature now provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.
+Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature (shipped in v2.1.0) provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.
 
 ### Language Detection UX
 Surface Nova-3's language detection metadata in the Web UI — show detected language with confidence score after transcription, display language breakdown for code-switching content, and add visual indicators when auto-detect or multi-language mode is active.
@@ -33,7 +33,19 @@ Audit and align features between CLI and Web UI. LLM keyterm generation is inten
 
 ---
 
-## Completed (V2)
+## Completed (V2.1)
+
+- Library-wide missing subtitle scan with async progress tracking, grouped results, and CSV export
+- Scan results keyword filter with persistent exclusions across sessions
+- Persistent scan results surviving page reload and browser close
+- Resume scan from where you left off
+- Chunked batch processing with auto-pause and cost/time estimates between chunks
+- Language-aware subtitle naming (correct media-server tags instead of hardcoded `.eng.srt`)
+- CI pipeline with unit tests and Docker build smoke tests on every push
+- Authentication re-enabled on all API routes with explicit `DISABLE_AUTH` opt-out
+- Loopback-only Docker Compose binding by default
+
+## Completed (V2.0)
 
 - Nova-3 transcription with 50+ language support
 - Web UI with zone-based layout and dark/light themes
@@ -45,4 +57,3 @@ Audit and align features between CLI and Web UI. LLM keyterm generation is inten
 - Docker deployment with health checks and resource limits
 - Media server integration (Plex, Jellyfin, Emby, Bazarr)
 - Cost tracking and estimation
-- Library-wide missing subtitle scan with CSV export
