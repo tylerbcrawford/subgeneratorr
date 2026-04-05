@@ -26,7 +26,7 @@ from core.transcribe import (
 )
 
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
-DEFAULT_MODEL = "nova-3"  # Hardcoded to Nova-3
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "nova-3")
 DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
 ALLOWED = set([e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()])
 
@@ -425,7 +425,7 @@ def api_submit():
     user = _require_auth()
     body = request.get_json(force=True) or {}
     
-    model = body.get("model", "nova-3")  # Support model selection (nova-3, nova-3-medical)
+    model = body.get("model", DEFAULT_MODEL)  # Support model selection (nova-3, nova-3-medical)
     language = body.get("language", DEFAULT_LANGUAGE)
     profanity_filter = body.get("profanity_filter", "off")
     raw_files = body.get("files", [])

@@ -79,7 +79,7 @@ docker compose up -d
 docker compose run --rm cli
 ```
 
-> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
+> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication in front of the app that forwards either `X-Auth-Request-Email` or `X-Forwarded-User` after login.
 
 ### Basic Usage
 
@@ -122,7 +122,7 @@ docker compose up -d
 
 Access at `http://localhost:5000` (or configure reverse proxy for remote access)
 
-> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication (OAuth2-Proxy, Authelia, Nginx basic auth) in front of the app.
+> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose — suitable for local access only. For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication in front of the app that forwards either `X-Auth-Request-Email` or `X-Forwarded-User` after login.
 
 ### Screenshots
 
@@ -302,7 +302,7 @@ In auto-detect mode, Subgeneratorr also treats an existing same-stem language-ta
 
 ### Permission Errors (Linux)
 
-Set `PUID` and `PGID` in docker-compose.yml to match your user:
+Set `PUID` and `PGID` in `docker-compose.yml` or `.env` to match your user. The CLI, web app, and worker all write files, so keep the same values across all three services:
 ```bash
 id -u  # Get your UID
 id -g  # Get your GID
@@ -324,7 +324,7 @@ id -g  # Get your GID
 
 ## Known Limitations
 
-- **Authentication**: `DISABLE_AUTH=true` is the default for local use. For remote access, place a reverse proxy with authentication in front of the app (see Security Note above).
+- **Authentication**: `DISABLE_AUTH=true` is the default for local use. For remote access, place a reverse proxy with authentication in front of the app and forward either `X-Auth-Request-Email` or `X-Forwarded-User` (see Security Note above).
 - **CLI vs Web UI**: The CLI processes files synchronously and does not support AI keyterm generation, library scanning, or progress tracking. The Web UI provides all features including async batch processing, real-time progress, and AI keyterm generation.
 
 ---

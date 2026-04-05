@@ -17,6 +17,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 4. **Set up your environment**:
    ```bash
    cp .env.example .env
+   cp examples/docker-compose.example.yml docker-compose.yml
    # Add your DEEPGRAM_API_KEY to .env
    docker compose build
    ```

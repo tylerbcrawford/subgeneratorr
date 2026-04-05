@@ -14,6 +14,11 @@ let currentPathHasSubdirs = false; // True when current view has subdirectories 
 let searchDebounceTimer = null; // Debounce timer for API-backed search
 let estimateDebounceTimer = null; // Debounce timer for cost estimation
 
+let serverDefaults = {
+    default_language: 'en',
+    default_model: 'nova-3'
+};
+
 // Chunked batch processing
 const CHUNK_SIZE = 25;
 const AVG_DURATION = 2700; // Average media file duration in seconds (~45 min)
@@ -43,7 +48,16 @@ document.addEventListener('DOMContentLoaded', function() {
     fetch('/api/config')
         .then(r => r.json())
         .then(config => {
-            document.getElementById('language').value = config.default_language;
+            serverDefaults = {
+                default_language: config.default_language || 'en',
+                default_model: config.default_model || 'nova-3'
+            };
+
+            if (!shouldLoadSaved) {
+                const languageSelect = document.getElementById('language');
+                if (languageSelect) languageSelect.value = serverDefaults.default_language;
+                setDefaultModel(serverDefaults.default_model);
+            }
         })
         .catch(err => console.error('Failed to load config:', err));
 
@@ -678,7 +692,7 @@ function toggleRememberSettings() {
 function applyDefaultSettings() {
     // Reset language dropdown to default
     const languageSelect = document.getElementById('language');
-    if (languageSelect) languageSelect.value = 'en';
+    if (languageSelect) languageSelect.value = serverDefaults.default_language;
 
     // Reset checkboxes that should be unchecked by default
     const uncheckIds = [
@@ -698,9 +712,7 @@ function applyDefaultSettings() {
         if (el) el.checked = true;
     });
 
-    // Reset model radio to General (nova-3)
-    const modelDefault = document.querySelector('input[name="model"][value="nova-3"]');
-    if (modelDefault) modelDefault.checked = true;
+    setDefaultModel(serverDefaults.default_model);
 
     // Reset profanity filter radio buttons to default (off)
     const profanityFilterOff = document.querySelector('input[name="profanityFilter"][value="off"]');
@@ -724,6 +736,17 @@ function applyDefaultSettings() {
     // Uncheck remember settings
     const rememberCheckbox = document.getElementById('rememberSettings');
     if (rememberCheckbox) rememberCheckbox.checked = false;
+}
+
+function setDefaultModel(model) {
+    const selectedModel = document.querySelector(`input[name="model"][value="${model}"]`);
+    if (selectedModel) {
+        selectedModel.checked = true;
+        return;
+    }
+
+    const fallbackModel = document.querySelector('input[name="model"][value="nova-3"]');
+    if (fallbackModel) fallbackModel.checked = true;
 }
 
 function saveCurrentSettings() {

@@ -38,6 +38,8 @@ services:
     # Pre-built image (uncomment to skip building):
     # image: ghcr.io/tylerbcrawford/subgeneratorr-web:latest
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       REDIS_URL: redis://redis:6379/0
@@ -83,6 +85,8 @@ services:
     # image: ghcr.io/tylerbcrawford/subgeneratorr-worker:latest
     command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=${WORKER_CONCURRENCY:-1}
     environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media

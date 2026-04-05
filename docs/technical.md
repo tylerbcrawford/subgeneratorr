@@ -274,8 +274,11 @@ See `examples/video-list-example.txt` for a complete example.
 | `LOG_ROOT` | `/logs` | Log directory path |
 | `DEFAULT_MODEL` | `nova-3` | Default transcription model |
 | `DEFAULT_LANGUAGE` | `en` | Default language |
+| `DISABLE_AUTH` | `true` in example compose | Disable auth entirely for local-only deployments |
 | `ALLOWED_EMAILS` | - | Comma-separated list of allowed email addresses for OAuth |
 | `WORKER_CONCURRENCY` | `1` | Number of concurrent transcription jobs per worker |
+| `PUID` | `1000` in example compose | Host user ID for file ownership on Linux/NAS deployments |
+| `PGID` | `1000` in example compose | Host group ID for file ownership on Linux/NAS deployments |
 
 #### LLM API Keys (Optional)
 
@@ -292,7 +295,7 @@ See `examples/video-list-example.txt` for a complete example.
 ### Linux
 
 - **Docker:** Native support with Docker Engine or Docker Desktop
-- **File Permissions:** Use `PUID` and `PGID` environment variables to match your user
+- **File Permissions:** Use `PUID` and `PGID` environment variables to match your user across the web, worker, and CLI containers
 - **Performance:** Best performance, no virtualization overhead
 - **Tested On:** Ubuntu, Debian, Fedora, Arch Linux
 
@@ -302,12 +305,21 @@ id -u  # Get your UID
 id -g  # Get your GID
 ```
 
-**Set in docker-compose.yml:**
+**Set in `.env` or `docker-compose.yml`:**
 ```yaml
 environment:
   - PUID=1000  # Your user ID
   - PGID=1000  # Your group ID
 ```
+
+### Authentication Headers
+
+When `DISABLE_AUTH=false`, the app trusts an upstream authenticated identity only if the reverse proxy forwards one of these headers:
+
+- `X-Auth-Request-Email`
+- `X-Forwarded-User`
+
+OAuth2-Proxy can emit `X-Auth-Request-Email` directly. Other proxies such as Authelia or Nginx auth setups must be configured to forward one of those headers explicitly.
 
 ### macOS
 

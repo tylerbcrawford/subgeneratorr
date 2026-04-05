@@ -118,6 +118,40 @@ def test_search_requires_auth():
     assert response.status_code == 401
 
 
+def test_api_config_returns_runtime_default_model():
+    with app.test_client() as client, patch.object(app_module, "DEFAULT_MODEL", "nova-3-medical"):
+        response = client.get("/api/config")
+
+    assert response.status_code == 200
+    assert response.get_json()["default_model"] == "nova-3-medical"
+
+
+def test_submit_uses_runtime_default_model_when_request_omits_model(tmp_path):
+    media_file = tmp_path / "episode.mkv"
+    media_file.write_text("video")
+    captured = {}
+
+    def fake_make_batch(files, model, language, **kwargs):
+        captured["files"] = files
+        captured["model"] = model
+        captured["language"] = language
+        return SimpleNamespace(id="batch-123")
+
+    with app.test_client() as client, \
+        patch.object(app_module, "MEDIA_ROOT", tmp_path), \
+        patch.object(app_module, "DEFAULT_MODEL", "nova-3-medical"), \
+        patch.object(app_module, "make_batch", side_effect=fake_make_batch), \
+        patch.object(app_module, "_redis", SimpleNamespace(set=lambda *args, **kwargs: True)):
+        response = client.post(
+            "/api/submit",
+            json={"files": [str(media_file)]},
+        )
+
+    assert response.status_code == 200
+    assert captured["model"] == "nova-3-medical"
+    assert captured["language"] == app_module.DEFAULT_LANGUAGE
+
+
 def test_scan_status_valid_uuid_pending():
     task_result = SimpleNamespace(state="PENDING", info=None)
 
