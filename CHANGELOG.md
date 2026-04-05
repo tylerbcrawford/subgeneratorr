@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-04-05
+
+### Fixed
+- **Web default model handling** — `DEFAULT_MODEL` now flows through the Flask config endpoint, request fallback path, and browser UI defaults so `nova-3-medical` and other configured defaults are honored in real deployments
+- **Linux/NAS runtime permissions for the web stack** — the web and worker containers now respect `PUID` and `PGID` at startup so generated subtitles, transcripts, and keyterms can be written with the expected host ownership
+- **Contributor setup path** — `CONTRIBUTING.md` now includes the required `docker-compose.yml` bootstrap step before `docker compose build`
+
+### Changed
+- Clarified reverse-proxy auth requirements in the README and technical docs: when `DISABLE_AUTH=false`, upstream auth must forward either `X-Auth-Request-Email` or `X-Forwarded-User`
+- Expanded deployment docs and example environment guidance for shared `PUID`/`PGID` configuration across CLI, web, and worker services
+- Added regression coverage for runtime `DEFAULT_MODEL` behavior in the API test suite
+
 ## [2.1.0] - 2026-04-03
 
 ### Added
@@ -82,6 +94,7 @@ Initial public release.
 - **Path traversal protection** — Input validation on file paths to prevent directory escape
 - **Error path hardening** — Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/tylerbcrawford/subgeneratorr/releases/tag/v2.0.0
