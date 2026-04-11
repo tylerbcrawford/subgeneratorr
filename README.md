@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Subtitle and Transcript Generation via Deepgram Nova-3**
+**AI-Powered Subtitle Generation for Plex, Jellyfin & Emby — Deepgram Nova-3 Speech-to-Text with Keyterm Prompting**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -8,11 +8,15 @@
 
 ---
 
+**Subgeneratorr** is an open-source tool that automatically generates SRT subtitle files for your media library using [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) speech-to-text API. It runs as a Docker container with a Web UI and CLI, integrates directly with Plex, Jellyfin, and Emby, and supports **keyterm prompting** — a technique that feeds character names and show-specific vocabulary to the Nova-3 model to dramatically improve transcription accuracy for proper nouns. If community subtitles don't exist for a show, Subgeneratorr generates them from the audio.
+
+---
+
 ## Why Subgeneratorr?
 
 I built this tool to solve a persistent problem in my media library: **hundreds of episodes missing subtitles**. While [Bazarr](https://www.bazarr.media/) does an excellent job finding subtitles for most content, there are always gaps like obscure shows, older episodes, or content that doesn't have community-contributed subtitles available.
 
-I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 model produces high-quality transcriptions at ~$0.0057/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
+I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 automatic speech recognition model produces high-quality transcriptions at ~$0.0057/minute, and adding keyterms—character names, locations, and show-specific terminology—dramatically improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
 
 **Subgeneratorr is for media enthusiasts** who care about complete subtitle coverage, accessibility, and having a polished library experience in Plex, Jellyfin, or Emby.
 
@@ -22,8 +26,8 @@ I looked around for options with free trials but most only gave a couple hours f
 
 ## Features
 
-- 🎯 **Nova-3 Transcription** - Deepgram's flagship model with General and Medical variants
-- 🔑 **LLM-Enhanced Keyterms** - AI-powered generation of character names and terminology (optional)
+- 🎯 **Deepgram Nova-3 Speech-to-Text** - Flagship STT model with General and Medical variants; state-of-the-art accuracy for media transcription
+- 🔑 **Keyterm Prompting (Custom Vocabulary)** - Feed character names, locations, and show-specific terms to Nova-3; AI-powered generation via Claude, GPT, or Gemini (optional)
 - 🗣️ **Speaker Diarization** - Identify speakers and create labeled transcripts
 - 🌍 **Multi-Language Support** - 50+ languages with auto-detect, multilingual code-switching, and regional variants
 - 🛡️ **Content Control** - Redaction (PCI/PII/numbers), profanity filtering, find & replace, dictation mode
@@ -143,9 +147,30 @@ Access at `http://localhost:5000` (or configure reverse proxy for remote access)
 
 ## Key Features Explained
 
+### Why Deepgram Nova-3?
+
+Deepgram Nova-3 is Deepgram's most accurate general-purpose speech recognition model, trained on a broad corpus of audio including media content. For subtitle generation, it outperforms alternatives on:
+
+- **Conversational accuracy** — handles fast speech, accents, and overlapping dialogue
+- **Language breadth** — 50+ languages with regional variants in a single API
+- **Keyterm support** — custom vocabulary prompting available across all supported languages
+- **Pricing** — ~$0.0057/minute with a $200 free credit on signup (~35,000 minutes free)
+
+Nova-3 also offers a **Medical variant** (`nova-3-medical`) tuned for clinical terminology. For most media use cases, `nova-3` (General) is the right choice.
+
+---
+
 ### Keyterm Prompting
 
 This is the feature I'm most proud of. Speech-to-text models are excellent at everyday words, but they struggle with proper nouns — character names, fictional locations, made-up terminology. Without guidance, "Heisenberg" becomes "Heizenberg" and "Los Pollos Hermanos" becomes gibberish. Keyterms tell Nova-3 exactly what to listen for, and the difference in accuracy is dramatic.
+
+Keyterms are a form of **custom vocabulary prompting** — also called keyword boosting or vocabulary hints — that influence Nova-3's recognition probabilities at decode time, not as a post-processing step. Accuracy improvements of up to 90% for prompted terms have been observed on proper nouns. The limit is 500 tokens (~20–50 focused terms per request), and keyterm support is available across all 50+ Nova-3 languages.
+
+**Best keyterms to include:**
+- Main character full names and nicknames
+- Fictional place names and organization names
+- Made-up terminology, brand names, or technical jargon specific to the show
+- Names that sound like common words (the model will otherwise pick the common word)
 
 **Manual CSV (full control):**
 ```bash
@@ -289,6 +314,28 @@ You can work through it show by show over a few days, or batch everything at onc
 2. Create speaker map CSV
 3. Run with transcripts enabled: `docker compose run --rm -e ENABLE_TRANSCRIPT=1 cli`
 4. Get language-tagged `.srt` subtitles beside the media file plus `.transcript.speakers.txt` output in the sibling `Transcripts/` folder
+
+---
+
+## Frequently Asked Questions
+
+**Q: What is keyterm prompting in Deepgram Nova-3?**  
+A: Keyterm prompting (also called custom vocabulary or keyword boosting) lets you provide a list of domain-specific terms — character names, locations, made-up words — that Nova-3 prioritizes during transcription. Without keyterms, proper nouns are often misrecognized; with them, accuracy improves dramatically (up to 90% for the specific terms provided).
+
+**Q: How much does Deepgram Nova-3 transcription cost?**  
+A: Nova-3 charges approximately $0.0057 per minute of audio. New Deepgram accounts receive $200 in free credits — roughly 35,000 minutes (585 hours) of transcription. A typical 45-minute TV episode costs about $0.26.
+
+**Q: Does Subgeneratorr work with Plex, Jellyfin, and Emby?**  
+A: Yes. Subgeneratorr generates language-tagged SRT sidecar files (`.eng.srt`, `.spa.srt`, etc.) that are automatically recognized by Plex, Jellyfin, and Emby without any additional configuration. Refresh your media library after generation to pick up new subtitles.
+
+**Q: What languages does Deepgram Nova-3 support?**  
+A: Nova-3 supports 50+ languages with regional variants including English, Spanish, French, German, Japanese, Korean, Hindi, Russian, Portuguese, and Arabic. It also supports automatic language detection across 35 languages and a `multi` mode for code-switching content with up to 10 languages simultaneously.
+
+**Q: Can I generate keyterms automatically instead of writing them manually?**  
+A: Yes. The Web UI includes one-click AI keyterm generation using Claude, GPT, or Gemini. The AI infers the show or movie from the file path, researches it, and returns 20–50 character names, locations, and jargon terms in 3–5 seconds. Gemini's free tier makes this effectively zero-cost. Generated keyterms apply to all episodes in a show automatically.
+
+**Q: How is Subgeneratorr different from Bazarr?**  
+A: Bazarr finds community-contributed subtitles for popular content. Subgeneratorr *generates* subtitles from audio using AI speech recognition — it fills gaps where community subtitles don't exist (obscure shows, older episodes, foreign content). They work together: run Bazarr first, then Subgeneratorr on whatever's left.
 
 ---
 

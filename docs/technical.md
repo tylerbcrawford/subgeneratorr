@@ -768,6 +768,8 @@ Weekly scan for missing subtitles:
 
 For an overview of keyterms (what they are, how to create them, AI generation), see the [README](../README.md#keyterm-prompting). This section covers API parameters, token limits, and CSV format details.
 
+**What are keyterms?** Keyterms are custom vocabulary hints passed directly to the Deepgram Nova-3 API at transcription time. They are not a post-processing step — they influence the model's recognition probabilities during decoding. This is also referred to as keyword boosting or vocabulary prompting in the speech-to-text literature.
+
 **API Parameter:**
 ```python
 opts = PrerecordedOptions(
