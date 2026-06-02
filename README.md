@@ -429,3 +429,4 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 - [Deepgram](https://deepgram.com/) - AI-powered speech recognition API
 - Built with [Deepgram Python SDK](https://github.com/deepgram/deepgram-python-sdk)
 - Uses [deepgram-captions](https://github.com/deepgram/deepgram-python-captions) for SRT generation
+- Built with [Claude Code](https://claude.com/claude-code)
