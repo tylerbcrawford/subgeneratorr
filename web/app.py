@@ -143,12 +143,22 @@ def api_config():
     Returns default model and language settings plus API key configuration status.
     """
     _require_auth()
+    anthropic_ok = bool(os.getenv('ANTHROPIC_API_KEY'))
+    openai_ok = bool(os.getenv('OPENAI_API_KEY'))
+    google_ok = bool(os.getenv('GEMINI_API_KEY'))
     return jsonify({
         "default_model": DEFAULT_MODEL,
         "default_language": DEFAULT_LANGUAGE,
-        "anthropic_api_key_configured": bool(os.getenv('ANTHROPIC_API_KEY')),
-        "openai_api_key_configured": bool(os.getenv('OPENAI_API_KEY')),
-        "google_api_key_configured": bool(os.getenv('GEMINI_API_KEY'))
+        # Flat fields (kept for backward compatibility)
+        "anthropic_api_key_configured": anthropic_ok,
+        "openai_api_key_configured": openai_ok,
+        "google_api_key_configured": google_ok,
+        # Structured providers object
+        "providers": {
+            "anthropic": anthropic_ok,
+            "openai": openai_ok,
+            "google": google_ok
+        }
     })
 
 

@@ -16,7 +16,8 @@ let estimateDebounceTimer = null; // Debounce timer for cost estimation
 
 let serverDefaults = {
     default_language: 'en',
-    default_model: 'nova-3'
+    default_model: 'nova-3',
+    providers: { anthropic: null, openai: null, google: null }
 };
 
 // Chunked batch processing
@@ -50,7 +51,12 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(config => {
             serverDefaults = {
                 default_language: config.default_language || 'en',
-                default_model: config.default_model || 'nova-3'
+                default_model: config.default_model || 'nova-3',
+                providers: {
+                    anthropic: config.anthropic_api_key_configured || false,
+                    openai: config.openai_api_key_configured || false,
+                    google: config.google_api_key_configured || false
+                }
             };
 
             if (!shouldLoadSaved) {
@@ -96,6 +102,72 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Hide transcript options
     document.getElementById('transcriptOptions').style.display = 'none';
+
+    // Wire up buttons/inputs that were previously inline handlers
+    const gearBtnEl = document.getElementById('gearBtn');
+    if (gearBtnEl) gearBtnEl.addEventListener('click', toggleGearPopover);
+
+    const themeToggleBtnEl = document.getElementById('themeToggleBtn');
+    if (themeToggleBtnEl) themeToggleBtnEl.addEventListener('click', toggleTheme);
+
+    const submitBtnEl = document.getElementById('submitBtn');
+    if (submitBtnEl) submitBtnEl.addEventListener('click', submitBatch);
+
+    // cancelBtn handler is set dynamically (it switches between cancelJob / cancelChunkedBatch /
+    // cancelLibraryScan depending on mode), so we leave it as .onclick assignments in context code.
+    const cancelBtnEl = document.getElementById('cancelBtn');
+    if (cancelBtnEl) cancelBtnEl.onclick = cancelJob;
+
+    const fileSearchEl = document.getElementById('fileSearch');
+    if (fileSearchEl) fileSearchEl.addEventListener('input', function() { filterBrowserItems(this.value); });
+
+    const searchClearEl = document.getElementById('searchClear');
+    if (searchClearEl) searchClearEl.addEventListener('click', clearFileSearch);
+
+    const selectAllBtnEl = document.getElementById('selectAllBtn');
+    if (selectAllBtnEl) selectAllBtnEl.addEventListener('click', selectAllInFolder);
+
+    const clearSelectionBtnEl = document.getElementById('clearSelectionBtn');
+    if (clearSelectionBtnEl) clearSelectionBtnEl.addEventListener('click', selectNone);
+
+    const advancedToggleBtnEl = document.getElementById('advancedToggle');
+    if (advancedToggleBtnEl) advancedToggleBtnEl.addEventListener('click', toggleAdvancedOptions);
+
+    const aiConfigToggleBtnEl = document.getElementById('aiConfigToggleBtn');
+    if (aiConfigToggleBtnEl) aiConfigToggleBtnEl.addEventListener('click', toggleAiConfig);
+
+    const languageSelectEl = document.getElementById('language');
+    if (languageSelectEl) languageSelectEl.addEventListener('change', function() {
+        updateKeytermAvailability();
+        updateIntelligenceAvailability();
+    });
+
+    const onlyFoldersEl = document.getElementById('onlyFoldersWithVideos');
+    if (onlyFoldersEl) onlyFoldersEl.addEventListener('change', toggleFolderFilter);
+
+    const rememberSettingsEl = document.getElementById('rememberSettings');
+    if (rememberSettingsEl) rememberSettingsEl.addEventListener('change', toggleRememberSettings);
+
+    const redactEl = document.getElementById('redact');
+    if (redactEl) redactEl.addEventListener('change', toggleRedactOptions);
+
+    const findReplaceEl = document.getElementById('findReplace');
+    if (findReplaceEl) findReplaceEl.addEventListener('change', toggleReplaceOptions);
+
+    const enableTranscriptEl = document.getElementById('enableTranscript');
+    if (enableTranscriptEl) enableTranscriptEl.addEventListener('change', toggleTranscriptOptions);
+
+    const utterancesEl = document.getElementById('utterances');
+    if (utterancesEl) utterancesEl.addEventListener('change', toggleUttSplit);
+
+    const enableSearchEl = document.getElementById('enableSearch');
+    if (enableSearchEl) enableSearchEl.addEventListener('change', toggleSearchTerms);
+
+    const uttSplitEl = document.getElementById('uttSplit');
+    if (uttSplitEl) uttSplitEl.addEventListener('input', function() {
+        const display = document.getElementById('uttSplitValue');
+        if (display) display.textContent = parseFloat(this.value).toFixed(1) + 's';
+    });
 
     // Setup event delegation for directory items
     document.getElementById('directoryList').addEventListener('click', function(e) {
@@ -1459,20 +1531,26 @@ function toggleAdvancedOptions() {
     if (advancedOptions.classList.contains('hidden')) {
         advancedOptions.classList.remove('hidden');
         toggleBtn.textContent = 'Transcription Settings ▲';
+        toggleBtn.setAttribute('aria-expanded', 'true');
     } else {
         advancedOptions.classList.add('hidden');
         toggleBtn.textContent = 'Transcription Settings ▼';
+        toggleBtn.setAttribute('aria-expanded', 'false');
     }
 }
 
 function toggleGearPopover() {
     const popover = document.getElementById('gearPopover');
     popover.classList.toggle('hidden');
+    const btn = document.getElementById('gearBtn');
+    if (btn) btn.setAttribute('aria-expanded', String(!popover.classList.contains('hidden')));
 }
 
 function toggleAiConfig() {
     const panel = document.getElementById('aiConfigPanel');
     panel.classList.toggle('hidden');
+    const btn = document.getElementById('aiConfigToggleBtn');
+    if (btn) btn.setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
 }
 
 function updateAiModelDisplay() {
@@ -3559,11 +3637,13 @@ function getCurrentVideoPath() {
 }
 
 /**
- * Update spinner text with custom message
+ * Update spinner text on the generate button while generation is in progress
  */
 function updateSpinnerText(message) {
-    // Since showSpinner doesn't exist yet, we'll use toast for now
-    // In a real implementation, you'd modify the actual spinner element
+    const generateBtn = document.getElementById('generateKeytermsBtn');
+    if (generateBtn && generateBtn.classList.contains('processing')) {
+        generateBtn.innerHTML = '<span class="spinner-inline" aria-hidden="true"></span>' + escapeHtml(message);
+    }
 }
 
 /**
@@ -3574,25 +3654,23 @@ function showMessage(message, type = 'info', options = {}) {
 }
 
 /**
- * Show spinner with message
+ * Show spinner with message (disables the generate button and shows an inline spinner)
  */
 function showSpinner(message) {
-    // Disable the generate button
     const generateBtn = document.getElementById('generateKeytermsBtn');
     if (generateBtn) {
         generateBtn.disabled = true;
         generateBtn.classList.add('processing');
         generateBtn.classList.remove('completed');
-        generateBtn.textContent = message;
+        // Show inline spinner + message text
+        generateBtn.innerHTML = '<span class="spinner-inline" aria-hidden="true"></span>' + escapeHtml(message);
     }
-    showMessage(message, 'info');
 }
 
 /**
- * Hide spinner
+ * Hide spinner — restores generate button to default state
  */
 function hideSpinner() {
-    // Re-enable the generate button
     const generateBtn = document.getElementById('generateKeytermsBtn');
     if (generateBtn) {
         generateBtn.disabled = false;
@@ -3676,9 +3754,10 @@ async function pollGenerationStatus(taskId) {
                 clearInterval(interval);
                 hideSpinner();
                 if (generatingToast) {
-                    generatingToast.classList.remove('show');
-                    setTimeout(() => generatingToast.remove(), 300);
+                    const _gt = generatingToast;
                     generatingToast = null;
+                    _gt.classList.remove('show');
+                    setTimeout(() => _gt.remove(), 300);
                 }
                 showMessage(`❌ Generation failed: ${data.error || 'Unknown server error'}`, 'error');
                 return;
@@ -3689,9 +3768,10 @@ async function pollGenerationStatus(taskId) {
                 clearInterval(interval);
                 hideSpinner();
                 if (generatingToast) {
-                    generatingToast.classList.remove('show');
-                    setTimeout(() => generatingToast.remove(), 300);
+                    const _gt = generatingToast;
                     generatingToast = null;
+                    _gt.classList.remove('show');
+                    setTimeout(() => _gt.remove(), 300);
                 }
                 showMessage('❌ Generation timed out after 3 minutes', 'error');
                 return;
@@ -3711,9 +3791,10 @@ async function pollGenerationStatus(taskId) {
 
                 // Remove the generating toast
                 if (generatingToast) {
-                    generatingToast.classList.remove('show');
-                    setTimeout(() => generatingToast.remove(), 300);
+                    const _gt = generatingToast;
                     generatingToast = null;
+                    _gt.classList.remove('show');
+                    setTimeout(() => _gt.remove(), 300);
                 }
 
                 // Populate keyterms field
@@ -3761,11 +3842,12 @@ async function pollGenerationStatus(taskId) {
                 
                 // Remove the generating toast
                 if (generatingToast) {
-                    generatingToast.classList.remove('show');
-                    setTimeout(() => generatingToast.remove(), 300);
+                    const _gt = generatingToast;
                     generatingToast = null;
+                    _gt.classList.remove('show');
+                    setTimeout(() => _gt.remove(), 300);
                 }
-                
+
                 showMessage(`❌ Generation failed: ${data.error}`, 'error');
             } else if (data.state === 'PROGRESS') {
                 // Update spinner text with progress
@@ -3778,11 +3860,12 @@ async function pollGenerationStatus(taskId) {
             
             // Remove the generating toast
             if (generatingToast) {
-                generatingToast.classList.remove('show');
-                setTimeout(() => generatingToast.remove(), 300);
+                const _gt = generatingToast;
                 generatingToast = null;
+                _gt.classList.remove('show');
+                setTimeout(() => _gt.remove(), 300);
             }
-            
+
             showMessage(`❌ Error: ${error.message}`, 'error');
         }
     }, 2000); // Poll every 2 seconds
@@ -3821,27 +3904,35 @@ async function checkApiKeyStatus() {
             statusMessage = hasKey ? 'Gemini API key configured' : 'Gemini API key missing';
         }
         
+        const notice = document.getElementById('providerKeyNotice');
         // Update indicator
         if (hasKey) {
             statusIndicator.className = 'api-key-status configured';
             statusIndicator.setAttribute('data-status', statusMessage);
+            statusIndicator.setAttribute('aria-label', statusMessage);
             if (generateBtn) {
                 generateBtn.disabled = false;
                 generateBtn.style.display = 'inline-flex';
             }
+            if (notice) notice.style.display = 'none';
         } else {
             statusIndicator.className = 'api-key-status missing';
             statusIndicator.setAttribute('data-status', statusMessage);
+            statusIndicator.setAttribute('aria-label', statusMessage);
             if (generateBtn) {
                 generateBtn.disabled = true;
                 generateBtn.style.display = 'none';
-                generateBtn.title = `${statusMessage}. Configure in .env file.`;
+            }
+            if (notice) {
+                notice.textContent = statusMessage + '. Configure the API key in your .env file.';
+                notice.style.display = 'block';
             }
         }
     } catch (error) {
         console.error('Failed to check API key status:', error);
         statusIndicator.className = 'api-key-status missing';
         statusIndicator.setAttribute('data-status', 'Unable to check API key status');
+        statusIndicator.setAttribute('aria-label', 'Unable to check API key status');
         if (generateBtn) {
             generateBtn.disabled = true;
             generateBtn.style.display = 'none';
@@ -3923,12 +4014,40 @@ function showKeytermOverwriteDialog(keytermCount) {
 async function handleGenerateKeyterms() {
     const videoPath = getCurrentVideoPath();
     if (!videoPath) {
-        showMessage('❌ Please select a video first', 'error');
+        showMessage('Please select a video file first', 'error');
         return;
     }
 
-    const provider = document.getElementById('llmProvider').value;
-    const model = document.getElementById('llmModel').value;
+    const providerEl = document.getElementById('llmProvider');
+    const modelEl = document.getElementById('llmModel');
+    if (!providerEl || !modelEl) {
+        showMessage('Provider or model selector not found', 'error');
+        return;
+    }
+
+    const provider = providerEl.value;
+    const model = modelEl.value;
+
+    // Validate that the selected provider has a configured API key
+    const providerKeyMap = {
+        anthropic: 'anthropic_api_key_configured',
+        openai: 'openai_api_key_configured',
+        google: 'google_api_key_configured'
+    };
+    try {
+        const configResp = await fetch('/api/config');
+        if (configResp.ok) {
+            const config = await configResp.json();
+            const keyField = providerKeyMap[provider];
+            if (keyField && !config[keyField]) {
+                const providerNames = { anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google (Gemini)' };
+                showMessage(`${providerNames[provider] || provider} API key is not configured. Add it to your .env file.`, 'error');
+                return;
+            }
+        }
+    } catch (_e) {
+        // Config check failed — allow through (server will return the real error)
+    }
     const keytermsInput = document.getElementById('keyTerms');
     const hasKeyterms = keytermsInput?.value.trim().length > 0;
 
@@ -3973,9 +4092,10 @@ async function handleGenerateKeyterms() {
 
         // Remove the generating toast
         if (generatingToast) {
-            generatingToast.classList.remove('show');
-            setTimeout(() => generatingToast.remove(), 300);
+            const _gt = generatingToast;
             generatingToast = null;
+            _gt.classList.remove('show');
+            setTimeout(() => _gt.remove(), 300);
         }
 
         showMessage(`❌ Error: ${error.message}`, 'error');

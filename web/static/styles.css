@@ -2616,6 +2616,59 @@ button:active,
    LOADING ANIMATION FOR BATCH PROCESSING
    ============================================ */
 
+/* Provider key notice — shown inline below Generate button when API key is missing */
+.provider-key-notice {
+  font-size: var(--font-small);
+  color: var(--color-red);
+  margin-top: var(--space-xs);
+  text-align: center;
+}
+
+/* Inline spinner for long operations (keyterm gen, library scan) */
+.spinner-inline {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--color-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: var(--space-xs);
+  flex-shrink: 0;
+}
+
+/* Mobile: prevent gear popover from overflowing viewport */
+@media (max-width: 480px) {
+  .gear-popover {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    box-shadow: var(--shadow-3);
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  /* Keyterms textarea: constrain height on mobile so it doesn't push the page */
+  #keyTerms {
+    max-height: 80px;
+    min-height: 48px;
+  }
+
+  /* AI config panel: ensure it doesn't overflow on narrow screens */
+  .ai-config-panel {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 .loading-dots::after {
   content: '';
   animation: dots 1.5s steps(4, end) infinite;

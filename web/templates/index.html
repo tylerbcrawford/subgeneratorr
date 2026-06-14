@@ -21,8 +21,8 @@
                     <div class="action-bar">
                         <div class="sticky-title">
                             <h1>Subgeneratorr</h1>
-                            <button class="gear-btn" onclick="toggleGearPopover()" aria-label="Preferences">
-                                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <button class="gear-btn" id="gearBtn" aria-label="Preferences" aria-expanded="false" aria-controls="gearPopover" type="button">
+                                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false">
                                     <line x1="3" y1="5" x2="17" y2="5"/>
                                     <line x1="3" y1="10" x2="17" y2="10"/>
                                     <line x1="3" y1="15" x2="17" y2="15"/>
@@ -39,7 +39,7 @@
                             <div class="gear-popover-header">Preferences</div>
                             <div class="controls-aligned">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="onlyFoldersWithVideos" checked onchange="toggleFolderFilter()">
+                                    <input type="checkbox" id="onlyFoldersWithVideos" checked>
                                     <span>Show folders with media only</span>
                                 </label>
                                 <label class="checkbox-label">
@@ -47,7 +47,7 @@
                                     <span>Auto-clear files after completion</span>
                                 </label>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="rememberSettings" onchange="toggleRememberSettings()">
+                                    <input type="checkbox" id="rememberSettings">
                                     <span>Remember my last settings</span>
                                 </label>
                             </div>
@@ -57,15 +57,15 @@
                                 </button>
                             </div>
                             <div class="gear-popover-theme">
-                                <button class="theme-toggle theme-toggle-small" onclick="toggleTheme()" aria-label="Toggle theme">
+                                <button class="theme-toggle theme-toggle-small" id="themeToggleBtn" aria-label="Toggle theme" type="button">
                                     <span class="theme-icon theme-icon-dark">☀️</span>
                                     <span class="theme-icon theme-icon-light" style="display: none;">🌙</span>
                                 </button>
                             </div>
                         </div>
                         <div class="action-bar-controls">
-                            <button onclick="submitBatch()" id="submitBtn" class="btn-primary" disabled>Transcribe</button>
-                            <select id="language" class="action-bar-select" aria-label="Language" onchange="updateKeytermAvailability(); updateIntelligenceAvailability();">
+                            <button id="submitBtn" class="btn-primary" disabled type="button">Transcribe</button>
+                            <select id="language" class="action-bar-select" aria-label="Language">
                                 <option value="en">English</option>
                                 <optgroup label="──────────">
                                     <option value="auto">Auto-detect</option>
@@ -163,7 +163,7 @@
                                 </div>
                                 <div class="progress-label" id="progressLabel">0%</div>
                             </div>
-                            <button onclick="cancelJob()" id="cancelBtn" class="btn-cancel" style="display: none;">Cancel</button>
+                            <button id="cancelBtn" class="btn-cancel" style="display: none;" type="button">Cancel</button>
                         </div>
                     </div>
 
@@ -172,9 +172,8 @@
                         <div class="search-container">
                             <input type="text" id="fileSearch" class="search-input"
                                    placeholder="Search..."
-                                   oninput="filterBrowserItems(this.value)"
                                    aria-label="Search files and folders">
-                            <button class="search-clear" id="searchClear" onclick="clearFileSearch()"
+                            <button class="search-clear" id="searchClear" type="button"
                                     aria-label="Clear search" style="display: none;">&times;</button>
                         </div>
                         <div id="directoryList" class="files-list">
@@ -186,9 +185,9 @@
                         </div>
                         <div class="browser-toolbar browser-toolbar-footer">
                             <div class="toolbar-right" style="margin: 0 auto;">
-                                <button class="btn-link" onclick="selectAllInFolder()" id="selectAllBtn">Select All</button>
+                                <button class="btn-link" id="selectAllBtn" type="button">Select All</button>
                                 <span class="separator">•</span>
-                                <button class="btn-link" onclick="selectNone()">Clear Selection</button>
+                                <button class="btn-link" id="clearSelectionBtn" type="button">Clear Selection</button>
                             </div>
                         </div>
                     </div>
@@ -201,14 +200,15 @@
                             <small class="keyterms-help">Auto-loaded from CSV if available.</small>
 
                             <div class="keyterms-generate-row">
-                                <button id="generateKeytermsBtn" class="btn-secondary">
+                                <button id="generateKeytermsBtn" class="btn-secondary" type="button">
                                     Generate Keyterms
                                 </button>
                                 <span class="ai-model-label">
                                     via <span id="aiModelDisplay">Claude Sonnet 4.6</span>
-                                    <button class="ai-config-toggle" onclick="toggleAiConfig()" aria-label="AI settings">⚙</button>
+                                    <button class="ai-config-toggle" id="aiConfigToggleBtn" aria-label="AI settings" aria-expanded="false" aria-controls="aiConfigPanel" type="button">⚙</button>
                                 </span>
                             </div>
+                            <div id="providerKeyNotice" class="provider-key-notice" style="display:none;"></div>
 
                             <!-- Inline AI Config (expandable) -->
                             <div id="aiConfigPanel" class="ai-config-panel hidden">
@@ -217,7 +217,7 @@
                                         API Key Status:
                                         <span id="apiKeyStatus" class="api-key-status" title="API key status"></span>
                                     </label>
-                                    <select id="llmProvider">
+                                    <select id="llmProvider" aria-label="LLM provider">
                                         <option value="anthropic">Anthropic (Claude)</option>
                                         <option value="openai">OpenAI (GPT)</option>
                                         <option value="google">Google (Gemini)</option>
@@ -225,7 +225,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="llmModel">Model</label>
-                                    <select id="llmModel">
+                                    <select id="llmModel" aria-label="LLM model">
                                         <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
                                         <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
                                     </select>
@@ -236,7 +236,7 @@
 
                         <!-- Transcription Settings Toggle -->
                         <div style="margin-top: var(--space-m); text-align: center;">
-                            <button onclick="toggleAdvancedOptions()" id="advancedToggle">
+                            <button id="advancedToggle" type="button" aria-expanded="false" aria-controls="advancedOptions">
                                 Transcription Settings ▼
                             </button>
                         </div>
@@ -301,7 +301,7 @@
                                     <span>Dictation mode</span>
                                 </label>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="redact" onchange="toggleRedactOptions()">
+                                    <input type="checkbox" id="redact">
                                     <span>Redact sensitive info</span>
                                 </label>
                             </div>
@@ -326,14 +326,14 @@
 
                             <div class="checkbox-group controls-aligned">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="findReplace" onchange="toggleReplaceOptions()">
+                                    <input type="checkbox" id="findReplace">
                                     <span>Find &amp; replace terms</span>
                                 </label>
                             </div>
 
                             <!-- Find & replace sub-options -->
                             <div id="replaceOptions" class="sub-options hidden">
-                                <textarea id="replaceTerms" rows="3" placeholder="wrong:right (one per line, max 200)"></textarea>
+                                <textarea id="replaceTerms" rows="3" placeholder="wrong:right (one per line, max 200)" aria-label="Find and replace terms, one per line in wrong:right format"></textarea>
                             </div>
                         </div>
 
@@ -342,7 +342,7 @@
                             <h3 class="section-label-quiet">Transcript Format</h3>
                             <div class="checkbox-group controls-aligned">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="enableTranscript" onchange="toggleTranscriptOptions()">
+                                    <input type="checkbox" id="enableTranscript">
                                     <span>Generate Transcript</span>
                                 </label>
                                 <label class="checkbox-label">
@@ -354,7 +354,7 @@
                                     <span>Speaker diarization</span>
                                 </label>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="utterances" checked onchange="toggleUttSplit()">
+                                    <input type="checkbox" id="utterances" checked>
                                     <span>Utterance segmentation</span>
                                 </label>
                             </div>
@@ -365,7 +365,7 @@
                                     Pause threshold: <span id="uttSplitValue">0.8s</span>
                                 </label>
                                 <input type="range" id="uttSplit" min="0.1" max="5.0" step="0.1" value="0.8"
-                                       class="range-slider" oninput="document.getElementById('uttSplitValue').textContent = parseFloat(this.value).toFixed(1) + 's'">
+                                       class="range-slider" aria-label="Pause threshold in seconds">
                             </div>
 
                             <div class="checkbox-group controls-aligned">
@@ -416,13 +416,13 @@
                                     <span>Entity detection</span>
                                 </label>
                                 <label class="checkbox-label">
-                                    <input type="checkbox" id="enableSearch" onchange="toggleSearchTerms()">
+                                    <input type="checkbox" id="enableSearch">
                                     <span>Search for terms</span>
                                 </label>
                             </div>
                             <!-- Search terms sub-option -->
                             <div id="searchTermsOptions" class="sub-options hidden">
-                                <textarea id="searchTerms" rows="2" placeholder="Terms to search for (comma-separated)"></textarea>
+                                <textarea id="searchTerms" rows="2" placeholder="Terms to search for (comma-separated)" aria-label="Terms to search for, comma-separated"></textarea>
                             </div>
                         </div>
 
