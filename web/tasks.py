@@ -358,7 +358,7 @@ def batch_finalize(results):
             msg = str(e)
             if BAZARR_API_KEY:
                 msg = msg.replace(BAZARR_API_KEY, "***")
-            print(f"Bazarr rescan failed: {msg}")
+            logger.warning("Bazarr rescan failed: %s", msg)
     
     return {"batch_status": "done", "results": results}
 
