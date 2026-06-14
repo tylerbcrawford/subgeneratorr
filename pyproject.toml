@@ -24,3 +24,14 @@ py-modules = []
 # the repo uses a sibling-directory layout (core/, cli/, web/) rather than
 # an importable package. The CLI is distributed via Docker (see README).
 # Restructuring the package layout is out of scope for this release.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort
+select = ["E", "F", "W", "I"]
+# E501: line-too-long — don't fight line length in an established codebase
+# E402: module-import-not-at-top — intentional in cli/generate_subtitles.py (sys.path bootstrap)
+ignore = ["E501", "E402"]

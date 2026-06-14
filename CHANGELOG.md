@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - Unreleased
+
+### Added
+- Web UI screenshots and workflow GIF in README (launch gate visuals)
+- Ruff linting and formatting in CI (`make lint` / `make fmt`; `ruff check` + `ruff format --check` gate on every push)
+- Trivy vulnerability scan in the publish workflow (fails only on unfixed CRITICAL CVEs; informational for all other severities)
+- OCI image labels (`org.opencontainers.image.source`, `.description`, `.licenses`, `.version`) on both `web/Dockerfile` and `cli/Dockerfile`
+- Docker `HEALTHCHECK` on `web/Dockerfile` using `wget` against `http://127.0.0.1:5000/healthz` (matches compose healthcheck convention)
+- Provider key status in `/api/config` response (Anthropic, OpenAI, Gemini key presence)
+- First-run and provider status UI in the web UI settings panel
+- Loading spinners on long-running actions in the web UI
+- Minimal `pyproject.toml` with build metadata and ruff tool configuration
+
+### Changed
+- Documentation cleanup pass: tone, readability, and accuracy improvements across README and technical docs
+- Accessibility improvements: aria-labels and focus styles added to interactive elements
+- Inline event handlers moved to `addEventListener` calls throughout the frontend
+
+### Fixed
+- Keyterm-generation null-reference console error when provider list was empty
+- Silent permission errors now logged (previously swallowed without user feedback)
+
+### Security
+- `SECRET_KEY` no longer falls back to a hardcoded value; generates a random per-process default when not set
+- Bazarr API key redacted from error logs
+- Dependency upper bounds added to prevent silent breakage from upstream major bumps
+
 ## [2.1.1] - 2026-04-05
 
 ### Fixed

@@ -18,6 +18,17 @@ jobs:
       - run: python3 -m compileall cli core web scripts tests
       - run: pytest tests/ -v
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

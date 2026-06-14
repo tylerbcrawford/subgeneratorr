@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 # Disable auth for tests — the app uses OAuth2-Proxy headers which aren't
 # present in the test environment. Tests validate API logic, not auth.
-os.environ['DISABLE_AUTH'] = 'true'
+os.environ["DISABLE_AUTH"] = "true"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "web"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -111,7 +111,7 @@ def test_scan_export_invalid_task_id():
 
 def test_search_requires_auth():
     """Verify /api/search rejects unauthenticated requests when auth is enabled."""
-    with patch.dict(os.environ, {'DISABLE_AUTH': 'false'}, clear=False):
+    with patch.dict(os.environ, {"DISABLE_AUTH": "false"}, clear=False):
         with app.test_client() as client:
             response = client.get("/api/search?q=test")
 
@@ -137,11 +137,13 @@ def test_submit_uses_runtime_default_model_when_request_omits_model(tmp_path):
         captured["language"] = language
         return SimpleNamespace(id="batch-123")
 
-    with app.test_client() as client, \
-        patch.object(app_module, "MEDIA_ROOT", tmp_path), \
-        patch.object(app_module, "DEFAULT_MODEL", "nova-3-medical"), \
-        patch.object(app_module, "make_batch", side_effect=fake_make_batch), \
-        patch.object(app_module, "_redis", SimpleNamespace(set=lambda *args, **kwargs: True)):
+    with (
+        app.test_client() as client,
+        patch.object(app_module, "MEDIA_ROOT", tmp_path),
+        patch.object(app_module, "DEFAULT_MODEL", "nova-3-medical"),
+        patch.object(app_module, "make_batch", side_effect=fake_make_batch),
+        patch.object(app_module, "_redis", SimpleNamespace(set=lambda *args, **kwargs: True)),
+    ):
         response = client.post(
             "/api/submit",
             json={"files": [str(media_file)]},
@@ -155,18 +157,17 @@ def test_submit_uses_runtime_default_model_when_request_omits_model(tmp_path):
 def test_scan_status_valid_uuid_pending():
     task_result = SimpleNamespace(state="PENDING", info=None)
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
-    ) as mock_async_result:
-        response = client.get(
-            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
-        )
+    with (
+        app.test_client() as client,
+        patch.object(
+            app_module.celery_app, "AsyncResult", return_value=task_result
+        ) as mock_async_result,
+    ):
+        response = client.get("/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     assert response.get_json() == {"state": "PENDING"}
-    mock_async_result.assert_called_once_with(
-        "123e4567-e89b-12d3-a456-426614174000"
-    )
+    mock_async_result.assert_called_once_with("123e4567-e89b-12d3-a456-426614174000")
 
 
 def test_scan_status_maps_cancelled_payload_to_cancelled_state():
@@ -180,12 +181,11 @@ def test_scan_status_maps_cancelled_payload_to_cancelled_state():
         },
     )
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
+    with (
+        app.test_client() as client,
+        patch.object(app_module.celery_app, "AsyncResult", return_value=task_result),
     ):
-        response = client.get(
-            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
-        )
+        response = client.get("/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     assert response.get_json() == {
@@ -208,12 +208,11 @@ def test_scan_status_valid_uuid_collecting_progress_stays_zero_without_total():
         },
     )
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
+    with (
+        app.test_client() as client,
+        patch.object(app_module.celery_app, "AsyncResult", return_value=task_result),
     ):
-        response = client.get(
-            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
-        )
+        response = client.get("/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     assert response.get_json()["state"] == "PROGRESS"
@@ -231,22 +230,24 @@ def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
         def get(self, propagate=False):
             return self._result
 
-    mixed_group = SimpleNamespace(results=[
-        FakeChild(
-            "child-success",
-            "SUCCESS",
-            {
-                "status": "ok",
-                "filename": "episode1.mkv",
-                "video": "/media/Show/episode1.mkv",
-            },
-        ),
-        FakeChild(
-            "child-failure",
-            "FAILURE",
-            RuntimeError("Deepgram request failed"),
-        ),
-    ])
+    mixed_group = SimpleNamespace(
+        results=[
+            FakeChild(
+                "child-success",
+                "SUCCESS",
+                {
+                    "status": "ok",
+                    "filename": "episode1.mkv",
+                    "video": "/media/Show/episode1.mkv",
+                },
+            ),
+            FakeChild(
+                "child-failure",
+                "FAILURE",
+                RuntimeError("Deepgram request failed"),
+            ),
+        ]
+    )
 
     celery_result_module = types.ModuleType("celery.result")
 
@@ -259,9 +260,11 @@ def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
     celery_module = types.ModuleType("celery")
     celery_module.result = celery_result_module
 
-    with app.test_client() as client, \
-        patch.dict(sys.modules, {"celery": celery_module, "celery.result": celery_result_module}), \
-        patch.object(app_module, "_redis", SimpleNamespace(get=lambda *_: None)):
+    with (
+        app.test_client() as client,
+        patch.dict(sys.modules, {"celery": celery_module, "celery.result": celery_result_module}),
+        patch.object(app_module, "_redis", SimpleNamespace(get=lambda *_: None)),
+    ):
         response = client.get("/api/job/mixed-batch-id")
 
     payload = response.get_json()
@@ -302,12 +305,11 @@ def test_job_status_mixed_results_are_terminal_failure_with_results_payload():
 def test_scan_status_valid_uuid_revoked_maps_to_cancelled():
     task_result = SimpleNamespace(state="REVOKED", info=None)
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
+    with (
+        app.test_client() as client,
+        patch.object(app_module.celery_app, "AsyncResult", return_value=task_result),
     ):
-        response = client.get(
-            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
-        )
+        response = client.get("/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     assert response.get_json()["state"] == "CANCELLED"
@@ -325,12 +327,11 @@ def test_scan_status_valid_uuid_cancelled():
         },
     )
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
+    with (
+        app.test_client() as client,
+        patch.object(app_module.celery_app, "AsyncResult", return_value=task_result),
     ):
-        response = client.get(
-            "/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000"
-        )
+        response = client.get("/api/library-scan/status/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     assert response.get_json()["state"] == "CANCELLED"
@@ -351,12 +352,11 @@ def test_scan_export_success_relative_paths():
         },
     )
 
-    with app.test_client() as client, patch.object(
-        app_module.celery_app, "AsyncResult", return_value=task_result
+    with (
+        app.test_client() as client,
+        patch.object(app_module.celery_app, "AsyncResult", return_value=task_result),
     ):
-        response = client.get(
-            "/api/library-scan/export/123e4567-e89b-12d3-a456-426614174000"
-        )
+        response = client.get("/api/library-scan/export/123e4567-e89b-12d3-a456-426614174000")
 
     assert response.status_code == 200
     body = response.get_data(as_text=True)

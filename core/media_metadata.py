@@ -10,9 +10,9 @@ Parses video file paths to extract structured metadata including:
 - Years (for movies)
 """
 
-from typing import Dict, Optional
-from pathlib import Path
 import re
+from pathlib import Path
+from typing import Dict, Optional
 
 
 class MediaMetadata:
@@ -26,7 +26,7 @@ class MediaMetadata:
         episode: Optional[int] = None,
         episode_title: Optional[str] = None,
         year: Optional[str] = None,
-        filename: Optional[str] = None
+        filename: Optional[str] = None,
     ):
         self.media_type = media_type
         self.name = name
@@ -39,18 +39,20 @@ class MediaMetadata:
     def to_dict(self) -> Dict:
         """Convert to dictionary representation."""
         return {
-            'media_type': self.media_type,
-            'name': self.name,
-            'season': self.season,
-            'episode': self.episode,
-            'episode_title': self.episode_title,
-            'year': self.year,
-            'filename': self.filename
+            "media_type": self.media_type,
+            "name": self.name,
+            "season": self.season,
+            "episode": self.episode,
+            "episode_title": self.episode_title,
+            "year": self.year,
+            "filename": self.filename,
         }
 
     def __repr__(self) -> str:
-        if self.media_type == 'tv':
-            ep_info = f"S{self.season:02d}E{self.episode:02d}" if self.season and self.episode else ""
+        if self.media_type == "tv":
+            ep_info = (
+                f"S{self.season:02d}E{self.episode:02d}" if self.season and self.episode else ""
+            )
             title_info = f" - {self.episode_title}" if self.episode_title else ""
             return f"<MediaMetadata TV: {self.name} {ep_info}{title_info}>"
         else:
@@ -83,8 +85,7 @@ def extract_media_metadata(video_path: Path) -> MediaMetadata:
     filename = video_path.stem  # filename without extension
 
     # Determine media type by checking for "Season" or "Specials" in path
-    is_tv = any('season' in part.lower() or part.lower() == 'specials'
-                for part in path_parts)
+    is_tv = any("season" in part.lower() or part.lower() == "specials" for part in path_parts)
 
     if is_tv:
         return _extract_tv_metadata(video_path, path_parts, filename)
@@ -105,7 +106,7 @@ def _extract_tv_metadata(video_path: Path, path_parts: tuple, filename: str) -> 
     show_name = None
     for i, part in enumerate(path_parts):
         part_lower = part.lower()
-        if 'season' in part_lower or part_lower == 'specials':
+        if "season" in part_lower or part_lower == "specials":
             if i > 0:
                 show_name = path_parts[i - 1]
             break
@@ -116,7 +117,7 @@ def _extract_tv_metadata(video_path: Path, path_parts: tuple, filename: str) -> 
 
     # Parse season and episode from filename
     # Pattern: SxxExx or S{season}E{episode}
-    season_episode_pattern = r'[Ss](\d{1,2})[Ee](\d{1,2})'
+    season_episode_pattern = r"[Ss](\d{1,2})[Ee](\d{1,2})"
     match = re.search(season_episode_pattern, filename)
 
     season = None
@@ -129,20 +130,25 @@ def _extract_tv_metadata(video_path: Path, path_parts: tuple, filename: str) -> 
 
         # Try to extract episode title
         # Pattern: "Show Name - S01E05 - Episode Title"
-        title_pattern = r'[Ss]\d{1,2}[Ee]\d{1,2}\s*-\s*(.+?)(?:\s+\[|\s+\(|\s+WEBDL|$)'
+        title_pattern = r"[Ss]\d{1,2}[Ee]\d{1,2}\s*-\s*(.+?)(?:\s+\[|\s+\(|\s+WEBDL|$)"
         title_match = re.search(title_pattern, filename)
         if title_match:
             episode_title = title_match.group(1).strip()
             # Remove any trailing quality markers
-            episode_title = re.sub(r'\s+(WEBDL|BluRay|WEB-DL|HDTV|1080p|720p|480p).*$', '', episode_title, flags=re.IGNORECASE)
+            episode_title = re.sub(
+                r"\s+(WEBDL|BluRay|WEB-DL|HDTV|1080p|720p|480p).*$",
+                "",
+                episode_title,
+                flags=re.IGNORECASE,
+            )
 
     return MediaMetadata(
-        media_type='tv',
+        media_type="tv",
         name=show_name,
         season=season,
         episode=episode,
         episode_title=episode_title,
-        filename=filename
+        filename=filename,
     )
 
 
@@ -159,7 +165,7 @@ def _extract_movie_metadata(video_path: Path, path_parts: tuple, filename: str) 
 
     # Try to extract year from movie name
     # Pattern: "Movie Name (2010)" or "Movie Name (Year)"
-    year_pattern = r'\((\d{4})\)'
+    year_pattern = r"\((\d{4})\)"
     match = re.search(year_pattern, movie_name)
 
     year = None
@@ -168,12 +174,7 @@ def _extract_movie_metadata(video_path: Path, path_parts: tuple, filename: str) 
         # Remove year from movie name for cleaner display
         # Keep it for now as it's the standard format
 
-    return MediaMetadata(
-        media_type='movie',
-        name=movie_name,
-        year=year,
-        filename=filename
-    )
+    return MediaMetadata(media_type="movie", name=movie_name, year=year, filename=filename)
 
 
 def get_show_or_movie_name(metadata: MediaMetadata) -> str:
@@ -222,7 +223,7 @@ def format_metadata_for_prompt(metadata: MediaMetadata) -> str:
         >>> format_metadata_for_prompt(metadata)
         'Movie: "Inception (2010)"'
     """
-    if metadata.media_type == 'tv':
+    if metadata.media_type == "tv":
         # Always start with show name
         result = f'Show: "{metadata.name}"'
 
@@ -230,17 +231,17 @@ def format_metadata_for_prompt(metadata: MediaMetadata) -> str:
         context_parts = []
 
         if metadata.season is not None:
-            context_parts.append(f'Season {metadata.season}')
+            context_parts.append(f"Season {metadata.season}")
 
         if metadata.episode is not None:
-            context_parts.append(f'Episode {metadata.episode}')
+            context_parts.append(f"Episode {metadata.episode}")
 
         if metadata.episode_title:
             context_parts[-1] = f'{context_parts[-1]}: "{metadata.episode_title}"'
 
         # Add context line if we have any context
         if context_parts:
-            result += f'\nContext: {", ".join(context_parts)}'
+            result += f"\nContext: {', '.join(context_parts)}"
 
         return result
     else:

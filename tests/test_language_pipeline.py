@@ -1,10 +1,7 @@
-import os
 import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cli"))
@@ -33,8 +30,9 @@ def _install_dependency_stubs():
 
 _install_dependency_stubs()
 
-from core.transcribe import get_audio_selection_language, resolve_subtitle_path
 from generate_subtitles import Config, SubtitleGenerator
+
+from core.transcribe import get_audio_selection_language, resolve_subtitle_path
 
 
 def _make_generator():
@@ -63,9 +61,7 @@ def test_resolve_subtitle_path_normalizes_regional_variants():
 def test_resolve_subtitle_path_uses_detected_language_when_available():
     media = Path("/media/show/episode.mkv")
     response = SimpleNamespace(
-        results=SimpleNamespace(
-            channels=[SimpleNamespace(detected_language="es-419")]
-        )
+        results=SimpleNamespace(channels=[SimpleNamespace(detected_language="es-419")])
     )
 
     assert resolve_subtitle_path(
@@ -84,9 +80,7 @@ def test_resolve_subtitle_path_uses_neutral_fallback_for_multi():
 def test_resolve_subtitle_path_uses_neutral_fallback_for_unknown_detected_language():
     media = Path("/media/show/episode.mkv")
     response = SimpleNamespace(
-        results=SimpleNamespace(
-            channels=[SimpleNamespace(detected_language="xx-YY")]
-        )
+        results=SimpleNamespace(channels=[SimpleNamespace(detected_language="xx-YY")])
     )
 
     assert resolve_subtitle_path(
@@ -124,7 +118,9 @@ def test_read_video_list_accepts_audio_files(monkeypatch, tmp_path):
     assert results == [audio_file, video_file]
 
 
-def test_read_video_list_skips_existing_language_tagged_sidecar_in_auto_detect(monkeypatch, tmp_path):
+def test_read_video_list_skips_existing_language_tagged_sidecar_in_auto_detect(
+    monkeypatch, tmp_path
+):
     media_file = tmp_path / "episode.mkv"
     media_file.write_text("video")
     (tmp_path / "episode.spa.srt").write_text("subtitle")

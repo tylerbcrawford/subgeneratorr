@@ -1,4 +1,4 @@
-.PHONY: help build cli cli-batch web-up web-down web-logs web-restart clean test
+.PHONY: help build cli cli-batch web-up web-down web-logs web-restart clean test lint fmt
 
 # Default target
 help:
@@ -18,6 +18,8 @@ help:
 	@echo "Maintenance:"
 	@echo "  make clean          Remove all containers and volumes"
 	@echo "  make test           Run the local pytest suite"
+	@echo "  make lint           Run ruff linter"
+	@echo "  make fmt            Run ruff formatter"
 	@echo ""
 
 # Build Docker images
@@ -70,3 +72,11 @@ clean:
 
 test:
 	./scripts/test.sh $(PYTEST_ARGS)
+
+# Run ruff linter
+lint:
+	ruff check .
+
+# Run ruff formatter
+fmt:
+	ruff format .

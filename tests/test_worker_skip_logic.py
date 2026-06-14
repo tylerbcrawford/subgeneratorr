@@ -81,13 +81,13 @@ class FakeTaskContext:
 
 def _make_detected_language_response():
     return SimpleNamespace(
-        results=SimpleNamespace(
-            channels=[SimpleNamespace(detected_language="es")]
-        )
+        results=SimpleNamespace(channels=[SimpleNamespace(detected_language="es")])
     )
 
 
-def test_transcribe_task_skips_existing_language_tagged_sidecar_in_auto_detect(monkeypatch, tmp_path):
+def test_transcribe_task_skips_existing_language_tagged_sidecar_in_auto_detect(
+    monkeypatch, tmp_path
+):
     media_file = tmp_path / "episode.mkv"
     media_file.write_text("video")
     (tmp_path / "episode.spa.srt").write_text("subtitle")
@@ -97,12 +97,16 @@ def test_transcribe_task_skips_existing_language_tagged_sidecar_in_auto_detect(m
     monkeypatch.setattr(
         tasks_module,
         "extract_audio",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("extract_audio should not run")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("extract_audio should not run")
+        ),
     )
     monkeypatch.setattr(
         tasks_module,
         "transcribe_file",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("transcribe_file should not run")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("transcribe_file should not run")
+        ),
     )
 
     result = tasks_module.transcribe_task(
@@ -116,7 +120,9 @@ def test_transcribe_task_skips_existing_language_tagged_sidecar_in_auto_detect(m
     assert result["srt"].endswith("episode.spa.srt")
 
 
-def test_transcribe_task_keeps_generating_transcript_when_resolved_subtitle_exists(monkeypatch, tmp_path):
+def test_transcribe_task_keeps_generating_transcript_when_resolved_subtitle_exists(
+    monkeypatch, tmp_path
+):
     media_file = tmp_path / "episode.mkv"
     media_file.write_text("video")
     (tmp_path / "episode.spa.srt").write_text("subtitle")

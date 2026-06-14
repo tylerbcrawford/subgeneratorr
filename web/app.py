@@ -6,30 +6,36 @@ Provides REST API endpoints for scanning media directories, submitting
 transcription jobs, and monitoring progress via Server-Sent Events (SSE).
 """
 
-import os
-import io
 import csv
+import io
 import json
+import os
 import re
 import secrets
 import time
 from datetime import date
 from pathlib import Path
-import subprocess
-from flask import Flask, request, jsonify, Response, abort, render_template, send_file
-from werkzeug.utils import secure_filename
+
 import redis as redis_lib
-from tasks import celery_app, make_batch, generate_keyterms_task, library_scan_task
+from flask import Flask, Response, abort, jsonify, render_template, request, send_file
+from tasks import celery_app, generate_keyterms_task, library_scan_task, make_batch
+
 from core.transcribe import (
-    is_video, is_media, get_video_duration,
-    load_keyterms_from_csv, save_keyterms_to_csv,
-    get_keyterms_folder, check_subtitles, SUBTITLE_EXTS
+    check_subtitles,
+    get_keyterms_folder,
+    get_video_duration,
+    is_media,
+    load_keyterms_from_csv,
+    save_keyterms_to_csv,
 )
 
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "nova-3")
 DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
-ALLOWED = set([e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()])
+ALLOWED = set(
+    [e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()]
+)
+
 
 def _check_media_path(p: Path) -> bool:
     """Check if a path is safely under MEDIA_ROOT."""
@@ -51,19 +57,19 @@ _redis = redis_lib.from_url(REDIS_URL, decode_responses=True)
 def _require_auth():
     """
     Require authentication via OAuth proxy headers.
-    
+
     The OAuth proxy (oauth2-proxy) sets the X-Auth-Request-Email header
     when a user successfully authenticates with Google OAuth.
-    
+
     Returns:
         str: Authenticated user's email
-        
+
     Raises:
         401: If no authentication header is present
         403: If user's email is not in the allowlist
     """
-    if os.getenv('DISABLE_AUTH', '').lower() in ('1', 'true', 'yes'):
-        return 'local'
+    if os.getenv("DISABLE_AUTH", "").lower() in ("1", "true", "yes"):
+        return "local"
     user = request.headers.get("X-Auth-Request-Email") or request.headers.get("X-Forwarded-User")
     if not user:
         abort(401)
@@ -72,13 +78,13 @@ def _require_auth():
     return user
 
 
-_TASK_ID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+_TASK_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _TERMINAL_CHILD_STATES = {"SUCCESS", "FAILURE", "REVOKED"}
 
 
 def _validate_task_id(task_id):
     if not _TASK_ID_RE.match(task_id):
-        abort(400, description='Invalid task ID format')
+        abort(400, description="Invalid task ID format")
 
 
 def _extract_terminal_child_info(task_result):
@@ -139,52 +145,52 @@ def healthz():
 def api_config():
     """
     Get current configuration defaults.
-    
+
     Returns default model and language settings plus API key configuration status.
     """
     _require_auth()
-    anthropic_ok = bool(os.getenv('ANTHROPIC_API_KEY'))
-    openai_ok = bool(os.getenv('OPENAI_API_KEY'))
-    google_ok = bool(os.getenv('GEMINI_API_KEY'))
-    return jsonify({
-        "default_model": DEFAULT_MODEL,
-        "default_language": DEFAULT_LANGUAGE,
-        # Flat fields (kept for backward compatibility)
-        "anthropic_api_key_configured": anthropic_ok,
-        "openai_api_key_configured": openai_ok,
-        "google_api_key_configured": google_ok,
-        # Structured providers object
-        "providers": {
-            "anthropic": anthropic_ok,
-            "openai": openai_ok,
-            "google": google_ok
+    anthropic_ok = bool(os.getenv("ANTHROPIC_API_KEY"))
+    openai_ok = bool(os.getenv("OPENAI_API_KEY"))
+    google_ok = bool(os.getenv("GEMINI_API_KEY"))
+    return jsonify(
+        {
+            "default_model": DEFAULT_MODEL,
+            "default_language": DEFAULT_LANGUAGE,
+            # Flat fields (kept for backward compatibility)
+            "anthropic_api_key_configured": anthropic_ok,
+            "openai_api_key_configured": openai_ok,
+            "google_api_key_configured": google_ok,
+            # Structured providers object
+            "providers": {"anthropic": anthropic_ok, "openai": openai_ok, "google": google_ok},
         }
-    })
+    )
 
 
 @app.get("/api/browse")
 def api_browse():
     """
     Browse directories and media files within MEDIA_ROOT.
-    
+
     Query Parameters:
         path: Subdirectory to list (default: MEDIA_ROOT)
         show_all: Include media files with existing subtitles (default: false)
         only_folders_with_videos: Filter out folders with no direct media files (default: false)
-        
+
     Returns:
         JSON with list of subdirectories and media files
-        
+
     Security:
         - Path must be under MEDIA_ROOT
     """
     _require_auth()
     path = request.args.get("path", str(MEDIA_ROOT))
     show_all = request.args.get("show_all", "false").lower() == "true"
-    only_folders_with_videos = request.args.get("only_folders_with_videos", "false").lower() == "true"
+    only_folders_with_videos = (
+        request.args.get("only_folders_with_videos", "false").lower() == "true"
+    )
     path = Path(path).resolve()
     media_root_resolved = MEDIA_ROOT.resolve()
-    
+
     # Security: Ensure path is under MEDIA_ROOT
     try:
         # Use is_relative_to for proper path comparison (Python 3.9+)
@@ -194,10 +200,10 @@ def api_browse():
         # Fallback for older Python or path comparison issues
         if not str(path).startswith(str(media_root_resolved)):
             abort(400, "Path must be under MEDIA_ROOT")
-    
+
     if not path.exists() or not path.is_dir():
         abort(404, "Directory not found")
-    
+
     directories = []
     files = []
 
@@ -207,7 +213,7 @@ def api_browse():
         dir_filenames = {p.name for p in dir_entries if p.is_file()}
 
         for item in dir_entries:
-            if item.is_dir() and not item.name.startswith('.'):
+            if item.is_dir() and not item.name.startswith("."):
                 # Keep browse cheap: count direct child media files only.
                 media_count = sum(1 for p in item.iterdir() if p.is_file() and is_media(p))
 
@@ -215,31 +221,37 @@ def api_browse():
                 if only_folders_with_videos and media_count == 0:
                     continue
 
-                directories.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "video_count": media_count  # Keep name for compatibility, but now includes audio
-                })
+                directories.append(
+                    {
+                        "name": item.name,
+                        "path": str(item),
+                        "video_count": media_count,  # Keep name for compatibility, but now includes audio
+                    }
+                )
             elif item.is_file() and is_media(item):
                 sub_info = check_subtitles(item, dir_filenames)
                 # Only include if showing all OR subtitle doesn't exist
                 if show_all or not sub_info["has_subtitles"]:
-                    files.append({
-                        "name": item.name,
-                        "path": str(item),
-                        "has_subtitles": sub_info["has_subtitles"],
-                        "subtitle_source": sub_info["subtitle_source"],
-                    })
+                    files.append(
+                        {
+                            "name": item.name,
+                            "path": str(item),
+                            "has_subtitles": sub_info["has_subtitles"],
+                            "subtitle_source": sub_info["subtitle_source"],
+                        }
+                    )
     except PermissionError:
         abort(403, "Permission denied")
-    
-    return jsonify({
-        "current_path": str(path),
-        "parent_path": str(path.parent) if path != MEDIA_ROOT else None,
-        "directories": directories,
-        "files": files,
-        "file_count": len(files)
-    })
+
+    return jsonify(
+        {
+            "current_path": str(path),
+            "parent_path": str(path.parent) if path != MEDIA_ROOT else None,
+            "directories": directories,
+            "files": files,
+            "file_count": len(files),
+        }
+    )
 
 
 @app.get("/api/search")
@@ -285,49 +297,55 @@ def api_search():
             for item in sorted(path.iterdir(), key=lambda x: x.name.lower()):
                 if len(matching_dirs) + len(matching_files) >= MAX_RESULTS:
                     return
-                if item.is_dir() and not item.name.startswith('.'):
+                if item.is_dir() and not item.name.startswith("."):
                     if q_lower in item.name.lower():
                         context = str(item.relative_to(media_root_resolved).parent)
-                        matching_dirs.append({
-                            "name": item.name,
-                            "path": str(item),
-                            "video_count": None,
-                            "context": context if context != '.' else None,
-                        })
+                        matching_dirs.append(
+                            {
+                                "name": item.name,
+                                "path": str(item),
+                                "video_count": None,
+                                "context": context if context != "." else None,
+                            }
+                        )
                     else:
                         _walk(item, depth + 1)
                 elif item.is_file() and is_media(item) and q_lower in item.stem.lower():
                     sub_info = check_subtitles(item)
-                    matching_files.append({
-                        "name": item.name,
-                        "path": str(item),
-                        "has_subtitles": sub_info["has_subtitles"],
-                        "subtitle_source": sub_info["subtitle_source"],
-                    })
+                    matching_files.append(
+                        {
+                            "name": item.name,
+                            "path": str(item),
+                            "has_subtitles": sub_info["has_subtitles"],
+                            "subtitle_source": sub_info["subtitle_source"],
+                        }
+                    )
         except PermissionError:
             pass
 
     _walk(root_path, 1)
 
-    return jsonify({
-        "query": query,
-        "directories": matching_dirs,
-        "files": matching_files,
-    })
+    return jsonify(
+        {
+            "query": query,
+            "directories": matching_dirs,
+            "files": matching_files,
+        }
+    )
 
 
 @app.get("/api/scan")
 def api_scan():
     """
     Scan a directory for media files.
-    
+
     Query Parameters:
         root: Directory path to scan (default: MEDIA_ROOT)
         show_all: Include media files with existing subtitles (default: false)
-        
+
     Returns:
         JSON with count and list of media files
-        
+
     Security:
         - Path must be under MEDIA_ROOT
         - Limited to 500 results
@@ -352,7 +370,7 @@ def api_scan():
                     files.append(str(p))
             if len(files) >= 500:
                 break
-    
+
     return jsonify({"count": len(files), "files": files, "show_all": show_all})
 
 
@@ -360,10 +378,10 @@ def api_scan():
 def api_estimate():
     """
     Get cost and time estimates for a batch of videos.
-    
+
     Request Body (JSON):
         files: List of video file paths
-        
+
     Returns:
         JSON with duration metadata and cost estimates
         - Nova-3 pricing: $0.0057 per minute of audio
@@ -372,15 +390,17 @@ def api_estimate():
     _require_auth()
     body = request.get_json(force=True) or {}
     raw_files = body.get("files", [])
-    
+
     # Updated Nova-3 pricing to match actual API charges
     # Previous estimate was ~25% low (e.g., estimated $0.71 vs actual $0.94)
     NOVA3_PRICE_PER_MINUTE = 0.0057
-    PROCESSING_TIME_MULTIPLIER = 0.0109  # Based on real data: ~1.09% of video length (25 jobs, 23.3 hours analyzed)
-    
+    PROCESSING_TIME_MULTIPLIER = (
+        0.0109  # Based on real data: ~1.09% of video length (25 jobs, 23.3 hours analyzed)
+    )
+
     total_duration = 0.0
     file_durations = []
-    
+
     for f in raw_files:
         p = Path(f)
         # Security: Ensure path is under MEDIA_ROOT
@@ -389,32 +409,32 @@ def api_estimate():
         if p.exists():
             duration = get_video_duration(p)
             total_duration += duration
-            file_durations.append({
-                "file": str(p),
-                "duration_seconds": duration,
-                "duration_minutes": duration / 60.0
-            })
-    
+            file_durations.append(
+                {"file": str(p), "duration_seconds": duration, "duration_minutes": duration / 60.0}
+            )
+
     total_minutes = total_duration / 60.0
     estimated_cost = total_minutes * NOVA3_PRICE_PER_MINUTE
     estimated_time = total_duration * PROCESSING_TIME_MULTIPLIER
-    
-    return jsonify({
-        "total_files": len(file_durations),
-        "total_duration_seconds": total_duration,
-        "total_duration_minutes": total_minutes,
-        "estimated_cost_usd": round(estimated_cost, 4),
-        "estimated_processing_time_seconds": estimated_time,
-        "price_per_minute": NOVA3_PRICE_PER_MINUTE,
-        "files": file_durations
-    })
+
+    return jsonify(
+        {
+            "total_files": len(file_durations),
+            "total_duration_seconds": total_duration,
+            "total_duration_minutes": total_minutes,
+            "estimated_cost_usd": round(estimated_cost, 4),
+            "estimated_processing_time_seconds": estimated_time,
+            "price_per_minute": NOVA3_PRICE_PER_MINUTE,
+            "files": file_durations,
+        }
+    )
 
 
 @app.post("/api/submit")
 def api_submit():
     """
     Submit a batch of videos for transcription.
-    
+
     Request Body (JSON):
         model: Deepgram model to use (default: nova-3)
         language: Language code (default: en)
@@ -425,17 +445,17 @@ def api_submit():
         keyterms: Optional list of key terms for better recognition (Nova-3)
         save_raw_json: Save raw Deepgram API response for debugging (default: false)
         auto_save_keyterms: Automatically save keyterms to CSV (default: false)
-        
+
     Returns:
         JSON with batch_id, count of enqueued files, and submitter email
-        
+
     Security:
         - All file paths must be under MEDIA_ROOT
         - Files must exist before submission
     """
     user = _require_auth()
     body = request.get_json(force=True) or {}
-    
+
     model = body.get("model", DEFAULT_MODEL)  # Support model selection (nova-3, nova-3-medical)
     language = body.get("language", DEFAULT_LANGUAGE)
     profanity_filter = body.get("profanity_filter", "off")
@@ -460,8 +480,8 @@ def api_submit():
 
     # Advanced Transcript Features
     diarization = body.get("diarization", True)  # Default to True (current behavior)
-    utterances = body.get("utterances", True)   # Default to True (current behavior)
-    paragraphs = body.get("paragraphs", True)   # Default to True (current behavior)
+    utterances = body.get("utterances", True)  # Default to True (current behavior)
+    paragraphs = body.get("paragraphs", True)  # Default to True (current behavior)
     utt_split = body.get("utt_split")  # float, only sent when non-default
 
     # Audio Intelligence features (English only)
@@ -489,7 +509,7 @@ def api_submit():
             continue
         if p.exists():
             files.append(p)
-    
+
     # Submit batch job with all options
     async_result = make_batch(
         files,
@@ -519,25 +539,23 @@ def api_submit():
         intents=intents,
         detect_entities=detect_entities,
         search=search,
-        tag=tag
+        tag=tag,
     )
-    
+
     # Store batch metadata in Redis for timeout tracking
     file_count = len(files)
     timeout_seconds = max(600, file_count * 300)  # 5 min per file, minimum 10 min
     batch_meta = {
         "submitted_at": time.time(),
         "file_count": file_count,
-        "timeout_seconds": timeout_seconds
+        "timeout_seconds": timeout_seconds,
     }
     meta_key = f"batch:{async_result.id}:meta"
-    _redis.set(meta_key, json.dumps(batch_meta), ex=timeout_seconds + 3600)  # TTL = timeout + 1hr buffer
+    _redis.set(
+        meta_key, json.dumps(batch_meta), ex=timeout_seconds + 3600
+    )  # TTL = timeout + 1hr buffer
 
-    return jsonify({
-        "batch_id": async_result.id,
-        "enqueued": len(files),
-        "by": user
-    })
+    return jsonify({"batch_id": async_result.id, "enqueued": len(files), "by": user})
 
 
 @app.get("/api/job/<rid>")
@@ -570,7 +588,7 @@ def api_job(rid):
         elapsed_seconds = time.time() - batch_meta["submitted_at"]
 
     # If it's a group result, handle it specially
-    if group_result is not None and hasattr(group_result, 'results') and group_result.results:
+    if group_result is not None and hasattr(group_result, "results") and group_result.results:
         children_info = []
         completed_count = 0
         failed_count = 0
@@ -581,34 +599,35 @@ def api_job(rid):
         for child in group_result.results:
             try:
                 child_info = {
-                    'id': child.id,
-                    'state': child.state,
+                    "id": child.id,
+                    "state": child.state,
                 }
 
                 # Get task metadata if available
-                if child.state == 'PROGRESS':
+                if child.state == "PROGRESS":
                     started_count += 1
                     if child.info:
-                        child_info['current_file'] = child.info.get('current_file', '')
-                        child_info['stage'] = child.info.get('stage', '')
-                elif child.state == 'SUCCESS':
+                        child_info["current_file"] = child.info.get("current_file", "")
+                        child_info["stage"] = child.info.get("stage", "")
+                elif child.state == "SUCCESS":
                     completed_count += 1
                     child_info = _extract_terminal_child_info(child)
-                elif child.state == 'STARTED':
+                elif child.state == "STARTED":
                     started_count += 1
-                elif child.state == 'FAILURE':
+                elif child.state == "FAILURE":
                     failed_count += 1
                     child_info = _extract_terminal_child_info(child)
-                elif child.state == 'REVOKED':
+                elif child.state == "REVOKED":
                     revoked_count += 1
                     child_info = _extract_terminal_child_info(child)
-                elif child.state == 'PENDING':
+                elif child.state == "PENDING":
                     pending_count += 1
 
                 children_info.append(child_info)
             except Exception as child_error:
                 print(f"Error processing child task: {child_error}")
                 import traceback
+
                 traceback.print_exc()
                 continue
 
@@ -617,35 +636,37 @@ def api_job(rid):
         terminal_count = completed_count + failed_count + revoked_count
 
         if total == 0:
-            state = 'PENDING'
+            state = "PENDING"
         elif revoked_count == total:
-            state = 'REVOKED'
+            state = "REVOKED"
         elif completed_count == total:
-            state = 'SUCCESS'
+            state = "SUCCESS"
         elif terminal_count == total and (failed_count > 0 or revoked_count > 0):
-            state = 'FAILURE'
+            state = "FAILURE"
         elif started_count > 0 or completed_count > 0:
-            state = 'STARTED'
+            state = "STARTED"
         else:
-            state = 'PENDING'
+            state = "PENDING"
 
         # Check for timeout on non-terminal states
-        if batch_meta and state in ('PENDING', 'STARTED') and elapsed_seconds > batch_meta["timeout_seconds"]:
-            state = 'TIMEOUT'
-            print(f"Batch {rid} timed out after {elapsed_seconds:.0f}s (limit: {batch_meta['timeout_seconds']}s)")
+        if (
+            batch_meta
+            and state in ("PENDING", "STARTED")
+            and elapsed_seconds > batch_meta["timeout_seconds"]
+        ):
+            state = "TIMEOUT"
+            print(
+                f"Batch {rid} timed out after {elapsed_seconds:.0f}s (limit: {batch_meta['timeout_seconds']}s)"
+            )
 
         print(f"Batch {rid}: {state} ({completed_count}/{total} done, {failed_count} failed)")
 
         # The frontend expects data.data.results with status='ok'|'skipped'|'error'
         results_data = None
-        if state in ('SUCCESS', 'FAILURE', 'REVOKED'):
+        if state in ("SUCCESS", "FAILURE", "REVOKED"):
             results_data = _build_terminal_results(children_info)
 
-        response_data = {
-            "state": state,
-            "data": results_data,
-            "children": children_info
-        }
+        response_data = {"state": state, "data": results_data, "children": children_info}
         if elapsed_seconds is not None:
             response_data["elapsed_seconds"] = round(elapsed_seconds, 1)
         return jsonify(response_data)
@@ -665,29 +686,29 @@ def api_job(rid):
                 data = {"error": str(data), "error_type": type(data).__name__}
 
         # Get child task information for detailed progress
-        if hasattr(res, 'children') and res.children:
+        if hasattr(res, "children") and res.children:
             for child in res.children:
                 try:
                     child_result = celery_app.AsyncResult(child.id)
                     child_info = {
-                        'id': child.id,
-                        'state': child_result.state,
+                        "id": child.id,
+                        "state": child_result.state,
                     }
 
                     # Get task metadata if available
-                    if child_result.state == 'PROGRESS' and child_result.info:
-                        child_info['current_file'] = child_result.info.get('current_file', '')
-                        child_info['stage'] = child_result.info.get('stage', '')
+                    if child_result.state == "PROGRESS" and child_result.info:
+                        child_info["current_file"] = child_result.info.get("current_file", "")
+                        child_info["stage"] = child_result.info.get("stage", "")
                     elif child_result.ready():
                         result = child_result.get(propagate=False)
                         # Handle exceptions in child results
                         if isinstance(result, Exception):
-                            child_info['error'] = str(result)
-                            child_info['status'] = 'error'
+                            child_info["error"] = str(result)
+                            child_info["status"] = "error"
                         elif isinstance(result, dict):
-                            child_info['filename'] = result.get('filename', '')
-                            child_info['status'] = result.get('status', '')
-                            child_info['video'] = result.get('video', '')
+                            child_info["filename"] = result.get("filename", "")
+                            child_info["status"] = result.get("status", "")
+                            child_info["video"] = result.get("video", "")
 
                     children_info.append(child_info)
                 except Exception as child_error:
@@ -700,14 +721,14 @@ def api_job(rid):
         data = {"error": str(e), "error_type": type(e).__name__}
 
     # Check for timeout on non-terminal states (fallback path)
-    if batch_meta and state in ('PENDING', 'STARTED') and elapsed_seconds > batch_meta["timeout_seconds"]:
-        state = 'TIMEOUT'
+    if (
+        batch_meta
+        and state in ("PENDING", "STARTED")
+        and elapsed_seconds > batch_meta["timeout_seconds"]
+    ):
+        state = "TIMEOUT"
 
-    response_data = {
-        "state": state,
-        "data": data,
-        "children": children_info
-    }
+    response_data = {"state": state, "data": data, "children": children_info}
     if elapsed_seconds is not None:
         response_data["elapsed_seconds"] = round(elapsed_seconds, 1)
     return jsonify(response_data)
@@ -726,15 +747,16 @@ def api_cancel_job(rid):
     """
     _require_auth()
     from celery.result import GroupResult
+
     try:
         revoked_ids = [rid]
         # Revoke the group ID itself
-        celery_app.control.revoke(rid, terminate=True, signal='SIGTERM')
+        celery_app.control.revoke(rid, terminate=True, signal="SIGTERM")
         # Also revoke each child task so workers actually stop
         group_result = GroupResult.restore(rid, app=celery_app)
-        if group_result and hasattr(group_result, 'results'):
+        if group_result and hasattr(group_result, "results"):
             for child in group_result.results:
-                celery_app.control.revoke(child.id, terminate=True, signal='SIGTERM')
+                celery_app.control.revoke(child.id, terminate=True, signal="SIGTERM")
                 revoked_ids.append(child.id)
         return jsonify({"status": "cancelled", "job_id": rid, "revoked": len(revoked_ids)})
     except Exception as e:
@@ -745,18 +767,18 @@ def api_cancel_job(rid):
 def api_progress():
     """
     Server-Sent Events (SSE) endpoint for real-time progress updates.
-    
+
     Sends periodic ping events to keep the connection alive.
     Clients can poll /api/job/<batch_id> to get actual job status.
     """
     _require_auth()
-    
+
     def stream():
         max_pings = 7200  # 4 hours at 2-second intervals
         for _ in range(max_pings):
             yield f"event: ping\ndata: {json.dumps({'t': time.time()})}\n\n"
             time.sleep(2)
-    
+
     return Response(stream(), mimetype="text/event-stream")
 
 
@@ -764,25 +786,25 @@ def api_progress():
 def api_keyterms_upload():
     """
     Upload keyterms CSV file for a show/movie.
-    
+
     Form Data:
         file: CSV file with one keyterm per line
         video_path: Path to any video file in the show/movie directory
-        
+
     Returns:
         JSON with success status and keyterms count
     """
     _require_auth()
-    
-    if 'file' not in request.files:
+
+    if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
-    
-    file = request.files['file']
-    video_path = request.form.get('video_path')
-    
+
+    file = request.files["file"]
+    video_path = request.form.get("video_path")
+
     if not video_path:
         return jsonify({"error": "No video_path provided"}), 400
-    
+
     vp = Path(video_path)
 
     # Security: Ensure path is under MEDIA_ROOT
@@ -791,19 +813,25 @@ def api_keyterms_upload():
 
     try:
         # Read keyterms from uploaded file
-        content = file.read().decode('utf-8')
-        keyterms = [line.strip() for line in content.split('\n') if line.strip() and not line.strip().startswith('#')]
-        
+        content = file.read().decode("utf-8")
+        keyterms = [
+            line.strip()
+            for line in content.split("\n")
+            if line.strip() and not line.strip().startswith("#")
+        ]
+
         # Save keyterms using the core function
         if save_keyterms_to_csv(vp, keyterms):
-            return jsonify({
-                "success": True,
-                "keyterms_count": len(keyterms),
-                "message": f"Uploaded {len(keyterms)} keyterms"
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "keyterms_count": len(keyterms),
+                    "message": f"Uploaded {len(keyterms)} keyterms",
+                }
+            )
         else:
             return jsonify({"error": "Failed to save keyterms"}), 500
-            
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -826,8 +854,8 @@ def api_keyterms_save():
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
 
-    video_path = data.get('video_path')
-    keyterms = data.get('keyterms')
+    video_path = data.get("video_path")
+    keyterms = data.get("keyterms")
 
     if not video_path:
         return jsonify({"error": "No video_path provided"}), 400
@@ -844,15 +872,17 @@ def api_keyterms_save():
     try:
         # Convert keyterms to list if it's a string
         if isinstance(keyterms, str):
-            keyterms = [k.strip() for k in keyterms.split(',') if k.strip()]
+            keyterms = [k.strip() for k in keyterms.split(",") if k.strip()]
 
         # Save keyterms using the core function
         if save_keyterms_to_csv(vp, keyterms):
-            return jsonify({
-                "success": True,
-                "keyterms_count": len(keyterms),
-                "message": f"Saved {len(keyterms)} keyterms"
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "keyterms_count": len(keyterms),
+                    "message": f"Saved {len(keyterms)} keyterms",
+                }
+            )
         else:
             return jsonify({"error": "Failed to save keyterms"}), 500
 
@@ -864,22 +894,22 @@ def api_keyterms_save():
 def api_keyterms_load():
     """
     Load keyterms for a video from its CSV file.
-    
+
     Query Parameters:
         video_path: Path to any video file in the show/movie directory
-        
+
     Returns:
         JSON with keyterms array or empty array if none found
     """
     _require_auth()
-    
-    video_path = request.args.get('video_path')
-    
+
+    video_path = request.args.get("video_path")
+
     if not video_path:
         return jsonify({"keyterms": []}), 200
-    
+
     vp = Path(video_path)
-    
+
     # Security: Ensure path is under MEDIA_ROOT
     if not _check_media_path(vp):
         return jsonify({"keyterms": []}), 200
@@ -887,12 +917,11 @@ def api_keyterms_load():
     try:
         # Load keyterms
         keyterms = load_keyterms_from_csv(vp)
-        
-        return jsonify({
-            "keyterms": keyterms if keyterms else [],
-            "count": len(keyterms) if keyterms else 0
-        })
-            
+
+        return jsonify(
+            {"keyterms": keyterms if keyterms else [], "count": len(keyterms) if keyterms else 0}
+        )
+
     except Exception as e:
         return jsonify({"keyterms": [], "error": str(e)}), 200
 
@@ -901,22 +930,22 @@ def api_keyterms_load():
 def api_keyterms_download():
     """
     Download keyterms CSV file for a show/movie.
-    
+
     Query Parameters:
         video_path: Path to any video file in the show/movie directory
-        
+
     Returns:
         CSV file download or 404 if not found
     """
     _require_auth()
-    
-    video_path = request.args.get('video_path')
-    
+
+    video_path = request.args.get("video_path")
+
     if not video_path:
         return jsonify({"error": "No video_path provided"}), 400
-    
+
     vp = Path(video_path)
-    
+
     # Security: Ensure path is under MEDIA_ROOT
     if not _check_media_path(vp):
         return jsonify({"error": "Invalid path"}), 400
@@ -924,35 +953,35 @@ def api_keyterms_download():
     try:
         # Load keyterms
         keyterms = load_keyterms_from_csv(vp)
-        
+
         if not keyterms:
             return jsonify({"error": "No keyterms found"}), 404
-        
+
         # Get the CSV file path
         keyterms_folder = get_keyterms_folder(vp)
         path_parts = vp.parts
         show_or_movie_name = None
         for i, part in enumerate(path_parts):
-            if 'season' in part.lower():
+            if "season" in part.lower():
                 if i > 0:
                     show_or_movie_name = path_parts[i - 1]
                 break
-        
+
         if not show_or_movie_name:
             show_or_movie_name = vp.parent.name
-        
+
         csv_path = keyterms_folder / f"{show_or_movie_name}_keyterms.csv"
-        
+
         if csv_path.exists():
             return send_file(
                 csv_path,
-                mimetype='text/csv',
+                mimetype="text/csv",
                 as_attachment=True,
-                download_name=f"{show_or_movie_name}_keyterms.csv"
+                download_name=f"{show_or_movie_name}_keyterms.csv",
             )
         else:
             return jsonify({"error": "Keyterms file not found"}), 404
-            
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -961,14 +990,14 @@ def api_keyterms_download():
 def api_keyterms_generate():
     """
     Generate keyterms using LLM (Anthropic Claude or OpenAI GPT).
-    
+
     Request Body (JSON):
         video_path: Path to video file (required)
         provider: LLM provider - "anthropic" or "openai" (default: "anthropic")
         model: Model name - see LLMModel enum (default: "claude-sonnet-4")
         preserve_existing: Merge with existing keyterms (default: false)
         estimate_only: Only return cost estimate (default: false)
-        
+
     Returns:
         If estimate_only=true:
             JSON with estimated_tokens and estimated_cost
@@ -976,72 +1005,77 @@ def api_keyterms_generate():
             JSON with task_id for async generation
     """
     _require_auth()
-    
+
     body = request.get_json(force=True) or {}
-    video_path = body.get('video_path')
-    provider = body.get('provider', 'anthropic')
-    model = body.get('model', 'claude-sonnet-4')
-    preserve_existing = body.get('preserve_existing', False)
-    estimate_only = body.get('estimate_only', False)
-    
+    video_path = body.get("video_path")
+    provider = body.get("provider", "anthropic")
+    model = body.get("model", "claude-sonnet-4")
+    preserve_existing = body.get("preserve_existing", False)
+    estimate_only = body.get("estimate_only", False)
+
     # Validate inputs
     if not video_path:
-        return jsonify({'error': 'video_path required'}), 400
-    
+        return jsonify({"error": "video_path required"}), 400
+
     vp = Path(video_path)
-    
+
     # Security: Ensure path is under MEDIA_ROOT
     if not _check_media_path(vp):
-        return jsonify({'error': 'Invalid path'}), 400
-    
+        return jsonify({"error": "Invalid path"}), 400
+
     # Extract metadata from path
     try:
         from core.media_metadata import extract_media_metadata
+
         metadata = extract_media_metadata(vp)
 
         app.logger.debug(f"Extracted metadata from path: {vp}")
         app.logger.debug(f"Media type: {metadata.media_type}")
         app.logger.debug(f"Name: {metadata.name}")
-        if metadata.media_type == 'tv':
+        if metadata.media_type == "tv":
             app.logger.debug(f"Season: {metadata.season}, Episode: {metadata.episode}")
             if metadata.episode_title:
                 app.logger.debug(f"Episode title: {metadata.episode_title}")
 
-        if not metadata.name or metadata.name.strip() == '':
+        if not metadata.name or metadata.name.strip() == "":
             app.logger.error(f"Empty name extracted from path: {vp}")
-            return jsonify({'error': 'Could not extract show/movie name from video path. Please ensure video is in a properly named directory.'}), 400
+            return jsonify(
+                {
+                    "error": "Could not extract show/movie name from video path. Please ensure video is in a properly named directory."
+                }
+            ), 400
 
     except Exception as e:
         app.logger.error(f"Exception extracting metadata: {str(e)}")
-        return jsonify({'error': f'Failed to extract metadata: {str(e)}'}), 400
-    
+        return jsonify({"error": f"Failed to extract metadata: {str(e)}"}), 400
+
     # Get API key from environment
-    if provider == 'anthropic':
-        api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            return jsonify({'error': 'ANTHROPIC_API_KEY not configured'}), 500
-    elif provider == 'openai':
-        api_key = os.environ.get('OPENAI_API_KEY')
+            return jsonify({"error": "ANTHROPIC_API_KEY not configured"}), 500
+    elif provider == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            return jsonify({'error': 'OPENAI_API_KEY not configured'}), 500
-    elif provider == 'google':
-        api_key = os.environ.get('GEMINI_API_KEY')
+            return jsonify({"error": "OPENAI_API_KEY not configured"}), 500
+    elif provider == "google":
+        api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            return jsonify({'error': 'GEMINI_API_KEY not configured'}), 500
+            return jsonify({"error": "GEMINI_API_KEY not configured"}), 500
     else:
-        return jsonify({'error': f'Unsupported provider: {provider}'}), 400
-    
+        return jsonify({"error": f"Unsupported provider: {provider}"}), 400
+
     # If estimate only, return cost estimate
     if estimate_only:
         try:
-            from core.keyterm_search import KeytermSearcher, LLMProvider, LLMModel
+            from core.keyterm_search import KeytermSearcher, LLMModel, LLMProvider
 
             app.logger.debug(f"Estimating cost for: '{metadata.name}'")
             app.logger.debug(f"Provider: {provider}, Model: {model}")
 
             # Use bracket notation to access enum by NAME, not by VALUE
             provider_enum = LLMProvider[provider.upper()]
-            model_enum_name = model.upper().replace('-', '_').replace('.', '_')
+            model_enum_name = model.upper().replace("-", "_").replace(".", "_")
             app.logger.debug(f"Looking up enum: LLMModel.{model_enum_name}")
             model_enum = LLMModel[model_enum_name]
 
@@ -1055,38 +1089,36 @@ def api_keyterms_generate():
             return jsonify(estimate)
         except KeyError as e:
             app.logger.error(f"KeyError in cost estimation: {str(e)}")
-            return jsonify({'error': f'Invalid provider or model: {provider}, {model}'}), 400
+            return jsonify({"error": f"Invalid provider or model: {provider}, {model}"}), 400
         except Exception as e:
             app.logger.error(f"Exception in cost estimation: {type(e).__name__}: {str(e)}")
             import traceback
+
             traceback.print_exc()
-            return jsonify({'error': f'Cost estimation failed: {str(e)}'}), 500
-    
+            return jsonify({"error": f"Cost estimation failed: {str(e)}"}), 500
+
     # Queue async generation task
     try:
         task = generate_keyterms_task.delay(
             video_path=video_path,
             provider=provider,
             model=model,
-            preserve_existing=preserve_existing
+            preserve_existing=preserve_existing,
         )
-        
-        return jsonify({
-            'task_id': task.id,
-            'status': 'pending'
-        })
+
+        return jsonify({"task_id": task.id, "status": "pending"})
     except Exception as e:
-        return jsonify({'error': f'Failed to queue task: {str(e)}'}), 500
+        return jsonify({"error": f"Failed to queue task: {str(e)}"}), 500
 
 
 @app.get("/api/keyterms/generate/status/<task_id>")
 def api_keyterms_generate_status(task_id):
     """
     Check status of keyterm generation task.
-    
+
     Parameters:
         task_id: Celery task ID from /api/keyterms/generate
-        
+
     Returns:
         JSON with state and result data:
         - PENDING: Task is queued
@@ -1095,52 +1127,39 @@ def api_keyterms_generate_status(task_id):
         - FAILURE: Task failed (includes error message)
     """
     _require_auth()
-    
+
     try:
         task = celery_app.AsyncResult(task_id)
 
-        if task.state == 'PENDING':
-            return jsonify({'state': 'PENDING'})
-        elif task.state == 'PROGRESS':
+        if task.state == "PENDING":
+            return jsonify({"state": "PENDING"})
+        elif task.state == "PROGRESS":
             # Return progress info
             info = task.info or {}
-            return jsonify({
-                'state': 'PROGRESS',
-                'stage': info.get('stage', '') if isinstance(info, dict) else '',
-                'progress': info.get('progress', 0) if isinstance(info, dict) else 0
-            })
-        elif task.state == 'FAILURE':
+            return jsonify(
+                {
+                    "state": "PROGRESS",
+                    "stage": info.get("stage", "") if isinstance(info, dict) else "",
+                    "progress": info.get("progress", 0) if isinstance(info, dict) else 0,
+                }
+            )
+        elif task.state == "FAILURE":
             # task.info is the exception instance when state is FAILURE
-            error_msg = str(task.info) if task.info else 'Unknown error'
-            return jsonify({
-                'state': 'FAILURE',
-                'error': error_msg
-            })
-        elif task.state == 'SUCCESS':
+            error_msg = str(task.info) if task.info else "Unknown error"
+            return jsonify({"state": "FAILURE", "error": error_msg})
+        elif task.state == "SUCCESS":
             result = task.info or {}
             # Handle case where task returned an error dict instead of raising
-            if isinstance(result, dict) and result.get('status') == 'error':
-                return jsonify({
-                    'state': 'FAILURE',
-                    'error': result.get('error', 'Unknown error')
-                })
-            return jsonify({
-                'state': 'SUCCESS',
-                **result
-            })
+            if isinstance(result, dict) and result.get("status") == "error":
+                return jsonify({"state": "FAILURE", "error": result.get("error", "Unknown error")})
+            return jsonify({"state": "SUCCESS", **result})
         else:
-            return jsonify({
-                'state': task.state,
-                'info': str(task.info) if task.info else None
-            })
+            return jsonify({"state": task.state, "info": str(task.info) if task.info else None})
     except Exception as e:
         # If we can't read the task state at all (e.g., corrupted Redis entry),
         # report it as a failure rather than returning 500 which the frontend
         # might not handle, causing infinite polling.
-        return jsonify({
-            'state': 'FAILURE',
-            'error': f'Task state unreadable: {str(e)}'
-        })
+        return jsonify({"state": "FAILURE", "error": f"Task state unreadable: {str(e)}"})
 
 
 @app.post("/api/library-scan")
@@ -1156,14 +1175,11 @@ def api_library_scan():
     """
     _require_auth()
     body = request.get_json(force=True) or {}
-    skip_embedded = body.get('skip_embedded', False)
+    skip_embedded = body.get("skip_embedded", False)
 
     task = library_scan_task.delay(skip_embedded=skip_embedded)
 
-    return jsonify({
-        'task_id': task.id,
-        'status': 'pending'
-    })
+    return jsonify({"task_id": task.id, "status": "pending"})
 
 
 @app.get("/api/library-scan/status/<task_id>")
@@ -1182,52 +1198,38 @@ def api_library_scan_status(task_id):
     try:
         task = celery_app.AsyncResult(task_id)
 
-        if task.state == 'PENDING':
-            return jsonify({'state': 'PENDING'})
-        elif task.state == 'PROGRESS':
+        if task.state == "PENDING":
+            return jsonify({"state": "PENDING"})
+        elif task.state == "PROGRESS":
             info = task.info or {}
-            total = info.get('total', 0) if isinstance(info, dict) else 0
-            scanned = info.get('scanned', 0) if isinstance(info, dict) else 0
-            return jsonify({
-                'state': 'PROGRESS',
-                'phase': info.get('phase', '') if isinstance(info, dict) else '',
-                'scanned': scanned,
-                'total': total,
-                'missing_so_far': info.get('missing_so_far', 0) if isinstance(info, dict) else 0,
-                'progress': round(scanned / total * 100, 1) if total > 0 else 0
-            })
-        elif task.state == 'FAILURE':
-            error_msg = str(task.info) if task.info else 'Unknown error'
-            return jsonify({
-                'state': 'FAILURE',
-                'error': error_msg
-            })
-        elif task.state == 'REVOKED':
-            return jsonify({
-                'state': 'CANCELLED',
-                'cancelled': True
-            })
-        elif task.state == 'SUCCESS':
+            total = info.get("total", 0) if isinstance(info, dict) else 0
+            scanned = info.get("scanned", 0) if isinstance(info, dict) else 0
+            return jsonify(
+                {
+                    "state": "PROGRESS",
+                    "phase": info.get("phase", "") if isinstance(info, dict) else "",
+                    "scanned": scanned,
+                    "total": total,
+                    "missing_so_far": info.get("missing_so_far", 0)
+                    if isinstance(info, dict)
+                    else 0,
+                    "progress": round(scanned / total * 100, 1) if total > 0 else 0,
+                }
+            )
+        elif task.state == "FAILURE":
+            error_msg = str(task.info) if task.info else "Unknown error"
+            return jsonify({"state": "FAILURE", "error": error_msg})
+        elif task.state == "REVOKED":
+            return jsonify({"state": "CANCELLED", "cancelled": True})
+        elif task.state == "SUCCESS":
             result = task.info or {}
-            if isinstance(result, dict) and result.get('cancelled'):
-                return jsonify({
-                    'state': 'CANCELLED',
-                    **result
-                })
-            return jsonify({
-                'state': 'SUCCESS',
-                **result
-            })
+            if isinstance(result, dict) and result.get("cancelled"):
+                return jsonify({"state": "CANCELLED", **result})
+            return jsonify({"state": "SUCCESS", **result})
         else:
-            return jsonify({
-                'state': task.state,
-                'info': str(task.info) if task.info else None
-            })
+            return jsonify({"state": task.state, "info": str(task.info) if task.info else None})
     except Exception as e:
-        return jsonify({
-            'state': 'FAILURE',
-            'error': f'Task state unreadable: {str(e)}'
-        })
+        return jsonify({"state": "FAILURE", "error": f"Task state unreadable: {str(e)}"})
 
 
 @app.post("/api/library-scan/<task_id>/cancel")
@@ -1244,11 +1246,11 @@ def api_library_scan_cancel(task_id):
     _require_auth()
     _validate_task_id(task_id)
     try:
-        _redis.setex(f'library_scan_cancel:{task_id}', 300, '1')
-        celery_app.control.revoke(task_id, terminate=True, signal='SIGTERM')
-        return jsonify({'status': 'cancelled', 'task_id': task_id})
+        _redis.setex(f"library_scan_cancel:{task_id}", 300, "1")
+        celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
+        return jsonify({"status": "cancelled", "task_id": task_id})
     except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.get("/api/library-scan/export/<task_id>")
@@ -1267,35 +1269,30 @@ def api_library_scan_export(task_id):
     try:
         task = celery_app.AsyncResult(task_id)
 
-        if task.state != 'SUCCESS':
-            return jsonify({'error': f'Task not complete (state: {task.state})'}), 400
+        if task.state != "SUCCESS":
+            return jsonify({"error": f"Task not complete (state: {task.state})"}), 400
 
         result = task.info or {}
-        missing_files = result.get('missing_files', [])
+        missing_files = result.get("missing_files", [])
 
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(['path', 'name', 'directory'])
+        writer.writerow(["path", "name", "directory"])
         for f in missing_files:
             try:
-                rel_path = str(Path(f.get('path', '')).relative_to(MEDIA_ROOT))
-                rel_dir = str(Path(f.get('directory', '')).relative_to(MEDIA_ROOT))
+                rel_path = str(Path(f.get("path", "")).relative_to(MEDIA_ROOT))
+                rel_dir = str(Path(f.get("directory", "")).relative_to(MEDIA_ROOT))
             except ValueError:
-                rel_path = f.get('name', '')
-                rel_dir = ''
-            writer.writerow([rel_path, f.get('name', ''), rel_dir])
+                rel_path = f.get("name", "")
+                rel_dir = ""
+            writer.writerow([rel_path, f.get("name", ""), rel_dir])
 
-        output = io.BytesIO(buf.getvalue().encode('utf-8'))
+        output = io.BytesIO(buf.getvalue().encode("utf-8"))
         filename = f"missing-subtitles-{date.today().isoformat()}.csv"
 
-        return send_file(
-            output,
-            mimetype='text/csv',
-            as_attachment=True,
-            download_name=filename
-        )
+        return send_file(output, mimetype="text/csv", as_attachment=True, download_name=filename)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

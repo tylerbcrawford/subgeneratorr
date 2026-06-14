@@ -4,9 +4,10 @@ Comprehensive validation script for Subgeneratorr.
 Validates project structure, files, and configuration for both CLI and Web UI.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 
 def check_file(path: str, description: str, required: bool = True) -> bool:
     """Check if a file exists."""
@@ -20,6 +21,7 @@ def check_file(path: str, description: str, required: bool = True) -> bool:
             print(f"⚠️  {description} (optional): {path}")
         return False
 
+
 def check_directory(path: str, description: str, required: bool = True) -> bool:
     """Check if a directory exists."""
     if Path(path).is_dir():
@@ -32,11 +34,12 @@ def check_directory(path: str, description: str, required: bool = True) -> bool:
             print(f"⚠️  {description} (optional): {path}/")
         return False
 
+
 def check_syntax(module_path: str, description: str) -> bool:
     """Check if a Python file has valid syntax."""
     try:
-        with open(module_path, 'r') as f:
-            compile(f.read(), module_path, 'exec')
+        with open(module_path, "r") as f:
+            compile(f.read(), module_path, "exec")
         print(f"✅ {description}: valid syntax")
         return True
     except SyntaxError as e:
@@ -45,6 +48,7 @@ def check_syntax(module_path: str, description: str) -> bool:
     except Exception as e:
         print(f"❌ {description}: ERROR - {e}")
         return False
+
 
 def check_executable(path: str, description: str) -> bool:
     """Check if a file is executable."""
@@ -59,15 +63,16 @@ def check_executable(path: str, description: str) -> bool:
             return True  # Don't fail, just warn
     return False
 
+
 def main():
     print("=" * 70)
     print("Subgeneratorr - Setup Validation")
     print("=" * 70)
     print()
-    
+
     checks = []
     warnings = []
-    
+
     # ========================================================================
     # Project Structure
     # ========================================================================
@@ -81,7 +86,7 @@ def main():
     checks.append(check_directory("tests", "Test scripts directory"))
     warnings.append(check_directory("deepgram-logs", "Logs directory", required=False))
     print()
-    
+
     # ========================================================================
     # Core Files
     # ========================================================================
@@ -89,7 +94,7 @@ def main():
     checks.append(check_file("core/__init__.py", "Core __init__.py"))
     checks.append(check_file("core/transcribe.py", "Core transcription module"))
     print()
-    
+
     # ========================================================================
     # CLI Files
     # ========================================================================
@@ -101,7 +106,7 @@ def main():
     checks.append(check_file("cli/entrypoint.sh", "CLI entrypoint script"))
     checks.append(check_file("cli/requirements.txt", "CLI dependencies"))
     print()
-    
+
     # ========================================================================
     # Web UI Files
     # ========================================================================
@@ -112,7 +117,7 @@ def main():
     checks.append(check_file("web/templates/index.html", "Web UI template"))
     checks.append(check_file("web/static/app.js", "Web UI JavaScript"))
     print()
-    
+
     # ========================================================================
     # Scripts
     # ========================================================================
@@ -120,7 +125,7 @@ def main():
     checks.append(check_file("scripts/postprocess_subtitles.py", "Subtitle renaming script"))
     checks.append(check_file("scripts/validate_setup.py", "Setup validation script"))
     print()
-    
+
     # ========================================================================
     # Documentation
     # ========================================================================
@@ -129,7 +134,7 @@ def main():
     checks.append(check_file("docs/roadmap.md", "Project roadmap"))
     checks.append(check_file("docs/languages.md", "Language support guide"))
     print()
-    
+
     # ========================================================================
     # Examples
     # ========================================================================
@@ -138,14 +143,14 @@ def main():
     checks.append(check_file("examples/video-list-example.txt", "Video list example"))
     checks.append(check_file("examples/test-video.txt", "Test video list"))
     print()
-    
+
     # ========================================================================
     # Tests
     # ========================================================================
     print("🧪 Test Files:")
     checks.append(check_file("tests/test_single_video.py", "Single video test script"))
     print()
-    
+
     # ========================================================================
     # Configuration Files
     # ========================================================================
@@ -156,32 +161,34 @@ def main():
     checks.append(check_file("README.md", "Main documentation"))
     checks.append(check_file("LICENSE", "License file"))
     print()
-    
+
     # ========================================================================
     # Python Syntax Validation
     # ========================================================================
     print("🐍 Python Syntax Validation:")
-    
+
     # Core
     checks.append(check_syntax("core/transcribe.py", "core/transcribe.py"))
-    
+
     # CLI
     checks.append(check_syntax("cli/generate_subtitles.py", "cli/generate_subtitles.py"))
     checks.append(check_syntax("cli/config.py", "cli/config.py"))
     checks.append(check_syntax("cli/transcript_generator.py", "cli/transcript_generator.py"))
-    
+
     # Web
     checks.append(check_syntax("web/app.py", "web/app.py"))
     checks.append(check_syntax("web/tasks.py", "web/tasks.py"))
-    
+
     # Scripts
-    checks.append(check_syntax("scripts/postprocess_subtitles.py", "scripts/postprocess_subtitles.py"))
+    checks.append(
+        check_syntax("scripts/postprocess_subtitles.py", "scripts/postprocess_subtitles.py")
+    )
     checks.append(check_syntax("scripts/validate_setup.py", "scripts/validate_setup.py"))
-    
+
     # Tests
     checks.append(check_syntax("tests/test_single_video.py", "tests/test_single_video.py"))
     print()
-    
+
     # ========================================================================
     # Executable Scripts
     # ========================================================================
@@ -192,14 +199,14 @@ def main():
     check_executable("scripts/validate_setup.py", "Validation script")
     check_executable("tests/test_single_video.py", "Test script")
     print()
-    
+
     # ========================================================================
     # Summary
     # ========================================================================
     print("=" * 70)
     passed = sum(checks)
     total = len(checks)
-    
+
     if passed == total:
         print(f"✅ All critical checks passed! ({passed}/{total})")
         print()
@@ -219,6 +226,7 @@ def main():
         print()
         print("Please fix the errors above before proceeding.")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

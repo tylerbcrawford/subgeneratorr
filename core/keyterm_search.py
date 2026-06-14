@@ -7,16 +7,15 @@ This module provides intelligent keyterm generation using Large Language Models
 contextually relevant keyterms that improve transcription accuracy up to 90%.
 """
 
-from typing import List, Optional, Dict, Any
-from pathlib import Path
 from enum import Enum
-import os
+from typing import Any, Dict, List, Optional
 
 from core.media_metadata import MediaMetadata, format_metadata_for_prompt
 
 
 class LLMProvider(Enum):
     """Supported LLM providers."""
+
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
     GOOGLE = "google"
@@ -24,6 +23,7 @@ class LLMProvider(Enum):
 
 class LLMModel(Enum):
     """Supported LLM models with their API identifiers."""
+
     # Anthropic models (Claude 4.6 series)
     CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
     CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
@@ -184,16 +184,16 @@ Begin your research and generate the keyterm list now."""
 
 class KeytermSearcher:
     """Generate contextually relevant keyterms using LLM analysis."""
-    
+
     def __init__(self, provider: LLMProvider, model: LLMModel, api_key: str):
         """
         Initialize KeytermSearcher with LLM configuration.
-        
+
         Args:
             provider: LLM provider (Anthropic or OpenAI)
             model: Specific model to use
             api_key: API key for the provider
-        
+
         Raises:
             ValueError: If provider/model combination is invalid
         """
@@ -201,7 +201,7 @@ class KeytermSearcher:
         self.model = model
         self.api_key = api_key
         self._client = None
-        
+
         # Validate provider/model combination
         if provider == LLMProvider.ANTHROPIC:
             if model not in [LLMModel.CLAUDE_SONNET_4_6, LLMModel.CLAUDE_HAIKU_4_5]:
@@ -212,12 +212,12 @@ class KeytermSearcher:
         elif provider == LLMProvider.GOOGLE:
             if model not in [LLMModel.GEMINI_2_5_FLASH]:
                 raise ValueError(f"Model {model} not valid for provider {provider}")
-    
+
     def generate_from_metadata(
         self,
         metadata: MediaMetadata,
         existing_keyterms: Optional[List[str]] = None,
-        preserve_existing: bool = False
+        preserve_existing: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate keyterms from show/movie metadata using LLM.
@@ -240,7 +240,7 @@ class KeytermSearcher:
         """
         # Build prompt
         prompt = self._build_prompt(metadata, existing_keyterms, preserve_existing)
-        
+
         # Call appropriate LLM provider
         if self.provider == LLMProvider.ANTHROPIC:
             response_text, input_tokens, output_tokens = self._call_anthropic(prompt)
@@ -268,13 +268,13 @@ class KeytermSearcher:
         cost = self._calculate_cost(input_tokens, output_tokens)
 
         return {
-            'keyterms': keyterms,
-            'token_count': token_count,
-            'estimated_cost': cost,
-            'provider': self.provider.value,
-            'model': self.model.value
+            "keyterms": keyterms,
+            "token_count": token_count,
+            "estimated_cost": cost,
+            "provider": self.provider.value,
+            "model": self.model.value,
         }
-    
+
     def estimate_cost(self, metadata: MediaMetadata) -> Dict[str, Any]:
         """
         Estimate cost before making LLM request.
@@ -300,16 +300,16 @@ class KeytermSearcher:
         cost = self._calculate_cost(input_tokens, output_tokens)
 
         return {
-            'estimated_tokens': input_tokens + output_tokens,
-            'estimated_cost': cost,
-            'model': self.model.value
+            "estimated_tokens": input_tokens + output_tokens,
+            "estimated_cost": cost,
+            "model": self.model.value,
         }
-    
+
     def _build_prompt(
         self,
         metadata: MediaMetadata,
         existing_keyterms: Optional[List[str]] = None,
-        preserve_existing: bool = False
+        preserve_existing: bool = False,
     ) -> str:
         """
         Build the LLM prompt from template and context.
@@ -324,47 +324,41 @@ class KeytermSearcher:
         """
         # Build existing keyterms section
         existing_section = self._build_existing_keyterms_section(
-            existing_keyterms,
-            preserve_existing
+            existing_keyterms, preserve_existing
         )
 
         # Format media info for prompt
         media_info = format_metadata_for_prompt(metadata)
 
         # Choose appropriate template based on media type
-        if metadata.media_type == 'tv':
+        if metadata.media_type == "tv":
             template = KEYTERM_PROMPT_TV_TEMPLATE
         else:
             template = KEYTERM_PROMPT_MOVIE_TEMPLATE
 
         # Format the template
-        prompt = template.format(
-            media_info=media_info,
-            existing_keyterms_section=existing_section
-        )
+        prompt = template.format(media_info=media_info, existing_keyterms_section=existing_section)
 
         return prompt
-    
+
     def _build_existing_keyterms_section(
-        self, 
-        existing: Optional[List[str]] = None, 
-        preserve: bool = False
+        self, existing: Optional[List[str]] = None, preserve: bool = False
     ) -> str:
         """
         Build section for existing keyterms in prompt.
-        
+
         Args:
             existing: Optional list of existing keyterms
             preserve: If True, instruct to preserve; if False, use as reference
-        
+
         Returns:
             Formatted section string or empty string
         """
         if not existing:
             return ""
-        
-        keyterms_list = ', '.join(existing)
-        
+
+        keyterms_list = ", ".join(existing)
+
         if preserve:
             return f"""EXISTING KEYTERMS TO PRESERVE:
 The following keyterms are already defined and should be included in your response:
@@ -377,7 +371,7 @@ The following keyterms were previously used (for reference only):
 {keyterms_list}
 
 Feel free to use these as inspiration but generate a fresh, optimized list."""
-    
+
     def _parse_response(self, response: str) -> List[str]:
         """
         Parse LLM response into list of keyterms.
@@ -397,7 +391,7 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
         response = response.strip()
 
         # Strip markdown fences (```...```)
-        response = re.sub(r'```[\s\S]*?```', '', response)
+        response = re.sub(r"```[\s\S]*?```", "", response)
 
         # Remove lines that look like headers or commentary, not keyterms:
         #   - Markdown headers (# ...)
@@ -405,22 +399,24 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
         #   - Lines that are clearly sentences (>80 chars with multiple spaces)
         #   - Blank lines
         cleaned_lines = []
-        for line in response.split('\n'):
+        for line in response.split("\n"):
             stripped = line.strip()
             if not stripped:
                 continue
-            if stripped.startswith('#'):
+            if stripped.startswith("#"):
                 continue
-            if stripped.startswith('**') and ':' in stripped:
+            if stripped.startswith("**") and ":" in stripped:
                 continue
-            if re.match(r'^(Note|Here|These|The following|Research|Summary|I )', stripped, re.IGNORECASE):
+            if re.match(
+                r"^(Note|Here|These|The following|Research|Summary|I )", stripped, re.IGNORECASE
+            ):
                 continue
             cleaned_lines.append(stripped)
 
-        response = ' '.join(cleaned_lines)
+        response = " ".join(cleaned_lines)
 
         # Split by comma
-        keyterms = [term.strip() for term in response.split(',')]
+        keyterms = [term.strip() for term in response.split(",")]
 
         # Filter out empty, too-long (not a keyterm), and duplicate terms
         seen = set()
@@ -428,7 +424,7 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
 
         for term in keyterms:
             # Strip surrounding quotes or asterisks
-            term = term.strip('"\'*`')
+            term = term.strip("\"'*`")
             if not term:
                 continue
             # Skip terms that are clearly sentences (>60 chars)
@@ -439,7 +435,7 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
                 unique_keyterms.append(term)
 
         return unique_keyterms
-    
+
     def _call_anthropic(self, prompt: str) -> tuple[str, int, int]:
         """
         Make API call to Anthropic Claude.
@@ -459,36 +455,34 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
             raise ImportError(
                 "anthropic package not installed. Install with: pip install anthropic>=0.30.0"
             )
-        
+
         # Initialize client if needed
         if not self._client:
             self._client = anthropic.Anthropic(api_key=self.api_key)
-        
+
         try:
             # Make API call
             message = self._client.messages.create(
                 model=self.model.value,
                 max_tokens=500,  # Limited for keyterm lists
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "user", "content": prompt}],
             )
-            
+
             # Extract response text
             if not message.content:
                 raise Exception("Anthropic API returned empty response — no content blocks")
             response_text = message.content[0].text
-            
+
             return response_text, message.usage.input_tokens, message.usage.output_tokens
 
         except Exception as e:
             error_str = str(e)
-            if 'rate_limit' in error_str.lower() or '429' in error_str:
+            if "rate_limit" in error_str.lower() or "429" in error_str:
                 raise Exception("Anthropic API rate limit exceeded — wait a moment and try again")
-            elif '401' in error_str or 'authentication' in error_str.lower():
+            elif "401" in error_str or "authentication" in error_str.lower():
                 raise Exception("Anthropic API key is invalid or expired")
             else:
-                brief = error_str.split('\n')[0][:200]
+                brief = error_str.split("\n")[0][:200]
                 raise Exception(f"Anthropic API error: {brief}")
 
     def _call_openai(self, prompt: str) -> tuple[str, int, int]:
@@ -510,19 +504,22 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
             raise ImportError(
                 "openai package not installed. Install with: pip install openai>=1.35.0"
             )
-        
+
         # Initialize client if needed
         if not self._client:
             self._client = openai.OpenAI(api_key=self.api_key)
-        
+
         try:
             response = self._client.chat.completions.create(
                 model=self.model.value,
                 max_tokens=500,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that generates keyterm lists for transcription accuracy."},
-                    {"role": "user", "content": prompt}
-                ]
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that generates keyterm lists for transcription accuracy.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
             )
 
             if not response.choices:
@@ -533,14 +530,14 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
 
         except Exception as e:
             error_str = str(e)
-            if 'rate_limit' in error_str.lower() or '429' in error_str:
+            if "rate_limit" in error_str.lower() or "429" in error_str:
                 raise Exception("OpenAI API rate limit exceeded — wait a moment and try again")
-            elif '401' in error_str or 'authentication' in error_str.lower():
+            elif "401" in error_str or "authentication" in error_str.lower():
                 raise Exception("OpenAI API key is invalid or expired")
-            elif 'insufficient_quota' in error_str.lower():
+            elif "insufficient_quota" in error_str.lower():
                 raise Exception("OpenAI API quota exceeded — check your billing plan")
             else:
-                brief = error_str.split('\n')[0][:200]
+                brief = error_str.split("\n")[0][:200]
                 raise Exception(f"OpenAI API error: {brief}")
 
     def _call_google(self, prompt: str) -> tuple[str, int, int]:
@@ -594,15 +591,17 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
         except Exception as e:
             error_str = str(e)
             # Extract a clean message from verbose API errors
-            if 'RESOURCE_EXHAUSTED' in error_str:
-                raise Exception("Gemini API quota exceeded — try a different model or check your billing plan")
-            elif '401' in error_str or 'UNAUTHENTICATED' in error_str:
+            if "RESOURCE_EXHAUSTED" in error_str:
+                raise Exception(
+                    "Gemini API quota exceeded — try a different model or check your billing plan"
+                )
+            elif "401" in error_str or "UNAUTHENTICATED" in error_str:
                 raise Exception("Gemini API key is invalid or expired")
-            elif '403' in error_str or 'PERMISSION_DENIED' in error_str:
+            elif "403" in error_str or "PERMISSION_DENIED" in error_str:
                 raise Exception("Gemini API key lacks permission for this model")
             else:
                 # Keep it short — strip the nested JSON
-                brief = error_str.split('\n')[0][:200]
+                brief = error_str.split("\n")[0][:200]
                 raise Exception(f"Gemini API error: {brief}")
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:

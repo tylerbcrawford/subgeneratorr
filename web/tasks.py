@@ -6,28 +6,39 @@ Handles asynchronous video transcription jobs using Celery workers.
 Supports batched processing with per-file progress tracking.
 """
 
+import json
 import logging
 import os
-import json
-import redis as redis_lib
 import subprocess
-import time
 import sys
+import time
+
+import redis as redis_lib
 
 logger = logging.getLogger(__name__)
 from pathlib import Path
-from celery import Celery
-from celery import group, chord
+
+from celery import Celery, group
 
 # Add parent directory to path to import core module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.transcribe import (
-    is_video, is_media, extract_audio, transcribe_file, write_srt,
-    write_raw_json, load_keyterms_from_csv, save_keyterms_to_csv,
-    find_speaker_map, write_transcript, get_video_duration, write_intelligence_summary,
-    get_audio_selection_language, has_sidecar_subtitle,
+    extract_audio,
+    find_speaker_map,
+    get_audio_selection_language,
+    get_video_duration,
+    has_sidecar_subtitle,
     inspect_requested_outputs,
-    resolve_synced_marker_path, SUBTITLE_EXTS
+    is_media,
+    is_video,
+    load_keyterms_from_csv,
+    resolve_synced_marker_path,
+    save_keyterms_to_csv,
+    transcribe_file,
+    write_intelligence_summary,
+    write_raw_json,
+    write_srt,
+    write_transcript,
 )
 
 # Configuration from environment
@@ -47,17 +58,17 @@ celery_app = Celery(__name__, broker=REDIS_URL, backend=REDIS_URL)
 
 # Configure task routing
 celery_app.conf.task_routes = {
-    'transcribe_task': {'queue': 'transcribe'},
-    'batch_finalize': {'queue': 'transcribe'},
-    'generate_keyterms_task': {'queue': 'transcribe'},
-    'library_scan_task': {'queue': 'scan'},
+    "transcribe_task": {"queue": "transcribe"},
+    "batch_finalize": {"queue": "transcribe"},
+    "generate_keyterms_task": {"queue": "transcribe"},
+    "library_scan_task": {"queue": "scan"},
 }
 
 
 def _save_job_log(payload: dict):
     """
     Save job result to JSON log file.
-    
+
     Args:
         payload: Job result data to log
     """
@@ -71,14 +82,37 @@ def _save_job_log(payload: dict):
 
 
 @celery_app.task(bind=True, name="transcribe_task")
-def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT_LANGUAGE,
-                    profanity_filter="off", force_regenerate=False, enable_transcript=False,
-                    keyterms=None, save_raw_json=False, auto_save_keyterms=False,
-                    numerals=False, filler_words=False, detect_language=False, measurements=False,
-                    diarization=True, utterances=True, paragraphs=True,
-                    dictation=False, multichannel=False, redact=None, replace=None,
-                    utt_split=None, sentiment=False, summarize=False, topics=False,
-                    intents=False, detect_entities=False, search=None, tag=None):
+def transcribe_task(
+    self,
+    video_path: str,
+    model=DEFAULT_MODEL,
+    language=DEFAULT_LANGUAGE,
+    profanity_filter="off",
+    force_regenerate=False,
+    enable_transcript=False,
+    keyterms=None,
+    save_raw_json=False,
+    auto_save_keyterms=False,
+    numerals=False,
+    filler_words=False,
+    detect_language=False,
+    measurements=False,
+    diarization=True,
+    utterances=True,
+    paragraphs=True,
+    dictation=False,
+    multichannel=False,
+    redact=None,
+    replace=None,
+    utt_split=None,
+    sentiment=False,
+    summarize=False,
+    topics=False,
+    intents=False,
+    detect_entities=False,
+    search=None,
+    tag=None,
+):
     """
     Transcribe a single video file.
 
@@ -114,7 +148,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
 
     Returns:
         dict: Status and file paths
-        
+
     The task will:
     1. Check if SRT already exists (skip if yes unless force_regenerate)
     2. Auto-load keyterms from CSV if available (or use provided keyterms)
@@ -140,41 +174,43 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
     )
     srt_out = output_state["subtitle_path"]
     txt_out = output_state["transcript_path"]
-    
+
     # Start timing
     start_time = time.time()
-    
+
     # Get video duration for timing analysis
     video_duration = get_video_duration(vp)
-    
+
     meta = {
         "video": str(vp),
         "srt": str(srt_out),
         "filename": vp.name,
         "video_duration_seconds": video_duration,
-        "start_time": start_time
+        "start_time": start_time,
     }
-    
+
     if enable_transcript:
         meta["transcript"] = str(txt_out)
-    
+
     # Update task state to show current file
-    self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'checking'})
-    
+    self.update_state(state="PROGRESS", meta={"current_file": vp.name, "stage": "checking"})
+
     if output_state["should_skip"]:
         return {"status": "skipped", **meta}
-    
+
     # Auto-load keyterms from CSV if no keyterms provided
     if not keyterms:
         csv_keyterms = load_keyterms_from_csv(vp)
         if csv_keyterms:
             keyterms = csv_keyterms
             logger.info("Auto-loaded %d keyterms from CSV", len(keyterms))
-    
+
     audio_tmp = None
     try:
         # Extract audio
-        self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'extracting_audio'})
+        self.update_state(
+            state="PROGRESS", meta={"current_file": vp.name, "stage": "extracting_audio"}
+        )
         audio_tmp = extract_audio(
             vp,
             language=get_audio_selection_language(
@@ -182,9 +218,9 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
                 detect_language=detect_language,
             ),
         )
-        
+
         # Transcribe with optional parameters
-        self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'transcribing'})
+        self.update_state(state="PROGRESS", meta={"current_file": vp.name, "stage": "transcribing"})
         with open(audio_tmp, "rb") as f:
             resp = transcribe_file(
                 f.read(),
@@ -211,11 +247,13 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
                 intents=intents,
                 detect_entities=detect_entities,
                 search=search,
-                tag=tag
+                tag=tag,
             )
-        
+
         # Generate SRT
-        self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'generating_srt'})
+        self.update_state(
+            state="PROGRESS", meta={"current_file": vp.name, "stage": "generating_srt"}
+        )
         post_response_state = inspect_requested_outputs(
             vp,
             language,
@@ -238,28 +276,32 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         if post_response_state["needs_subtitle"]:
             write_srt(resp, resolved_srt_out)
             produced_outputs.append("subtitle")
-            
+
             # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
             if resolved_synced_marker.exists():
                 resolved_synced_marker.unlink()
                 logger.debug("Removed Subsyncarr marker: %s", resolved_synced_marker)
         else:
             logger.debug("Skipping subtitle write for existing file: %s", resolved_srt_out)
-        
+
         # Save keyterms to CSV if enabled and keyterms were provided
         if auto_save_keyterms and keyterms:
-            self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_keyterms'})
+            self.update_state(
+                state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_keyterms"}
+            )
             try:
                 if save_keyterms_to_csv(vp, keyterms):
                     logger.info("Saved %d keyterms to CSV", len(keyterms))
             except Exception as e:
                 logger.warning("Failed to save keyterms: %s", e)
-        
+
         # Generate transcript if requested
         if enable_transcript:
             txt_out = post_response_state["transcript_path"]
             meta["transcript"] = str(txt_out)
-            self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'generating_transcript'})
+            self.update_state(
+                state="PROGRESS", meta={"current_file": vp.name, "stage": "generating_transcript"}
+            )
 
             if post_response_state["needs_transcript"]:
                 # Auto-detect speaker map from Transcripts/Speakermap/
@@ -273,10 +315,12 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
                     produced_outputs.append("transcript")
             else:
                 logger.debug("Skipping transcript write for existing file: %s", txt_out)
-        
+
         # Save raw JSON if enabled (either globally or per-request)
         if SAVE_RAW_JSON or save_raw_json:
-            self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_raw_json'})
+            self.update_state(
+                state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_raw_json"}
+            )
             try:
                 write_raw_json(resp, vp)
                 produced_outputs.append("raw_json")
@@ -286,41 +330,43 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         # Save intelligence summary if any intelligence features were enabled
         has_intelligence = any([sentiment, summarize, topics, intents, detect_entities, search])
         if has_intelligence:
-            self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_intelligence'})
+            self.update_state(
+                state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_intelligence"}
+            )
             try:
                 write_intelligence_summary(resp, vp)
                 produced_outputs.append("intelligence")
             except Exception:
                 logger.exception("Failed to save intelligence summary for %s", vp.name)
-        
+
         # Calculate processing time
         end_time = time.time()
         processing_time = end_time - start_time
-        
+
         # Calculate time multiplier (actual_time / video_duration)
         time_multiplier = processing_time / video_duration if video_duration > 0 else 0
-        
+
         # Add timing data to meta
         timing_data = {
             "end_time": end_time,
             "processing_time_seconds": processing_time,
             "time_multiplier": time_multiplier,
             "processing_time_formatted": f"{int(processing_time // 60)}:{int(processing_time % 60):02d}",
-            "video_duration_formatted": f"{int(video_duration // 60)}:{int(video_duration % 60):02d}"
+            "video_duration_formatted": f"{int(video_duration // 60)}:{int(video_duration % 60):02d}",
         }
-        
+
         status = "ok" if produced_outputs else "skipped"
 
         # Log success with timing data
         _save_job_log({"status": status, **meta, **timing_data})
-        
+
         return {"status": status, **meta, **timing_data}
-        
+
     except Exception as e:
         # Log error
         _save_job_log({"status": "error", "error": str(e), **meta})
         raise
-        
+
     finally:
         # Clean up temporary audio file
         if audio_tmp and Path(audio_tmp).exists():
@@ -337,21 +383,22 @@ def batch_finalize(results):
 
     The current release path uses plain Celery groups for progress tracking,
     so this task is not attached automatically when a batch completes.
-    
+
     Args:
         results: List of results from transcribe_task
-        
+
     Returns:
         dict: Batch completion status
     """
     # Trigger Bazarr rescan once per batch (only if configured)
     if BAZARR_BASE_URL and BAZARR_API_KEY:
         import requests
+
         try:
             response = requests.post(
                 f"{BAZARR_BASE_URL}/api/system/tasks/SearchWantedSubtitles",
                 headers={"X-API-KEY": BAZARR_API_KEY},
-                timeout=10
+                timeout=10,
             )
             logger.info("Bazarr rescan triggered: %s", response.status_code)
         except Exception as e:
@@ -359,113 +406,95 @@ def batch_finalize(results):
             if BAZARR_API_KEY:
                 msg = msg.replace(BAZARR_API_KEY, "***")
             logger.warning("Bazarr rescan failed: %s", msg)
-    
+
     return {"batch_status": "done", "results": results}
 
 
 @celery_app.task(bind=True, name="generate_keyterms_task")
 def generate_keyterms_task(
-    self,
-    video_path: str,
-    provider: str,
-    model: str,
-    preserve_existing: bool = False
+    self, video_path: str, provider: str, model: str, preserve_existing: bool = False
 ):
     """
     Async task to generate keyterms using LLM.
-    
+
     Args:
         video_path: Path to video file
         provider: LLM provider ("anthropic" or "openai")
         model: Model identifier (e.g., "claude-sonnet-4", "gpt-4")
         preserve_existing: If True, merge with existing; if False, overwrite
-        
+
     Returns:
         dict: Generated keyterms and metadata
-        
+
     Updates state with progress:
         - PROGRESS: Initializing, generating, saving
         - SUCCESS: Complete with keyterms
         - FAILURE: Error details
     """
     vp = Path(video_path)
-    
+
     try:
         # Update: Initializing
-        self.update_state(
-            state='PROGRESS',
-            meta={'stage': 'initializing', 'progress': 0}
-        )
-        
+        self.update_state(state="PROGRESS", meta={"stage": "initializing", "progress": 0})
+
         # Get API key from environment
-        if provider == 'anthropic':
-            api_key = os.environ.get('ANTHROPIC_API_KEY')
-        elif provider == 'openai':
-            api_key = os.environ.get('OPENAI_API_KEY')
-        elif provider == 'google':
-            api_key = os.environ.get('GEMINI_API_KEY')
+        if provider == "anthropic":
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+        elif provider == "openai":
+            api_key = os.environ.get("OPENAI_API_KEY")
+        elif provider == "google":
+            api_key = os.environ.get("GEMINI_API_KEY")
         else:
             raise ValueError(f"Unsupported provider: {provider}")
-        
+
         if not api_key:
             raise ValueError(f"API key not configured for {provider}")
-        
+
         # Extract metadata from video path
         from core.media_metadata import extract_media_metadata
+
         metadata = extract_media_metadata(vp)
 
         # Load existing keyterms if any
         existing = load_keyterms_from_csv(vp)
 
         # Update: Generating
-        self.update_state(
-            state='PROGRESS',
-            meta={'stage': 'generating', 'progress': 30}
-        )
+        self.update_state(state="PROGRESS", meta={"stage": "generating", "progress": 30})
 
         # Import here to avoid import errors if dependencies not installed
-        from core.keyterm_search import KeytermSearcher, LLMProvider, LLMModel
+        from core.keyterm_search import KeytermSearcher, LLMModel, LLMProvider
 
         # Convert string provider/model to enums using bracket notation (access by NAME)
         try:
             provider_enum = LLMProvider[provider.upper()]
-            model_enum = LLMModel[model.upper().replace('-', '_').replace('.', '_')]
+            model_enum = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
         except KeyError:
             raise ValueError(f"Invalid provider or model: {provider}, {model}")
 
         # Generate keyterms
-        searcher = KeytermSearcher(
-            provider=provider_enum,
-            model=model_enum,
-            api_key=api_key
-        )
+        searcher = KeytermSearcher(provider=provider_enum, model=model_enum, api_key=api_key)
 
         result = searcher.generate_from_metadata(
-            metadata=metadata,
-            existing_keyterms=existing,
-            preserve_existing=preserve_existing
+            metadata=metadata, existing_keyterms=existing, preserve_existing=preserve_existing
         )
-        
+
         # Update: Saving
-        self.update_state(
-            state='PROGRESS',
-            meta={'stage': 'saving', 'progress': 80}
-        )
-        
+        self.update_state(state="PROGRESS", meta={"stage": "saving", "progress": 80})
+
         # Save to CSV
-        if save_keyterms_to_csv(vp, result['keyterms']):
-            logger.info("Saved %d LLM-generated keyterms to CSV", len(result['keyterms']))
-        
+        if save_keyterms_to_csv(vp, result["keyterms"]):
+            logger.info("Saved %d LLM-generated keyterms to CSV", len(result["keyterms"]))
+
         # Return results
         return {
-            'keyterms': result['keyterms'],
-            'token_count': result['token_count'],
-            'actual_cost': result['estimated_cost'],
-            'provider': provider,
-            'model': model,
-            'keyterm_count': len(result['keyterms'])
+            "keyterms": result["keyterms"],
+            "token_count": result["token_count"],
+            "actual_cost": result["estimated_cost"],
+            "provider": provider,
+            "model": model,
+            "keyterm_count": len(result["keyterms"]),
         }
-        
+
     except Exception as e:
         # Convert to a simple RuntimeError before re-raising.
         # Complex exception objects (e.g., Google API errors with nested
@@ -473,7 +502,7 @@ def generate_keyterms_task(
         # which corrupts the task state and makes frontend polling hang forever.
         error_msg = str(e)
         if len(error_msg) > 500:
-            error_msg = error_msg[:500] + '...'
+            error_msg = error_msg[:500] + "..."
         raise RuntimeError(error_msg)
 
 
@@ -490,12 +519,13 @@ def library_scan_task(self, skip_embedded=False):
         dict with missing_files list, total_scanned, total_missing, scan_time_seconds
     """
     start = time.time()
-    cancel_key = f'library_scan_cancel:{self.request.id}'
+    cancel_key = f"library_scan_cancel:{self.request.id}"
 
     # Phase 0: Collect all media files and group by directory
-    self.update_state(state='PROGRESS', meta={
-        'phase': 'collecting', 'scanned': 0, 'total': 0, 'missing_so_far': 0
-    })
+    self.update_state(
+        state="PROGRESS",
+        meta={"phase": "collecting", "scanned": 0, "total": 0, "missing_so_far": 0},
+    )
 
     all_files = []
     for i, p in enumerate(MEDIA_ROOT.rglob("*"), start=1):
@@ -503,37 +533,37 @@ def library_scan_task(self, skip_embedded=False):
             if _redis.exists(cancel_key):
                 _redis.delete(cancel_key)
                 return {
-                    'missing_files': [],
-                    'total_scanned': len(all_files),
-                    'total_missing': 0,
-                    'scan_time_seconds': round(time.time() - start, 1),
-                    'cancelled': True
+                    "missing_files": [],
+                    "total_scanned": len(all_files),
+                    "total_missing": 0,
+                    "scan_time_seconds": round(time.time() - start, 1),
+                    "cancelled": True,
                 }
-            self.update_state(state='PROGRESS', meta={
-                'phase': 'collecting',
-                'scanned': len(all_files),
-                'total': 0,
-                'missing_so_far': 0
-            })
+            self.update_state(
+                state="PROGRESS",
+                meta={
+                    "phase": "collecting",
+                    "scanned": len(all_files),
+                    "total": 0,
+                    "missing_so_far": 0,
+                },
+            )
         if p.is_file() and is_media(p):
             all_files.append(p)
 
     if _redis.exists(cancel_key):
         _redis.delete(cancel_key)
         return {
-            'missing_files': [],
-            'total_scanned': len(all_files),
-            'total_missing': 0,
-            'scan_time_seconds': round(time.time() - start, 1),
-            'cancelled': True
+            "missing_files": [],
+            "total_scanned": len(all_files),
+            "total_missing": 0,
+            "scan_time_seconds": round(time.time() - start, 1),
+            "cancelled": True,
         }
 
     total = len(all_files)
     if total == 0:
-        return {
-            'missing_files': [], 'total_scanned': 0,
-            'total_missing': 0, 'scan_time_seconds': 0
-        }
+        return {"missing_files": [], "total_scanned": 0, "total_missing": 0, "scan_time_seconds": 0}
 
     # Build per-directory filename sets (avoids redundant iterdir() calls)
     dir_filenames = {}
@@ -555,11 +585,11 @@ def library_scan_task(self, skip_embedded=False):
         if scanned % 100 == 0 and _redis.exists(cancel_key):
             _redis.delete(cancel_key)
             return {
-                'missing_files': missing,
-                'total_scanned': scanned,
-                'total_missing': len(missing),
-                'scan_time_seconds': round(time.time() - start, 1),
-                'cancelled': True
+                "missing_files": missing,
+                "total_scanned": scanned,
+                "total_missing": len(missing),
+                "scan_time_seconds": round(time.time() - start, 1),
+                "cancelled": True,
             }
         filenames = dir_filenames.get(f.parent, set())
         if has_sidecar_subtitle(f.stem, filenames):
@@ -567,11 +597,7 @@ def library_scan_task(self, skip_embedded=False):
 
         if skip_embedded or not is_video(f):
             # No sidecar and we're not checking embedded (or it's audio)
-            missing.append({
-                'path': str(f),
-                'name': f.name,
-                'directory': str(f.parent)
-            })
+            missing.append({"path": str(f), "name": f.name, "directory": str(f.parent)})
         else:
             needs_embedded_check.append(f)
 
@@ -579,16 +605,21 @@ def library_scan_task(self, skip_embedded=False):
             if _redis.exists(cancel_key):
                 _redis.delete(cancel_key)
                 return {
-                    'missing_files': missing,
-                    'total_scanned': scanned,
-                    'total_missing': len(missing),
-                    'scan_time_seconds': round(time.time() - start, 1),
-                    'cancelled': True
+                    "missing_files": missing,
+                    "total_scanned": scanned,
+                    "total_missing": len(missing),
+                    "scan_time_seconds": round(time.time() - start, 1),
+                    "cancelled": True,
                 }
-            self.update_state(state='PROGRESS', meta={
-                'phase': 'sidecar_scan', 'scanned': scanned,
-                'total': total, 'missing_so_far': len(missing)
-            })
+            self.update_state(
+                state="PROGRESS",
+                meta={
+                    "phase": "sidecar_scan",
+                    "scanned": scanned,
+                    "total": total,
+                    "missing_so_far": len(missing),
+                },
+            )
 
     # Phase 2: Embedded subtitle check via ffprobe (slower)
     if needs_embedded_check:
@@ -597,19 +628,30 @@ def library_scan_task(self, skip_embedded=False):
             if _redis.exists(cancel_key):
                 _redis.delete(cancel_key)
                 return {
-                    'missing_files': missing,
-                    'total_scanned': embedded_scanned,
-                    'total_missing': len(missing),
-                    'scan_time_seconds': round(time.time() - start, 1),
-                    'cancelled': True
+                    "missing_files": missing,
+                    "total_scanned": embedded_scanned,
+                    "total_missing": len(missing),
+                    "scan_time_seconds": round(time.time() - start, 1),
+                    "cancelled": True,
                 }
             has_embedded = False
             try:
                 result = subprocess.run(
-                    ["ffprobe", "-v", "quiet", "-select_streams", "s",
-                     "-show_entries", "stream=codec_type", "-of", "csv=p=0",
-                     str(f)],
-                    capture_output=True, text=True, timeout=5
+                    [
+                        "ffprobe",
+                        "-v",
+                        "quiet",
+                        "-select_streams",
+                        "s",
+                        "-show_entries",
+                        "stream=codec_type",
+                        "-of",
+                        "csv=p=0",
+                        str(f),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if result.stdout.strip():
                     has_embedded = True
@@ -617,46 +659,68 @@ def library_scan_task(self, skip_embedded=False):
                 pass
 
             if not has_embedded:
-                missing.append({
-                    'path': str(f),
-                    'name': f.name,
-                    'directory': str(f.parent)
-                })
+                missing.append({"path": str(f), "name": f.name, "directory": str(f.parent)})
 
             if (i + 1) % 50 == 0:
                 if _redis.exists(cancel_key):
                     _redis.delete(cancel_key)
                     embedded_scanned = total - len(needs_embedded_check) + i + 1
                     return {
-                        'missing_files': missing,
-                        'total_scanned': embedded_scanned,
-                        'total_missing': len(missing),
-                        'scan_time_seconds': round(time.time() - start, 1),
-                        'cancelled': True
+                        "missing_files": missing,
+                        "total_scanned": embedded_scanned,
+                        "total_missing": len(missing),
+                        "scan_time_seconds": round(time.time() - start, 1),
+                        "cancelled": True,
                     }
-                self.update_state(state='PROGRESS', meta={
-                    'phase': 'embedded_scan',
-                    'scanned': total - len(needs_embedded_check) + i + 1,
-                    'total': total,
-                    'missing_so_far': len(missing)
-                })
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "phase": "embedded_scan",
+                        "scanned": total - len(needs_embedded_check) + i + 1,
+                        "total": total,
+                        "missing_so_far": len(missing),
+                    },
+                )
 
     elapsed = round(time.time() - start, 1)
     return {
-        'missing_files': missing,
-        'total_scanned': total,
-        'total_missing': len(missing),
-        'scan_time_seconds': elapsed
+        "missing_files": missing,
+        "total_scanned": total,
+        "total_missing": len(missing),
+        "scan_time_seconds": elapsed,
     }
 
 
-def make_batch(files, model, language, profanity_filter="off", force_regenerate=False,
-               enable_transcript=False, keyterms=None, save_raw_json=False,
-               auto_save_keyterms=False, numerals=False, filler_words=False,
-               detect_language=False, measurements=False, diarization=True, utterances=True,
-               paragraphs=True, dictation=False, multichannel=False, redact=None,
-               replace=None, utt_split=None, sentiment=False, summarize=False,
-               topics=False, intents=False, detect_entities=False, search=None, tag=None):
+def make_batch(
+    files,
+    model,
+    language,
+    profanity_filter="off",
+    force_regenerate=False,
+    enable_transcript=False,
+    keyterms=None,
+    save_raw_json=False,
+    auto_save_keyterms=False,
+    numerals=False,
+    filler_words=False,
+    detect_language=False,
+    measurements=False,
+    diarization=True,
+    utterances=True,
+    paragraphs=True,
+    dictation=False,
+    multichannel=False,
+    redact=None,
+    replace=None,
+    utt_split=None,
+    sentiment=False,
+    summarize=False,
+    topics=False,
+    intents=False,
+    detect_entities=False,
+    search=None,
+    tag=None,
+):
     """
     Create a batch of transcription jobs.
 
@@ -724,8 +788,9 @@ def make_batch(files, model, language, profanity_filter="off", force_regenerate=
             intents,
             detect_entities,
             search,
-            tag
-        ) for f in files
+            tag,
+        )
+        for f in files
     ]
     # Use group() instead of chord to allow progress tracking
     # GroupResult allows the API to query individual task states

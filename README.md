@@ -5,6 +5,9 @@
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/tylerbcrawford/subgeneratorr/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerbcrawford/subgeneratorr/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/tylerbcrawford/subgeneratorr?label=release)](https://github.com/tylerbcrawford/subgeneratorr/releases/latest)
+[![GHCR](https://img.shields.io/badge/ghcr.io-subgeneratorr--web-blue?logo=github)](https://github.com/tylerbcrawford/subgeneratorr/pkgs/container/subgeneratorr-web)
 
 ---
 
