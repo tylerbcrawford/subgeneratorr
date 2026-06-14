@@ -2680,3 +2680,42 @@ button:active,
   60% { content: '..'; }
   80%, 100% { content: '...'; }
 }
+
+/* ============================================
+   MOBILE ACCESSIBILITY
+   Pinch-zoom is enabled (viewport meta), so text-entry fields are kept at
+   16px to stop iOS Safari auto-zooming on focus, and icon/affordance controls
+   are raised to the 44px touch-target guideline.
+   ============================================ */
+@media (max-width: 640px) {
+  /* 16px text-entry fields prevent iOS focus-zoom */
+  .search-input,
+  #keyTerms,
+  #requestTag,
+  .sub-options textarea {
+    font-size: 16px;
+  }
+
+  /* 44px minimum tap targets for icon/affordance controls */
+  .gear-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .gear-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .ai-config-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .action-bar-select {
+    min-height: 44px;
+  }
+  #advancedToggle {
+    min-height: 44px;
+  }
+}

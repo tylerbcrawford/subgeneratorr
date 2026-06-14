@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Diarized batch jobs now use Deepgram's v2 speaker diarization model (`diarize_model=v2`) for improved multi-speaker accuracy. Sent via the SDK addons parameter because the installed `deepgram-sdk` 3.x does not serialize `diarize_model` on `PrerecordedOptions`.
 
+### Fixed
+- Mobile accessibility: re-enabled pinch-zoom (removed `user-scalable=no` from the viewport) and kept text-entry fields at 16px so iOS Safari no longer auto-zooms on focus.
+- Mobile touch targets: raised the settings gear, AI-config toggle, language selector, and advanced-settings toggle to the 44px minimum tap size.
+
 ## [2.2.0] - 2026-06-14
 
 ### Added
