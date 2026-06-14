@@ -130,8 +130,27 @@ See the Security Note in the Quick Start section above before exposing this beyo
 
 ### Screenshots
 
-<!-- Recommended: main browse page, scan results, transcription progress, settings panel -->
-*Screenshots coming soon.*
+A quick run through the workflow: scan the library, pick what is missing, generate keyterms, transcribe.
+
+<img src="docs/demo/preview.gif" width="760" alt="Subgeneratorr workflow: browse, scan, generate keyterms, transcribe">
+
+Browse your media library.
+
+<img src="docs/screenshots/library-browse.png" width="760" alt="Library browser showing movie folders">
+
+Scan for everything that is missing subtitles, grouped by folder.
+
+<img src="docs/screenshots/find-missing-subtitles.png" width="760" alt="Find missing subtitles scan results grouped by directory">
+
+Generate keyterms for a show with one click. Here the AI read the filename and pulled 28 terms from Tears of Steel on its own.
+
+<img src="docs/screenshots/keyterm-generation.png" width="760" alt="AI keyterm generation populated with character names and locations">
+
+Full control over the Nova-3 transcription settings when you want it, sensible defaults when you don't.
+
+<img src="docs/screenshots/transcription-settings.png" width="440" alt="Transcription settings panel with model, profanity filter, transcript format, and audio intelligence options">
+
+The demo library above uses Creative Commons and public domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.
 
 ### Web UI Features
 
