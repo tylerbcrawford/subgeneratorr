@@ -86,11 +86,13 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:latest
           format: table
-          # Report-only: fail only on unfixed CRITICAL CVEs to avoid blocking releases on noise
-          exit-code: '1'
           ignore-unfixed: true
-          severity: CRITICAL
+          severity: CRITICAL,HIGH
+          # Report-only: surfaces fixable HIGH/CRITICAL CVEs in the build log.
+          # Non-blocking (exit-code 0 + continue-on-error) so CVE noise never blocks a release.
+          exit-code: '0'

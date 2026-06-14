@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Web UI screenshots and workflow GIF in README (launch gate visuals)
 - Ruff linting and formatting in CI (`make lint` / `make fmt`; `ruff check` + `ruff format --check` gate on every push)
-- Trivy vulnerability scan in the publish workflow (fails only on fixable CRITICAL CVEs via `ignore-unfixed`; informational for all other severities)
+- Trivy vulnerability scan in the publish workflow (report-only: surfaces fixable HIGH/CRITICAL CVEs in the build log, non-blocking)
 - OCI image labels (`org.opencontainers.image.source`, `.description`, `.licenses`, `.version`) on both `web/Dockerfile` and `cli/Dockerfile`
 - Docker `HEALTHCHECK` on `web/Dockerfile` using `wget` against `http://127.0.0.1:5000/healthz` (matches compose healthcheck convention)
 - Provider key status in `/api/config` response (Anthropic, OpenAI, Gemini key presence)
