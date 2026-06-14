@@ -9,12 +9,16 @@ that can be used by both the CLI tool and the Web UI.
 from pathlib import Path
 from deepgram import DeepgramClient, PrerecordedOptions
 from deepgram_captions import DeepgramConverter, srt
+import logging
 import subprocess
+import sys
 import tempfile
 import os
 import json
 import csv
 from typing import Optional, List
+
+logger = logging.getLogger(__name__)
 
 # Subtitle file extensions to detect as sidecar files
 SUBTITLE_EXTS = {'.srt', '.ass', '.ssa', '.sub', '.vtt'}
@@ -575,16 +579,16 @@ def extract_audio(video: Path, language: Optional[str] = None) -> Path:
 
 
 def transcribe_file(buf: bytes, api_key: str, model: str, language: str,
-                    profanity_filter: str = "off", diarize: bool = False, keyterms: list = None,
+                    profanity_filter: str = "off", diarize: bool = False, keyterms: Optional[List[str]] = None,
                     numerals: bool = False, filler_words: bool = False,
                     detect_language: bool = False, measurements: bool = False,
                     utterances: bool = True, paragraphs: bool = True,
                     dictation: bool = False, multichannel: bool = False,
-                    redact: list = None, replace: list = None,
+                    redact: Optional[List[str]] = None, replace: Optional[List[str]] = None,
                     utt_split: float = None, sentiment: bool = False,
                     summarize: bool = False, topics: bool = False,
                     intents: bool = False, detect_entities: bool = False,
-                    search: list = None, tag: str = None) -> dict:
+                    search: Optional[List[str]] = None, tag: str = None) -> dict:
     """
     Transcribe audio buffer using Deepgram API.
 
@@ -753,10 +757,10 @@ def get_transcripts_folder(video_path: Path) -> Path:
             parent = transcripts_folder.parent
             if parent.exists():
                 parent.chmod(0o755)
-    except (OSError, PermissionError):
+    except (OSError, PermissionError) as e:
         # If we can't set permissions (e.g., running as non-root), that's okay
-        pass
-    
+        logger.warning("Could not set permissions on %s: %s", transcripts_folder, e)
+
     return transcripts_folder
 
 
@@ -779,9 +783,9 @@ def get_json_folder(video_path: Path) -> Path:
     # Ensure proper permissions
     try:
         json_folder.chmod(0o755)
-    except (OSError, PermissionError):
-        pass
-    
+    except (OSError, PermissionError) as e:
+        logger.warning("Could not set permissions on %s: %s", json_folder, e)
+
     return json_folder
 
 
@@ -804,9 +808,9 @@ def get_keyterms_folder(video_path: Path) -> Path:
     # Ensure proper permissions
     try:
         keyterms_folder.chmod(0o755)
-    except (OSError, PermissionError):
-        pass
-    
+    except (OSError, PermissionError) as e:
+        logger.warning("Could not set permissions on %s: %s", keyterms_folder, e)
+
     return keyterms_folder
 
 
@@ -829,9 +833,9 @@ def get_speakermap_folder(video_path: Path) -> Path:
     # Ensure proper permissions
     try:
         speakermap_folder.chmod(0o755)
-    except (OSError, PermissionError):
-        pass
-    
+    except (OSError, PermissionError) as e:
+        logger.warning("Could not set permissions on %s: %s", speakermap_folder, e)
+
     return speakermap_folder
 
 
@@ -896,7 +900,7 @@ def load_keyterms_from_csv(video_path: Path) -> Optional[List[str]]:
         return keyterms if keyterms else None
         
     except Exception as e:
-        print(f"Warning: Failed to load keyterms from CSV: {e}")
+        logger.warning("Failed to load keyterms from CSV: %s", e)
         return None
 
 
@@ -942,7 +946,7 @@ def save_keyterms_to_csv(video_path: Path, keyterms: List[str]) -> bool:
         return True
         
     except Exception as e:
-        print(f"Warning: Failed to save keyterms to CSV: {e}")
+        logger.warning("Failed to save keyterms to CSV: %s", e)
         return False
 
 
@@ -969,7 +973,7 @@ def find_speaker_map(video_path: Path) -> Optional[Path]:
         return None
 
     except Exception as e:
-        print(f"Warning: Failed to find speaker map: {e}")
+        logger.warning("Failed to find speaker map: %s", e)
         return None
 
 
@@ -994,7 +998,7 @@ def write_transcript(resp: dict, dest: Path, speaker_map_path: Optional[Path] = 
                 for row in reader:
                     speaker_map[int(row['speaker_id'])] = row['name']
         except Exception as e:
-            print(f"Warning: Failed to load speaker map: {e}")
+            logger.warning("Failed to load speaker map: %s", e)
     
     # Guard against empty transcripts (e.g., music-only or silent files)
     try:
@@ -1003,8 +1007,7 @@ def write_transcript(resp: dict, dest: Path, speaker_map_path: Optional[Path] = 
         words = []
 
     if not words:
-        import logging
-        logging.warning(
+        logger.warning(
             "No speech detected — skipping transcript generation for: %s", dest.name
         )
         return
@@ -1099,8 +1102,8 @@ def get_intelligence_folder(video_path: Path) -> Path:
 
     try:
         intelligence_folder.chmod(0o755)
-    except (OSError, PermissionError):
-        pass
+    except (OSError, PermissionError) as e:
+        logger.warning("Could not set permissions on %s: %s", intelligence_folder, e)
 
     return intelligence_folder
 
@@ -1159,11 +1162,11 @@ def write_intelligence_summary(resp, video_path: Path):
             summary["search"] = search_results
 
     if not summary:
-        print("No intelligence data found in response")
+        logger.warning("No intelligence data found in response for %s", video_path.name)
         return
 
     try:
         output_path.write_text(json.dumps(summary, indent=2), encoding='utf-8')
-        print(f"Saved intelligence summary to {output_path}")
+        logger.debug("Saved intelligence summary to %s", output_path)
     except Exception as e:
         raise Exception(f"Failed to write intelligence summary: {e}")

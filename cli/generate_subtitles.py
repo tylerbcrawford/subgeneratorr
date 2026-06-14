@@ -22,11 +22,46 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 
+_USAGE = """\
+Usage: generate_subtitles.py
+
+Automatically generate SRT subtitle files for media content using Deepgram.
+
+Required environment variable:
+  DEEPGRAM_API_KEY   Your Deepgram API key (required)
+
+Optional environment variables:
+  MEDIA_PATH         Directory to scan for media files (default: /media)
+  FILE_LIST_PATH     Path to a text file listing media paths (one per line)
+  BATCH_SIZE         Max files per run; 0 = unlimited with FILE_LIST_PATH,
+                     defaults to 10 for directory scans (default: 0)
+  LANGUAGE           Language code for transcription (default: en)
+  ENABLE_TRANSCRIPT  Set to '1' to generate speaker-labeled transcripts
+  FORCE_REGENERATE   Set to '1' to overwrite existing subtitle files
+  DETECT_LANGUAGE    Set to '1' to auto-detect language
+  NUMERALS           Set to '1' to convert spoken numbers to digits
+  FILLER_WORDS       Set to '1' to include filler words (uh, um, ...)
+  MEASUREMENTS       Set to '1' to convert spoken measurements
+  PROFANITY_FILTER   'off' (default), 'tag', or 'remove'
+  SAVE_RAW_JSON      Set to '1' to save raw Deepgram API response as JSON
+  LOG_PATH           Directory for log files (default: /logs)
+"""
+
+# When invoked directly, handle --help and missing key BEFORE importing heavy
+# third-party libraries (which may not be installed outside Docker).
+if __name__ == "__main__":
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(_USAGE)
+        sys.exit(0)
+    if not os.environ.get("DEEPGRAM_API_KEY"):
+        print(_USAGE, file=sys.stderr)
+        print("Error: DEEPGRAM_API_KEY environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
+
 from deepgram import DeepgramClient, PrerecordedOptions
 from deepgram_captions import DeepgramConverter, srt
 
 from config import Config
-import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from core.transcribe import (
     get_transcripts_folder, get_json_folder, write_raw_json,
@@ -598,7 +633,7 @@ def main():
         generator = SubtitleGenerator()
         generator.run()
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"❌ Fatal error: {e}", file=sys.stderr)
         sys.exit(1)
 
 

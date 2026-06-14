@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "subgeneratorr"
+version = "2.2.0"
+description = "Automatically generate SRT subtitle files using Deepgram AI"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "deepgram-sdk==3.*",
+    "deepgram-captions==1.*",
+]
+
+# NOTE: A pip-installable console entry point is not wired up here because
+# the repo uses a sibling-directory layout (core/, cli/, web/) rather than
+# an importable package. The CLI is distributed via Docker (see README).
+# Restructuring the package layout is out of scope for this release.

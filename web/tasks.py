@@ -6,12 +6,15 @@ Handles asynchronous video transcription jobs using Celery workers.
 Supports batched processing with per-file progress tracking.
 """
 
+import logging
 import os
 import json
 import redis as redis_lib
 import subprocess
 import time
 import sys
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from celery import Celery
 from celery import group, chord
@@ -166,7 +169,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
         csv_keyterms = load_keyterms_from_csv(vp)
         if csv_keyterms:
             keyterms = csv_keyterms
-            print(f"Auto-loaded {len(keyterms)} keyterms from CSV")
+            logger.info("Auto-loaded %d keyterms from CSV", len(keyterms))
     
     audio_tmp = None
     try:
@@ -239,18 +242,18 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
             if resolved_synced_marker.exists():
                 resolved_synced_marker.unlink()
-                print(f"Removed Subsyncarr marker: {resolved_synced_marker}")
+                logger.debug("Removed Subsyncarr marker: %s", resolved_synced_marker)
         else:
-            print(f"Skipping subtitle write for existing file: {resolved_srt_out}")
+            logger.debug("Skipping subtitle write for existing file: %s", resolved_srt_out)
         
         # Save keyterms to CSV if enabled and keyterms were provided
         if auto_save_keyterms and keyterms:
             self.update_state(state='PROGRESS', meta={'current_file': vp.name, 'stage': 'saving_keyterms'})
             try:
                 if save_keyterms_to_csv(vp, keyterms):
-                    print(f"Saved {len(keyterms)} keyterms to CSV")
+                    logger.info("Saved %d keyterms to CSV", len(keyterms))
             except Exception as e:
-                print(f"Warning: Failed to save keyterms: {e}")
+                logger.warning("Failed to save keyterms: %s", e)
         
         # Generate transcript if requested
         if enable_transcript:
@@ -263,13 +266,13 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
                 speaker_map_path = find_speaker_map(vp)
 
                 if speaker_map_path:
-                    print(f"Using speaker map: {speaker_map_path}")
+                    logger.debug("Using speaker map: %s", speaker_map_path)
 
                 write_transcript(resp, txt_out, speaker_map_path)
                 if txt_out.exists():
                     produced_outputs.append("transcript")
             else:
-                print(f"Skipping transcript write for existing file: {txt_out}")
+                logger.debug("Skipping transcript write for existing file: %s", txt_out)
         
         # Save raw JSON if enabled (either globally or per-request)
         if SAVE_RAW_JSON or save_raw_json:
@@ -278,7 +281,7 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
                 write_raw_json(resp, vp)
                 produced_outputs.append("raw_json")
             except Exception as e:
-                print(f"Warning: Failed to save raw JSON: {e}")
+                logger.warning("Failed to save raw JSON: %s", e)
 
         # Save intelligence summary if any intelligence features were enabled
         has_intelligence = any([sentiment, summarize, topics, intents, detect_entities, search])
@@ -287,8 +290,8 @@ def transcribe_task(self, video_path: str, model=DEFAULT_MODEL, language=DEFAULT
             try:
                 write_intelligence_summary(resp, vp)
                 produced_outputs.append("intelligence")
-            except Exception as e:
-                print(f"Warning: Failed to save intelligence summary: {e}")
+            except Exception:
+                logger.exception("Failed to save intelligence summary for %s", vp.name)
         
         # Calculate processing time
         end_time = time.time()
@@ -350,9 +353,12 @@ def batch_finalize(results):
                 headers={"X-API-KEY": BAZARR_API_KEY},
                 timeout=10
             )
-            print(f"Bazarr rescan triggered: {response.status_code}")
+            logger.info("Bazarr rescan triggered: %s", response.status_code)
         except Exception as e:
-            print(f"Bazarr rescan failed: {e}")
+            msg = str(e)
+            if BAZARR_API_KEY:
+                msg = msg.replace(BAZARR_API_KEY, "***")
+            print(f"Bazarr rescan failed: {msg}")
     
     return {"batch_status": "done", "results": results}
 
@@ -448,7 +454,7 @@ def generate_keyterms_task(
         
         # Save to CSV
         if save_keyterms_to_csv(vp, result['keyterms']):
-            print(f"Saved {len(result['keyterms'])} LLM-generated keyterms to CSV")
+            logger.info("Saved %d LLM-generated keyterms to CSV", len(result['keyterms']))
         
         # Return results
         return {

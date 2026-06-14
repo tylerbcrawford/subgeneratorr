@@ -11,6 +11,7 @@ import io
 import csv
 import json
 import re
+import secrets
 import time
 from datetime import date
 from pathlib import Path
@@ -39,7 +40,7 @@ def _check_media_path(p: Path) -> bool:
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "change-me")
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 
 # Redis client for batch metadata (timeout tracking)
