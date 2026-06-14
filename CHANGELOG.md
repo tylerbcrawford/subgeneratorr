@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Chinese language options in the web UI: Mandarin Simplified (`zh`), Mandarin Traditional (`zh-Hant`), and Cantonese (`zh-HK`). Available on the `nova-3` model (not `nova-3-medical`, which stays English-only).
+- PHI (medical) and aggressive-numbers redaction options in the web UI. PHI works best with the `nova-3-medical` model.
+
+### Changed
+- Diarized batch jobs now use Deepgram's v2 speaker diarization model (`diarize_model=v2`) for improved multi-speaker accuracy. Sent via the SDK addons parameter because the installed `deepgram-sdk` 3.x does not serialize `diarize_model` on `PrerecordedOptions`.
+
 ## [2.2.0] - 2026-06-14
 
 ### Added

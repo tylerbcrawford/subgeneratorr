@@ -31,6 +31,11 @@ AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wma"}
 # Neutral language tag used when the output language cannot be resolved safely
 NEUTRAL_SUBTITLE_LANG = "und"
 
+# Deepgram's improved speaker diarization model (batch / pre-recorded only, 2026-05-13).
+# Passed via the SDK addons escape hatch: deepgram-sdk 3.x's PrerecordedOptions does not
+# model diarize_model, so setting it as an attribute is silently dropped from the request.
+DIARIZE_MODEL = "v2"
+
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
 # Regional variants are normalized to their base language for filename purposes.
 _SUBTITLE_LANG_MAP = {
@@ -733,7 +738,10 @@ def transcribe_file(
     if tag:
         opts.tag = [tag]
 
-    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts)
+    # Opt diarized batch jobs into Deepgram's v2 speaker model. Sent as an addon because
+    # the installed SDK does not serialize diarize_model on PrerecordedOptions (see DIARIZE_MODEL).
+    addons = {"diarize_model": DIARIZE_MODEL} if diarize else None
+    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts, addons=addons)
 
 
 def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):

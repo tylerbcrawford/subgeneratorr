@@ -94,6 +94,9 @@
                                     <option value="bs">Bosnian</option>
                                     <option value="bg">Bulgarian</option>
                                     <option value="ca">Catalan</option>
+                                    <option value="zh">Chinese (Mandarin, Simplified)</option>
+                                    <option value="zh-Hant">Chinese (Mandarin, Traditional)</option>
+                                    <option value="zh-HK">Chinese (Cantonese)</option>
                                     <option value="hr">Croatian</option>
                                     <option value="cs">Czech</option>
                                     <option value="da">Danish</option>
@@ -320,6 +323,14 @@
                                     <label class="checkbox-label">
                                         <input type="checkbox" id="redactNumbers">
                                         <span>Numbers</span>
+                                    </label>
+                                    <label class="checkbox-label" title="Masks medical/health info; best with the nova-3-medical model">
+                                        <input type="checkbox" id="redactPhi">
+                                        <span>Medical info (PHI)</span>
+                                    </label>
+                                    <label class="checkbox-label" title="Aggressively redacts numeric sequences">
+                                        <input type="checkbox" id="redactAggressiveNumbers">
+                                        <span>Aggressive numbers</span>
                                     </label>
                                 </div>
                             </div>
