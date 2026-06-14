@@ -662,7 +662,7 @@ Export scan results as CSV download. Only available for completed scans.
 | 4,662 files | Full (sidecar + embedded) | ~346s (~6 min) | 573 missing |
 | 4,662 files | Sidecar-only (skip embedded) | ~5s | Faster, but misses files with embedded-only subs |
 
-The two-phase approach means Phase 1 (sidecar detection) is instant — pure in-memory string matching against filenames. Phase 2 (ffprobe embedded check) runs only on files without sidecars and accounts for the majority of scan time (~50-100ms per file).
+The two-phase approach means Phase 1 (sidecar detection) is instant: pure in-memory string matching against filenames. Phase 2 (ffprobe embedded check) runs only on files without sidecars and accounts for the majority of scan time (~50-100ms per file).
 
 #### LLM Keyterm Generation
 
@@ -768,7 +768,7 @@ Weekly scan for missing subtitles:
 
 For an overview of keyterms (what they are, how to create them, AI generation), see the [README](../README.md#keyterm-prompting). This section covers API parameters, token limits, and CSV format details.
 
-**What are keyterms?** Keyterms are custom vocabulary hints passed directly to the Deepgram Nova-3 API at transcription time. They are not a post-processing step — they influence the model's recognition probabilities during decoding. This is also referred to as keyword boosting or vocabulary prompting in the speech-to-text literature.
+**What are keyterms?** Keyterms are custom vocabulary hints passed directly to the Deepgram Nova-3 API at transcription time. They are not a post-processing step; they influence the model's recognition probabilities during decoding. This is also referred to as keyword boosting or vocabulary prompting in the speech-to-text literature.
 
 **API Parameter:**
 ```python
@@ -829,18 +829,18 @@ Tested with Community S01E01 (TV) and Almost Famous (movie):
 
 | Model | Avg Keyterms | Avg Time | Avg Cost/Call | Quality Notes |
 |-------|-------------|----------|---------------|---------------|
-| Claude Sonnet 4.6 | 42 | 4.2s | $0.0064 | Most contextually rich — catches in-show jargon, full character names, cultural references |
+| Claude Sonnet 4.6 | 42 | 4.2s | $0.0064 | Most contextually rich: catches in-show jargon, full character names, cultural references |
 | Claude Haiku 4.5 | 41 | 2.3s | $0.0022 | Excellent quantity, fast. Good depth for the price |
 | GPT-4.1 | 41 | 4.7s | $0.0033 | Solid all-rounder. Half the cost of Sonnet, comparable quality |
 | GPT-4.1 Mini | 34 | 2.4s | $0.0006 | Cheapest paid option. Slightly fewer keyterms, may miss deeper references |
 | Gemini 2.5 Flash | 45 | 5.4s | $0.0007 | Best free option. Competitive quality with paid models |
 
 **Recommendations:**
-- **Free/default:** Gemini 2.5 Flash — free tier, high quality, no API key cost
-- **Best value (paid):** Claude Haiku 4.5 — fast, cheap, excellent keyterm quality
-- **Premium quality:** Claude Sonnet 4.6 — when you want the deepest, most contextual keyterms
+- **Free/default:** Gemini 2.5 Flash (free tier, high quality, no API key cost)
+- **Best value (paid):** Claude Haiku 4.5 (fast, cheap, excellent keyterm quality)
+- **Premium quality:** Claude Sonnet 4.6 (when you want the deepest, most contextual keyterms)
 
-> **Why not GPT-5?** GPT-5 and GPT-5 Mini are *reasoning models* that spend thousands of internal "thinking" tokens before producing output. For a simple keyterm list, this means 60-190 second response times and $0.05-0.09/call — with no quality benefit over GPT-4.1's instant responses at a fraction of the cost.
+> **Why not GPT-5?** GPT-5 and GPT-5 Mini are *reasoning models* that spend thousands of internal "thinking" tokens before producing output. For a simple keyterm list, this means 60-190 second response times and $0.05-0.09/call, with no quality benefit over GPT-4.1's instant responses at a fraction of the cost.
 
 **How It Works:**
 1. User selects video in Web UI

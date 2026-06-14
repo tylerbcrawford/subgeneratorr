@@ -6,7 +6,7 @@
 
 ## Overview
 
-Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rather than forcing all languages through an English-optimized model, Nova-3 adapts to the linguistic structure of each language—from tonal Vietnamese to agglutinative Hungarian, from syllable-timed Japanese to stress-timed English.
+Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rather than forcing all languages through an English-optimized model, Nova-3 adapts to the linguistic structure of each language: from tonal Vietnamese to agglutinative Hungarian, from syllable-timed Japanese to stress-timed English.
 
 **Key Capabilities:**
 - **40+ individual languages** with regional dialect support
