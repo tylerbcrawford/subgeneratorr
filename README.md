@@ -57,6 +57,11 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
   <sub>Full control over Nova-3 settings when you want it; sensible defaults when you don't.</sub>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/transcription-complete.png" width="780" alt="Completed transcription run with per-file status and generated subtitle output"><br>
+  <sub>Watch progress per file and confirm each subtitle as it lands.</sub>
+</p>
+
 <sub>Demo library uses Creative Commons / public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.</sub>
 
 ---
