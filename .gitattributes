@@ -1,0 +1,30 @@
+# Line-ending normalization.
+#
+# Subgeneratorr's images run on Linux, so shell scripts and entrypoints
+# must use LF. On Windows, git's autocrlf can rewrite them to CRLF on
+# checkout, which breaks shebang resolution inside the Linux image: the
+# kernel looks for an interpreter literally named "/bin/sh\r" and the
+# container dies in a restart loop with:
+#
+#     exec /entrypoint.sh: no such file or directory
+#
+# See https://github.com/tylerbcrawford/subgeneratorr/issues/1
+#
+# Default: auto-detect text vs binary, and check out every text file with
+# LF on all platforms.
+* text=auto eol=lf
+
+# Files that MUST be LF to execute or build correctly in a Linux container.
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+*.Dockerfile text eol=lf
+
+# Binary assets git must never line-ending-convert.
+*.png   binary
+*.gif   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
