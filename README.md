@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**AI subtitles for your Plex, Jellyfin, or Emby library — powered by Deepgram Nova-3, with keyterm prompting to get the proper nouns right.**
+**Subtitle generation for your Plex, Jellyfin, or Emby library — powered by Deepgram Nova-3, with keyterm prompting to get the proper nouns right.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
