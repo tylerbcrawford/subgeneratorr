@@ -245,6 +245,58 @@
                         </div>
                     </div>
 
+                    <!-- Translate Subtitles Zone -->
+                    <div class="config-section" style="text-align: center;">
+                        <div class="form-group">
+                            <label class="section-label">Translate Subtitles</label>
+                            <small class="keyterms-help">Translate the selected video's subtitles into other languages — timing is preserved exactly.</small>
+
+                            <div id="translateTargets" class="translate-targets" role="group" aria-label="Target languages" style="display:flex; flex-wrap:wrap; gap: var(--space-s); justify-content:center; margin: var(--space-s) 0;">
+                                <!-- Target-language checkboxes injected by translate.js -->
+                            </div>
+
+                            <div class="keyterms-generate-row">
+                                <button id="translateBtn" class="btn-secondary" type="button">
+                                    Translate
+                                </button>
+                                <span class="ai-model-label">
+                                    via <span id="translateModelDisplay">Claude Sonnet 4.6</span>
+                                    <button class="ai-config-toggle" id="translateConfigToggleBtn" aria-label="Translation AI settings" aria-expanded="false" aria-controls="translateConfigPanel" type="button">⚙</button>
+                                </span>
+                            </div>
+                            <div id="translateKeyNotice" class="provider-key-notice" style="display:none;"></div>
+
+                            <!-- Inline Translation AI Config (expandable) -->
+                            <div id="translateConfigPanel" class="ai-config-panel hidden">
+                                <div class="form-group">
+                                    <label for="translateProvider">
+                                        Provider Status:
+                                        <span id="translateKeyStatus" class="api-key-status" title="Provider status"></span>
+                                    </label>
+                                    <select id="translateProvider" aria-label="Translation provider">
+                                        <option value="anthropic">Anthropic (Claude)</option>
+                                        <option value="openai">OpenAI (GPT)</option>
+                                        <option value="google">Google (Gemini)</option>
+                                        <option value="ollama">Ollama (Local · Free)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="translateModel">Model</label>
+                                    <select id="translateModel" aria-label="Translation model"></select>
+                                    <input type="text" id="translateOllamaModel" class="hidden" placeholder="Ollama model, e.g. llama3.1" aria-label="Ollama model name" />
+                                </div>
+                                <div class="form-group hidden" id="translateOllamaHostGroup">
+                                    <label for="translateOllamaHost">Ollama Host</label>
+                                    <input type="text" id="translateOllamaHost" placeholder="http://localhost:11434" aria-label="Ollama host" />
+                                </div>
+                                <label class="checkbox-label" style="justify-content:center; display:flex; gap: var(--space-xs); align-items:center;">
+                                    <input type="checkbox" id="translateOverwrite" /> Overwrite existing translations
+                                </label>
+                                <div id="translateCostEstimate" class="ai-cost-estimate"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Transcription Settings (Collapsible) -->
                     <div id="advancedOptions" class="config-section hidden" style="padding-top: var(--space-m);">
 
@@ -456,5 +508,6 @@
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
     <script src="/static/app.js?v=20"></script>
+    <script src="/static/translate.js?v=1"></script>
 </body>
 </html>
