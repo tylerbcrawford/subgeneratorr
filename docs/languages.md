@@ -258,6 +258,35 @@ methylamine
 
 ---
 
+## LLM-Powered Translation
+
+Translation is a post-processing step that runs on a subtitle Subgeneratorr already produced. It does not change transcription: Nova-3 transcribes audio in the spoken language, and translation then converts that generated SRT into other languages with an LLM.
+
+### How It Works
+
+1. Pick one or more target languages and a provider in the web UI's **Translate Subtitles** panel.
+2. The generated SRT is parsed and its cues are translated in context-batched windows (the surrounding dialogue and the show's keyterms are sent along as a glossary), using structured JSON so each cue maps 1:1.
+3. Timestamps are copied from the source verbatim, so the translated subtitle stays frame-accurate. Only the text changes.
+4. Each target is written as a language-tagged sidecar (for example `.spa.srt`, `.fre.srt`) using the same tags as transcription output, so Plex, Jellyfin, and Emby auto-detect them.
+
+One transcription can produce many language outputs. Existing sidecars are skipped unless you choose to overwrite.
+
+### Supported Target Languages (33)
+
+Arabic (ar), Bulgarian (bg), Catalan (ca), Chinese (zh), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), German (de), Greek (el), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Korean (ko), Latvian (lv), Lithuanian (lt), Malay (ms), Norwegian (no), Polish (pl), Portuguese (pt), Romanian (ro), Russian (ru), Slovak (sk), Spanish (es), Swedish (sv), Thai (th), Turkish (tr), Ukrainian (uk), Vietnamese (vi).
+
+### Providers
+
+- **Anthropic Claude, OpenAI GPT, Google Gemini**: cloud providers, billed per token. The web UI shows a cost estimate before you run.
+- **Ollama (local)**: point `OLLAMA_HOST` at a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost. The model name is free-text (for example `llama3.1` or `qwen2.5`), and the cost estimate reports $0.00.
+
+### Notes
+
+- Translation is web-UI first, matching the keyterm-generation feature. CLI parity is on the roadmap.
+- Redaction and profanity filtering applied at transcription time carry through as text; translation operates on the produced SRT as-is.
+
+---
+
 ## Automatic Language Detection
 
 **35 Languages Supported** (Batch Mode Only)

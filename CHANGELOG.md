@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-19
+
+### Added
+- LLM-powered subtitle translation. Translate a generated SRT into one or more target languages and write language-tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source verbatim so translations stay in sync, and the show's keyterms are passed to the model as a glossary. Available in the web UI "Translate Subtitles" panel via `POST /api/translate`.
+- Ollama as a fourth LLM provider for keyterm generation and translation. Set `OLLAMA_HOST` to a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost; the cost estimate reports $0.00. The cloud providers (Anthropic, OpenAI, Google) are unchanged.
+- 33 target languages for translation, written with the same media-server language tags used for transcription output.
+
 ## [2.3.0] - 2026-06-19
 
 ### Added
@@ -135,7 +142,10 @@ Initial public release.
 - **Path traversal protection**: Input validation on file paths to prevent directory escape
 - **Error path hardening**: Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/tylerbcrawford/subgeneratorr/releases/tag/v2.0.0

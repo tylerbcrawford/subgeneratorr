@@ -25,6 +25,7 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 
 - 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 50+ languages (General + Medical variants)
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
+- 🌐 **Subtitle translation** — turn one transcription into many languages: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
 - 🗣️ **Speaker diarization** — labeled, character-named transcripts
 - 🌍 **50+ languages** — auto-detect, multilingual code-switching, and regional variants
@@ -99,6 +100,12 @@ Speech models nail everyday words but mangle proper nouns — "Heisenberg" becom
 
 Provide them manually as a CSV, or click **Generate Keyterms** in the Web UI: an LLM infers the show from the file path, researches it, and returns 20–50 names, locations, and jargon terms in 3–5 seconds for less than a penny. Gemini's free tier makes it effectively zero-cost, and the keyterms apply to every episode in the show automatically. See the [model benchmarks](docs/technical.md#ai-powered-generation) and [CSV format](docs/technical.md#keyterm-prompting-deep-dive).
 
+### Translate subtitles
+
+One transcription, many languages. After Nova-3 produces a subtitle, an LLM translates the cue text into the languages you pick and writes tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source frame for frame, so the translation never drifts, and the show's keyterms ride along as a glossary to keep names spelled consistently.
+
+Open the **Translate Subtitles** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00). Existing translations are skipped unless you choose to overwrite.
+
 ### Find all missing subtitles
 
 Point it at a library of thousands of files and it tells you exactly what's missing. A two-phase scan checks sidecar files (seconds), then optionally probes embedded tracks with ffprobe (~50–100ms/file). Results come back grouped by directory, persist across page reloads, and export to CSV. A 4,662-file library scans in ~6 minutes with embedded detection on, or in seconds in sidecar-only mode.
@@ -124,7 +131,8 @@ Two values are required; everything else has sensible defaults.
 | `LANGUAGE` | Language code, or `auto` / `multi` | `en` |
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
 | `PROFANITY_FILTER` | `off` · `tag` · `remove` | `off` |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI keyterm generation (optional) | – |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI keyterm generation and translation (optional) | – |
+| `OLLAMA_HOST` | Local Ollama endpoint for free offline translation, e.g. `http://localhost:11434` (optional) | – |
 
 `MEDIA_PATH` examples: `/home/you/media` (Linux), `/Users/you/Movies` (macOS), `C:/Users/You/Videos` (Windows). On Linux, set `PUID`/`PGID` to match your user so generated files keep the right ownership. Full reference: **[Technical docs](docs/technical.md#environment-variables-complete-reference)**.
 
