@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Generate SRT subtitles for your Plex, Jellyfin, or Emby library using Deepgram Nova-3 speech-to-text, with keyterm prompting to get proper nouns right.**
+**AI subtitles for your Plex, Jellyfin, or Emby library — powered by Deepgram Nova-3, with keyterm prompting to get the proper nouns right.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -9,442 +9,191 @@
 [![Latest Release](https://img.shields.io/github/v/release/tylerbcrawford/subgeneratorr?label=release)](https://github.com/tylerbcrawford/subgeneratorr/releases/latest)
 [![GHCR](https://img.shields.io/badge/ghcr.io-subgeneratorr--web-blue?logo=github)](https://github.com/tylerbcrawford/subgeneratorr/pkgs/container/subgeneratorr-web)
 
----
+<p align="center">
+  <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
+</p>
 
-**Subgeneratorr** is an open-source tool that automatically generates SRT subtitle files for your media library using [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) speech-to-text API. It runs as a Docker container with a Web UI and CLI, integrates directly with Plex, Jellyfin, and Emby, and supports **keyterm prompting** (a technique that feeds character names and show-specific vocabulary to the Nova-3 model to improve transcription accuracy for proper nouns). If community subtitles don't exist for a show, Subgeneratorr generates them from the audio.
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
 
----
+*I built it to close the hundreds of missing-subtitle gaps in my own library.*
 
-## Why Subgeneratorr?
-
-I built this tool to solve a persistent problem in my media library: **hundreds of episodes missing subtitles**. While [Bazarr](https://www.bazarr.media/) does an excellent job finding subtitles for most content, there are always gaps like obscure shows, older episodes, or content that doesn't have community-contributed subtitles available.
-
-I looked around for options with free trials but most only gave a couple hours free and then required subscription. Deepgram's $200 free signup credit offer was the best deal I could find. Their Nova-3 automatic speech recognition model produces high-quality transcriptions at ~$0.0057/minute, and adding keyterms (character names, locations, and show-specific terminology) noticeably improves accuracy for proper nouns that would otherwise be misrecognized. This creates subtitles that fill the gaps in your library without requiring intensive manual correction. It's not perfect, but it's very useful for jargon heavy dialogue.
-
-**Subgeneratorr is for media enthusiasts** who care about complete subtitle coverage, accessibility, and having a polished library experience in Plex, Jellyfin, or Emby.
-
-> **Disclaimer:** This is a free and open-source project. Not affiliated with Deepgram, Anthropic, OpenAI, or any other service providers.
+> Free and open-source. Not affiliated with Deepgram, Anthropic, OpenAI, or any other provider.
 
 ---
 
 ## Features
 
-- 🎯 **Deepgram Nova-3 Speech-to-Text** - General and Medical variants; strong accuracy on media audio, including accented speech and fast dialogue
-- 🔑 **Keyterm Prompting (Custom Vocabulary)** - Feed character names, locations, and show-specific terms to Nova-3; AI-powered generation via Claude, GPT, or Gemini (optional)
-- 🗣️ **Speaker Diarization** - Identify speakers and create labeled transcripts
-- 🌍 **Multi-Language Support** - 50+ languages with auto-detect, multilingual code-switching, and regional variants
-- 🛡️ **Content Control** - Redaction (PCI/PII/numbers), profanity filtering, find & replace, dictation mode
-- 🧠 **Audio Intelligence** - Sentiment analysis, summarization, topic/intent/entity detection, term search (English)
-- 🐳 **Docker-Based** - Easy deployment with CLI and optional Web UI
-- 📁 **Flexible Processing** - Batch process directories, specific files, or from lists
-- 💰 **Cost Tracking** - Real-time estimates and detailed logs (~$0.0057/min)
-- ⚡ **Smart Skipping** - Skip only when the requested outputs already exist, including auto-detect language-tagged sidecars and transcript-aware reruns
-- 🔍 **Library-Wide Scan** - Find all files missing subtitles across your entire media library
-- 📺 **Media Server Ready** - Auto-recognized by Plex, Jellyfin, Emby with language-tagged sidecars (`.eng.srt`, `.spa.srt`, `.und.srt`, etc.)
+- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 50+ languages (General + Medical variants)
+- 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
+- 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
+- 🗣️ **Speaker diarization** — labeled, character-named transcripts
+- 🌍 **50+ languages** — auto-detect, multilingual code-switching, and regional variants
+- 🛡️ **Content control** — redaction (PCI/PII), profanity filtering, find & replace, dictation
+- 🧠 **Audio intelligence** — sentiment, summarization, topic/intent/entity detection (English)
+- 🐳 **Docker-based** — Web UI and CLI, batch processing with parallel workers and real-time progress
+- 📺 **Media-server ready** — language-tagged sidecars (`.eng.srt`, `.spa.srt`, `.und.srt`) auto-recognized by Plex, Jellyfin, and Emby
 
 ---
 
-## Language Support
+## Screenshots
 
-**50+ languages** with regional variants: English, Spanish, French, German, Japanese, Korean, Hindi, Russian, Portuguese, Arabic, and many more. Includes automatic language detection, multilingual code-switching, and keyterm prompting across all supported languages.
+<p align="center">
+  <img src="docs/screenshots/library-browse.png" width="780" alt="Library browser showing movie folders"><br>
+  <sub>Browse your media library.</sub>
+</p>
 
-See the **[full language list and configuration guide](docs/languages.md)** for all supported languages and regional variants.
+<p align="center">
+  <img src="docs/screenshots/find-missing-subtitles.png" width="780" alt="Find missing subtitles scan results grouped by directory"><br>
+  <sub>Scan the whole library for missing subtitles, grouped by folder.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/keyterm-generation.png" width="780" alt="AI keyterm generation populated with character names and locations"><br>
+  <sub>One-click AI keyterms — here it read the filename and pulled 28 terms from <em>Tears of Steel</em> on its own.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/transcription-settings.png" width="460" alt="Transcription settings panel with model, profanity filter, transcript format, and audio intelligence options"><br>
+  <sub>Full control over Nova-3 settings when you want it; sensible defaults when you don't.</sub>
+</p>
+
+<sub>Demo library uses Creative Commons / public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.</sub>
 
 ---
 
 ## Quick Start (~10 minutes)
 
-### Requirements
-
-- Docker and Docker Compose ([Linux](https://docs.docker.com/engine/install/) | [macOS](https://www.docker.com/products/docker-desktop/) | [Windows](https://www.docker.com/products/docker-desktop/))
-- A Deepgram API key ([Get $200 free credits](https://console.deepgram.com/))
-- Media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, etc.)
-
-### Installation
+**Requirements:** Docker + Docker Compose · a [Deepgram API key](https://console.deepgram.com/) ($200 free credits) · media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, …)
 
 ```bash
-# Clone the repository
 git clone https://github.com/tylerbcrawford/subgeneratorr.git
 cd subgeneratorr
 
-# Configure environment
 cp .env.example .env
 cp examples/docker-compose.example.yml docker-compose.yml
 
-# Edit .env - set these two required values:
+# In .env, set the two required values:
 #   DEEPGRAM_API_KEY=your_key_here
 #   MEDIA_PATH=/path/to/your/media
 
-# Build and start
 docker compose build
-
-# Start Web UI
-docker compose up -d
-# Open http://localhost:5000
-
-# OR run CLI directly
-docker compose run --rm cli
+docker compose up -d          # Web UI at http://localhost:5000
+# ...or run headless:
+docker compose run --rm cli   # processes the whole MEDIA_PATH library
 ```
 
-> **Security Note:** This app exposes media paths and triggers write operations. `DISABLE_AUTH=true` is the default in the example compose (suitable for local access only). For remote/production deployments, set `DISABLE_AUTH=false` and place a reverse proxy with authentication in front of the app that forwards either `X-Auth-Request-Email` or `X-Forwarded-User` after login.
-
-### Basic Usage
-
-**Start the Web UI (recommended):**
-```bash
-docker compose up -d
-# Open http://localhost:5000
-```
-
-**Process via CLI (headless/batch):**
-```bash
-# Process entire media library
-docker compose run --rm cli
-
-# Process specific show/season
-docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli
-```
-
-### Run Tests Locally
-
-For the local pytest suite, you do not need Docker, Redis, or API keys.
-
-```bash
-make test
-```
-
-This bootstraps a local `.venv`, installs `requirements-dev.txt`, and runs the tests in `tests/`. The heavier CLI integration checks described in `tests/README.md` still require Docker and a Deepgram API key.
+> **Security:** `DISABLE_AUTH=true` is the default and is for local access only. For remote/production use, set `DISABLE_AUTH=false` and put an authenticating reverse proxy in front that forwards `X-Auth-Request-Email` or `X-Forwarded-User`. The CLI is synchronous and headless; the Web UI adds async batches, progress tracking, library scanning, and AI keyterm generation.
 
 ---
 
-## Web UI
+## How It Works
 
-The Web UI provides a browser-based interface for remote management, batch processing, and AI-powered keyterm generation.
+### Keyterm prompting
 
-### Start Web UI
+Speech models nail everyday words but mangle proper nouns — "Heisenberg" becomes "Heizenberg," "Los Pollos Hermanos" becomes gibberish. Keyterms tell Nova-3 exactly what to listen for, boosting recognition at decode time (not as post-processing). Up to ~90% accuracy improvement on prompted terms, ~20–50 terms per show.
 
-```bash
-docker compose up -d
-```
+Provide them manually as a CSV, or click **Generate Keyterms** in the Web UI: an LLM infers the show from the file path, researches it, and returns 20–50 names, locations, and jargon terms in 3–5 seconds for less than a penny. Gemini's free tier makes it effectively zero-cost, and the keyterms apply to every episode in the show automatically. See the [model benchmarks](docs/technical.md#ai-powered-generation) and [CSV format](docs/technical.md#keyterm-prompting-deep-dive).
 
-Access at `http://localhost:5000` (or configure reverse proxy for remote access)
+### Find all missing subtitles
 
-See the Security Note in the Quick Start section above before exposing this beyond localhost.
+Point it at a library of thousands of files and it tells you exactly what's missing. A two-phase scan checks sidecar files (seconds), then optionally probes embedded tracks with ffprobe (~50–100ms/file). Results come back grouped by directory, persist across page reloads, and export to CSV. A 4,662-file library scans in ~6 minutes with embedded detection on, or in seconds in sidecar-only mode.
 
-### Screenshots
+### The full library cleanup (the workflow I actually use)
 
-A quick run through the workflow: scan the library, pick what is missing, generate keyterms, transcribe.
-
-<img src="docs/demo/preview.gif" width="760" alt="Subgeneratorr workflow: browse, scan, generate keyterms, transcribe">
-
-Browse your media library.
-
-<img src="docs/screenshots/library-browse.png" width="760" alt="Library browser showing movie folders">
-
-Scan for everything that is missing subtitles, grouped by folder.
-
-<img src="docs/screenshots/find-missing-subtitles.png" width="760" alt="Find missing subtitles scan results grouped by directory">
-
-Generate keyterms for a show with one click. Here the AI read the filename and pulled 28 terms from Tears of Steel on its own.
-
-<img src="docs/screenshots/keyterm-generation.png" width="760" alt="AI keyterm generation populated with character names and locations">
-
-Full control over the Nova-3 transcription settings when you want it, sensible defaults when you don't.
-
-<img src="docs/screenshots/transcription-settings.png" width="440" alt="Transcription settings panel with model, profanity filter, transcript format, and audio intelligence options">
-
-The demo library above uses Creative Commons and public domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.
-
-### Web UI Features
-
-- 🌐 **Remote access** from any device
-- 📊 **Real-time progress tracking** with per-file status
-- 🤖 **AI Keyterm Generation** with Claude, GPT, or Gemini (optional)
-- 📁 **Directory browser** with search and file filtering
-- ⚡ **Batch processing** with parallel workers
-- 🔍 **Find Missing Subtitles**: one-click async library scan with CSV export
-- ⚙️ **Full Nova-3 feature control**: model selection, redaction, dictation, multichannel, Audio Intelligence, and more via collapsible Transcription Settings panel
-
----
-
-## Key Features Explained
-
-### Why Deepgram Nova-3?
-
-Deepgram Nova-3 is Deepgram's most accurate general-purpose speech recognition model, trained on a broad corpus of audio including media content. For subtitle generation, it outperforms alternatives on:
-
-- **Conversational accuracy**: handles fast speech, accents, and overlapping dialogue
-- **Language breadth**: 50+ languages with regional variants in a single API
-- **Keyterm support**: custom vocabulary prompting available across all supported languages
-- **Pricing**: ~$0.0057/minute with a $200 free credit on signup (~35,000 minutes free)
-
-Nova-3 also offers a **Medical variant** (`nova-3-medical`) tuned for clinical terminology. For most media use cases, `nova-3` (General) is the right choice.
-
----
-
-### Keyterm Prompting
-
-This is the feature I'm most proud of. Speech-to-text models are excellent at everyday words, but they struggle with proper nouns (character names, fictional locations, made-up terminology). Without guidance, "Heisenberg" becomes "Heizenberg" and "Los Pollos Hermanos" becomes gibberish. Keyterms tell Nova-3 exactly what to listen for, and the difference in accuracy is dramatic.
-
-Keyterms are a form of **custom vocabulary prompting** (also called keyword boosting or vocabulary hints) that influence Nova-3's recognition probabilities at decode time, not as a post-processing step. Accuracy improvements of up to 90% for prompted terms have been observed on proper nouns. The limit is 500 tokens (~20–50 focused terms per request), and keyterm support is available across all 50+ Nova-3 languages.
-
-**Best keyterms to include:**
-- Main character full names and nicknames
-- Fictional place names and organization names
-- Made-up terminology, brand names, or technical jargon specific to the show
-- Names that sound like common words (the model will otherwise pick the common word)
-
-**Manual CSV (full control):**
-```bash
-# For TV shows (at show level)
-/media/tv/Breaking Bad/Transcripts/Keyterms/Breaking Bad_keyterms.csv
-
-# Format: one term per line
-Walter White
-Jesse Pinkman
-Heisenberg
-Los Pollos Hermanos
-```
-
-**AI generation (the easy way):** Select any video file in the Web UI, click "Generate Keyterms," and an LLM reads the file path to figure out what show or movie it is. It researches the title and returns 20-50 character names, locations, and jargon: the exact terms a speech model would otherwise botch. One click per show, and the keyterms apply to every episode automatically.
-
-The whole process takes 3-5 seconds and costs less than a penny per generation ($0.0006-$0.0064 depending on model). Gemini's free tier works well here, so you can generate keyterms for your entire library at zero cost. Supports Claude, GPT, and Gemini. See the [model benchmarks](docs/technical.md#ai-powered-generation) for detailed comparisons.
-
-### Speaker Maps
-
-Replace generic "Speaker 0", "Speaker 1" labels with character names in transcripts.
-
-**Create speaker map:**
-```bash
-# At show level
-/media/tv/Breaking Bad/Transcripts/Speakermap/speakers.csv
-
-# CSV format
-speaker_id,name
-0,Walter White
-1,Jesse Pinkman
-```
-
-Auto-detected when you enable transcript generation (`ENABLE_TRANSCRIPT=1`)
-
-### Find All Missing Subtitles
-
-When you have thousands of files across TV shows, movies, and audiobooks, you have no idea which ones actually need subtitles. Manually clicking through folders isn't realistic. This scans your entire library and tells you exactly what's missing.
-
-The scan uses a two-phase approach. Phase 1 checks for sidecar subtitle files next to the media file (pure filename matching, finishes in seconds). Phase 2 uses ffprobe to detect embedded subtitle tracks inside video containers, running at ~50-100ms per file. You can skip Phase 2 for a quick scan if you only care about sidecar files.
-
-Results come back grouped by directory, so you can see at a glance which shows or seasons need work. Select files directly from the results to send them to transcription, or export the full list as CSV. Results persist across page reloads, so you can start a scan, close your laptop, and come back to it later. For large selections, the Web UI auto-chunks files into 25-file batches with a cost summary between each so you stay in control.
-
-**Performance:** A 4,662-file library (TV, movies, audiobooks) scans in ~6 minutes with embedded subtitle detection enabled. Skipping the embedded check (sidecar-only mode) reduces this to seconds.
+1. **Scan** for missing subtitles (gear icon → "Find All Missing Subtitles")
+2. **Review** results by directory to see which shows and seasons have gaps
+3. **Generate AI keyterms** per show (one click, shared across all episodes)
+4. **Select** files from the results → transcribe (keyterms auto-applied)
+5. **Resume anytime** — scan results persist and processed files drop off the list
 
 ---
 
 ## Configuration
 
-### Environment Variables
-
-Key settings in `.env`:
+Two values are required; everything else has sensible defaults.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEEPGRAM_API_KEY` | Deepgram API key (required) | - |
-| `MEDIA_PATH` | Media directory to scan | `/media` |
-| `LANGUAGE` | Language code (see supported languages above) | `en` |
+| `DEEPGRAM_API_KEY` | Deepgram API key (**required**) | – |
+| `MEDIA_PATH` | Media directory to scan (**required**) | `/media` |
+| `LANGUAGE` | Language code, or `auto` / `multi` | `en` |
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
-| `FORCE_REGENERATE` | Regenerate existing subtitles | `0` |
-| `PROFANITY_FILTER` | Filter mode: `off`, `tag`, or `remove` | `off` |
-| `ANTHROPIC_API_KEY` | For AI keyterm generation (optional) | - |
-| `OPENAI_API_KEY` | For AI keyterm generation (optional) | - |
-| `GEMINI_API_KEY` | For AI keyterm generation (optional) | - |
+| `PROFANITY_FILTER` | `off` · `tag` · `remove` | `off` |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI keyterm generation (optional) | – |
 
-### Media Path Configuration
-
-Set `MEDIA_PATH` in your `.env` file to point to your media library:
-
-| Platform | Example |
-|----------|---------|
-| Linux | `MEDIA_PATH=/home/username/media` |
-| macOS | `MEDIA_PATH=/Users/username/Movies` |
-| Windows | `MEDIA_PATH=C:/Users/YourName/Videos` |
+`MEDIA_PATH` examples: `/home/you/media` (Linux), `/Users/you/Movies` (macOS), `C:/Users/You/Videos` (Windows). On Linux, set `PUID`/`PGID` to match your user so generated files keep the right ownership. Full reference: **[Technical docs](docs/technical.md#environment-variables-complete-reference)**.
 
 ---
 
 ## Pricing
 
-Deepgram Nova-3 charges ~$0.0057 per minute of audio:
+Nova-3 costs ~**$0.0057/min** of audio:
 
-- 10-minute TV episode: ~$0.06
-- 45-minute episode: ~$0.26
-- 90-minute movie: ~$0.51
-- 100 episodes (10 min each): ~$5.70
+| Content | Cost |
+|---------|------|
+| 10-min episode | ~$0.06 |
+| 45-min episode | ~$0.26 |
+| 90-min movie | ~$0.51 |
+| 100 × 10-min episodes | ~$5.70 |
 
-**New users get $200 in free credits** - enough for ~35,000 minutes (~585 hours) of transcription.
+New Deepgram accounts get **$200 in free credits** — roughly 35,000 minutes (~585 hours).
 
 ---
 
 ## Documentation
 
-- **[Technical Documentation](docs/technical.md)** - Architecture, API endpoints, advanced configuration
-- **[Language Support Guide](docs/languages.md)** - Complete language matrix and multilingual features
-- **[Project Roadmap](docs/roadmap.md)** - Future features and development plans
+- **[Technical docs](docs/technical.md)** — architecture, API endpoints, advanced config, speaker maps, AI model benchmarks
+- **[Language support](docs/languages.md)** — full 50+ language matrix and multilingual setup
+- **[Roadmap](docs/roadmap.md)** — planned features
 
----
+<details>
+<summary><strong>FAQ</strong></summary>
 
-## Media Server Integration
+**How is this different from Bazarr?**
+Bazarr finds *existing* community subtitles; Subgeneratorr *generates* them from audio for whatever Bazarr can't find. Run Bazarr first, then Subgeneratorr on the gaps.
 
-Generated language-tagged `.srt` files are automatically recognized by:
+**What is keyterm prompting?**
+A list of show-specific terms (character names, places, made-up words) that Nova-3 prioritizes during transcription — up to ~90% better accuracy on those terms.
 
-- **Plex** - Recognizes external subtitles using the resolved language tag
-- **Jellyfin** - Auto-detected with proper language tags
-- **Emby** - Supports ISO-639-2 language codes
+**Does it work with Plex, Jellyfin, and Emby?**
+Yes — it writes language-tagged SRT sidecars (`.eng.srt`, `.spa.srt`, etc.) that all three auto-detect. Refresh your library after generation.
 
-After generation, refresh your media library to detect new subtitles.
+**Can I auto-generate keyterms?**
+Yes — one-click generation via Claude, GPT, or Gemini infers the title from the file path and returns 20–50 terms. Gemini's free tier makes it effectively free.
 
----
+**What languages are supported?**
+50+ with regional variants, plus auto-detect and a `multi` code-switching mode. See the [language guide](docs/languages.md).
 
-## Common Workflows
+</details>
 
-### Fill Subtitle Gaps After Bazarr
+<details>
+<summary><strong>Troubleshooting</strong></summary>
 
-1. Let Bazarr find subtitles for most content
-2. Run Subgeneratorr on your media directory (skips files with subtitles)
-3. Only processes files missing subtitles
-4. Refresh Plex/Jellyfin library
+**Files being skipped** — Files are skipped only when all requested outputs already exist (`.eng.srt`, the matching language tag, or `.und.srt` for auto/multi). Set `FORCE_REGENERATE=1` to overwrite.
 
-### Batch Process New TV Season
+**Permission errors (Linux)** — Set `PUID`/`PGID` (from `id -u` / `id -g`) on all three services (cli, web, worker) so they share ownership.
 
-1. Download new season via Sonarr/Radarr
-2. Run: `docker compose run --rm -e MEDIA_PATH=/media/tv/ShowName/Season\ 01 cli`
-3. Subtitles generated automatically
-4. Refresh your media server library to pick up new subtitles
+**API errors** — Verify the key in `.env` and check your balance at the [Deepgram Console](https://console.deepgram.com/).
 
-### Complete Library Cleanup
+**Keyterms not loading** — Confirm the path `{Show}/Transcripts/Keyterms/{ShowName}_keyterms.csv`, UTF-8 encoding, and that the filename matches the show directory exactly.
 
-This is where the keyterm and scan features come together, and it's the workflow I actually use:
-
-1. **Scan** your library for missing subtitles (gear icon → "Find All Missing Subtitles")
-2. **Review** results by directory: see which shows and seasons have gaps
-3. **Generate AI keyterms** for each show (one click per show, shared across all episodes)
-4. **Select files** from the scan results → transcribe (keyterms auto-applied per show)
-5. **Resume anytime**: scan results persist, and processed files drop off the list
-
-You can work through it show by show over a few days, or batch everything at once. The scan doesn't need to be re-run unless you add new media.
-
-### Generate Transcripts for Archive
-
-1. Create keyterms CSV with character names
-2. Create speaker map CSV
-3. Run with transcripts enabled: `docker compose run --rm -e ENABLE_TRANSCRIPT=1 cli`
-4. Get language-tagged `.srt` subtitles beside the media file plus `.transcript.speakers.txt` output in the sibling `Transcripts/` folder
-
----
-
-## Frequently Asked Questions
-
-**Q: What is keyterm prompting in Deepgram Nova-3?**  
-A: Keyterm prompting (also called custom vocabulary or keyword boosting) lets you provide a list of domain-specific terms (character names, locations, made-up words) that Nova-3 prioritizes during transcription. Without keyterms, proper nouns are often misrecognized; with them, accuracy improves dramatically (up to 90% for the specific terms provided).
-
-**Q: How much does Deepgram Nova-3 transcription cost?**  
-A: Nova-3 charges approximately $0.0057 per minute of audio. New Deepgram accounts receive $200 in free credits, roughly 35,000 minutes (585 hours) of transcription. A typical 45-minute TV episode costs about $0.26.
-
-**Q: Does Subgeneratorr work with Plex, Jellyfin, and Emby?**  
-A: Yes. Subgeneratorr generates language-tagged SRT sidecar files (`.eng.srt`, `.spa.srt`, etc.) that are automatically recognized by Plex, Jellyfin, and Emby without any additional configuration. Refresh your media library after generation to pick up new subtitles.
-
-**Q: What languages does Deepgram Nova-3 support?**  
-A: Nova-3 supports 50+ languages with regional variants including English, Spanish, French, German, Japanese, Korean, Hindi, Russian, Portuguese, and Arabic. It also supports automatic language detection across 35 languages and a `multi` mode for code-switching content with up to 10 languages simultaneously.
-
-**Q: Can I generate keyterms automatically instead of writing them manually?**  
-A: Yes. The Web UI includes one-click AI keyterm generation using Claude, GPT, or Gemini. The AI infers the show or movie from the file path, researches it, and returns 20–50 character names, locations, and jargon terms in 3–5 seconds. Gemini's free tier makes this effectively zero-cost. Generated keyterms apply to all episodes in a show automatically.
-
-**Q: How is Subgeneratorr different from Bazarr?**  
-A: Bazarr finds community-contributed subtitles for popular content. Subgeneratorr *generates* subtitles from audio using AI speech recognition. It fills gaps where community subtitles don't exist (obscure shows, older episodes, foreign content). They work together: run Bazarr first, then Subgeneratorr on whatever's left.
-
----
-
-## Troubleshooting
-
-### Media Being Skipped
-
-Files are skipped only when all requested outputs already exist. English requests use `.eng.srt`, non-English requests use the matching language tag (for example `.spa.srt`), and `multi` or unresolved auto-detect requests fall back to `.und.srt`.
-
-In auto-detect mode, Subgeneratorr also treats an existing same-stem language-tagged sidecar like `Episode.spa.srt` as already satisfied before it starts a new Deepgram request. If subtitles already exist but the transcript is still missing, transcript-enabled runs continue and create the transcript instead of returning an early `skipped` result. Use `FORCE_REGENERATE=1` to overwrite existing outputs.
-
-### Permission Errors (Linux)
-
-Set `PUID` and `PGID` in `docker-compose.yml` or `.env` to match your user. The CLI, web app, and worker all write files, so keep the same values across all three services:
+**Docker networking** — If `docker compose build` hangs at the APT layer or containers can't resolve DNS on the default bridge (but `--network host` works), use the Linux host-network override:
 ```bash
-id -u  # Get your UID
-id -g  # Get your GID
+docker compose -f docker-compose.yml -f examples/docker-compose.hostnet.override.yml up -d --build
 ```
 
-### API Errors
-
-- Verify API key in `.env`
-- Check account balance at [Deepgram Console](https://console.deepgram.com/)
-- Ensure sufficient credits
-
-### Keyterms Not Loading
-
-- Check file location: `{Show}/Transcripts/Keyterms/{ShowName}_keyterms.csv`
-- Verify UTF-8 encoding
-- Ensure filename matches show directory name exactly
-
-### Docker networking
-
-If `docker compose build` hangs at the APT layer or containers cannot resolve external hosts from Docker's default bridge network, but `--network host` works, the problem is your Docker networking or DNS, not Subgeneratorr itself.
-
-On Linux, you can use the included host-network override:
-
-```bash
-cp examples/docker-compose.example.yml docker-compose.yml
-
-docker compose \
-  -f docker-compose.yml \
-  -f examples/docker-compose.hostnet.override.yml \
-  up -d --build
-```
-
-Notes:
-- This is a Linux-only workaround.
-- Services run on the host network directly, so the web UI binds to `127.0.0.1:${WEB_PORT}` from the base compose file.
-- The override also switches Redis access from `redis://redis:6379/0` to `redis://127.0.0.1:6379/0`.
-
-If you prefer not to use host networking, fix Docker's bridge-network DNS on the host and then use the normal compose file.
-
----
-
-## Known Limitations
-
-- **Authentication**: `DISABLE_AUTH=true` is the default for local use. For remote access, place a reverse proxy with authentication in front of the app and forward either `X-Auth-Request-Email` or `X-Forwarded-User` (see Security Note above).
-- **CLI vs Web UI**: The CLI processes files synchronously and does not support AI keyterm generation, library scanning, or progress tracking. The Web UI provides all features including async batch processing, real-time progress, and AI keyterm generation.
+</details>
 
 ---
 
 ## Contributing
 
-Contributions welcome! Please feel free to submit issues or pull requests.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-## Support
-
-- 📖 [Documentation](docs/)
-- 💬 [GitHub Issues](https://github.com/tylerbcrawford/subgeneratorr/issues)
-- 🌐 [Deepgram Community](https://discord.gg/deepgram)
-
----
+Issues and pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). For local tests you don't need Docker or API keys: `make test`.
 
 ## License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
-
----
+MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-- [Deepgram](https://deepgram.com/) - AI-powered speech recognition API
-- Built with [Deepgram Python SDK](https://github.com/deepgram/deepgram-python-sdk)
-- Uses [deepgram-captions](https://github.com/deepgram/deepgram-python-captions) for SRT generation
-- Built with [Claude Code](https://claude.com/claude-code)
+Built on [Deepgram](https://deepgram.com/) (Nova-3, [Python SDK](https://github.com/deepgram/deepgram-python-sdk), [captions](https://github.com/deepgram/deepgram-python-captions)) and [Claude Code](https://claude.com/claude-code).
