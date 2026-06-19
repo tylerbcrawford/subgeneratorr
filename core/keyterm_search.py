@@ -7,43 +7,19 @@ This module provides intelligent keyterm generation using Large Language Models
 contextually relevant keyterms that improve transcription accuracy up to 90%.
 """
 
-from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from core.llm_providers import LLMModel, LLMProvider, calculate_cost, call_llm
 from core.media_metadata import MediaMetadata, format_metadata_for_prompt
 
+# LLMProvider / LLMModel are imported above and re-exported here for backward
+# compatibility — web/app.py and web/tasks.py import them from this module.
 
-class LLMProvider(Enum):
-    """Supported LLM providers."""
-
-    ANTHROPIC = "anthropic"
-    OPENAI = "openai"
-    GOOGLE = "google"
-
-
-class LLMModel(Enum):
-    """Supported LLM models with their API identifiers."""
-
-    # Anthropic models (Claude 4.6 series)
-    CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
-    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
-
-    # OpenAI models (GPT-4.1 series - non-reasoning, low latency)
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
-
-    # Google models (Gemini 2.5 series)
-    GEMINI_2_5_FLASH = "gemini-2.5-flash"
-
-
-# Model pricing (per 1M tokens) - as of 2026-02
-MODEL_PRICING = {
-    LLMModel.CLAUDE_SONNET_4_6: {"input": 3.00, "output": 15.00},
-    LLMModel.CLAUDE_HAIKU_4_5: {"input": 1.00, "output": 5.00},
-    LLMModel.GPT_4_1: {"input": 2.00, "output": 8.00},
-    LLMModel.GPT_4_1_MINI: {"input": 0.40, "output": 1.60},
-    LLMModel.GEMINI_2_5_FLASH: {"input": 0.30, "output": 2.50},
-}
+# System instruction used for keyterm generation (OpenAI + Google paths; the
+# Anthropic path historically sends no system prompt).
+KEYTERM_SYSTEM_PROMPT = (
+    "You are a helpful assistant that generates keyterm lists for transcription accuracy."
+)
 
 
 # Keyterm generation prompt template for TV shows
@@ -241,15 +217,20 @@ class KeytermSearcher:
         # Build prompt
         prompt = self._build_prompt(metadata, existing_keyterms, preserve_existing)
 
-        # Call appropriate LLM provider
-        if self.provider == LLMProvider.ANTHROPIC:
-            response_text, input_tokens, output_tokens = self._call_anthropic(prompt)
-        elif self.provider == LLMProvider.OPENAI:
-            response_text, input_tokens, output_tokens = self._call_openai(prompt)
-        elif self.provider == LLMProvider.GOOGLE:
-            response_text, input_tokens, output_tokens = self._call_google(prompt)
-        else:
-            raise ValueError(f"Unsupported provider: {self.provider}")
+        # Call the LLM via the shared provider layer. Token budgets and system
+        # prompt are preserved exactly per provider: Anthropic sends no system
+        # prompt and caps at 500; OpenAI uses the keyterm system prompt at 500;
+        # Google needs the larger 2048 budget to leave room past thinking tokens.
+        max_tokens = 2048 if self.provider == LLMProvider.GOOGLE else 500
+        system_prompt = None if self.provider == LLMProvider.ANTHROPIC else KEYTERM_SYSTEM_PROMPT
+        response_text, input_tokens, output_tokens = call_llm(
+            self.provider,
+            self.model.value,
+            self.api_key,
+            prompt,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+        )
 
         # Parse response into keyterms
         keyterms = self._parse_response(response_text)
@@ -436,190 +417,6 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
 
         return unique_keyterms
 
-    def _call_anthropic(self, prompt: str) -> tuple[str, int, int]:
-        """
-        Make API call to Anthropic Claude.
-
-        Args:
-            prompt: Formatted prompt string
-
-        Returns:
-            Tuple of (response_text, input_tokens, output_tokens)
-
-        Raises:
-            Exception: If API call fails
-        """
-        try:
-            import anthropic
-        except ImportError:
-            raise ImportError(
-                "anthropic package not installed. Install with: pip install anthropic>=0.30.0"
-            )
-
-        # Initialize client if needed
-        if not self._client:
-            self._client = anthropic.Anthropic(api_key=self.api_key)
-
-        try:
-            # Make API call
-            message = self._client.messages.create(
-                model=self.model.value,
-                max_tokens=500,  # Limited for keyterm lists
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            # Extract response text
-            if not message.content:
-                raise Exception("Anthropic API returned empty response — no content blocks")
-            response_text = message.content[0].text
-
-            return response_text, message.usage.input_tokens, message.usage.output_tokens
-
-        except Exception as e:
-            error_str = str(e)
-            if "rate_limit" in error_str.lower() or "429" in error_str:
-                raise Exception("Anthropic API rate limit exceeded — wait a moment and try again")
-            elif "401" in error_str or "authentication" in error_str.lower():
-                raise Exception("Anthropic API key is invalid or expired")
-            else:
-                brief = error_str.split("\n")[0][:200]
-                raise Exception(f"Anthropic API error: {brief}")
-
-    def _call_openai(self, prompt: str) -> tuple[str, int, int]:
-        """
-        Make API call to OpenAI GPT.
-
-        Args:
-            prompt: Formatted prompt string
-
-        Returns:
-            Tuple of (response_text, input_tokens, output_tokens)
-
-        Raises:
-            Exception: If API call fails
-        """
-        try:
-            import openai
-        except ImportError:
-            raise ImportError(
-                "openai package not installed. Install with: pip install openai>=1.35.0"
-            )
-
-        # Initialize client if needed
-        if not self._client:
-            self._client = openai.OpenAI(api_key=self.api_key)
-
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model.value,
-                max_tokens=500,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant that generates keyterm lists for transcription accuracy.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            )
-
-            if not response.choices:
-                raise Exception("OpenAI API returned empty response — no choices")
-            response_text = response.choices[0].message.content
-
-            return response_text, response.usage.prompt_tokens, response.usage.completion_tokens
-
-        except Exception as e:
-            error_str = str(e)
-            if "rate_limit" in error_str.lower() or "429" in error_str:
-                raise Exception("OpenAI API rate limit exceeded — wait a moment and try again")
-            elif "401" in error_str or "authentication" in error_str.lower():
-                raise Exception("OpenAI API key is invalid or expired")
-            elif "insufficient_quota" in error_str.lower():
-                raise Exception("OpenAI API quota exceeded — check your billing plan")
-            else:
-                brief = error_str.split("\n")[0][:200]
-                raise Exception(f"OpenAI API error: {brief}")
-
-    def _call_google(self, prompt: str) -> tuple[str, int, int]:
-        """
-        Make API call to Google Gemini.
-
-        Args:
-            prompt: Formatted prompt string
-
-        Returns:
-            Tuple of (response_text, input_tokens, output_tokens)
-
-        Raises:
-            Exception: If API call fails
-        """
-        try:
-            from google import genai
-        except ImportError:
-            raise ImportError(
-                "google-genai package not installed. Install with: pip install google-genai>=1.0.0"
-            )
-
-        # Initialize client if needed
-        if not self._client:
-            self._client = genai.Client(api_key=self.api_key)
-
-        try:
-            from google.genai import types as genai_types
-
-            response = self._client.models.generate_content(
-                model=self.model.value,
-                contents=prompt,
-                config={
-                    "max_output_tokens": 2048,
-                    "system_instruction": "You are a helpful assistant that generates keyterm lists for transcription accuracy.",
-                    # Cap thinking tokens so they don't consume the output budget.
-                    # Gemini 2.5 models use "thinking" tokens that count against
-                    # max_output_tokens — without this cap, thinking can consume
-                    # 1900+ tokens, leaving <100 for the actual response.
-                    "thinking_config": genai_types.ThinkingConfig(thinking_budget=1024),
-                },
-            )
-
-            response_text = response.text
-
-            input_tokens = response.usage_metadata.prompt_token_count
-            output_tokens = response.usage_metadata.candidates_token_count
-
-            return response_text, input_tokens, output_tokens
-
-        except Exception as e:
-            error_str = str(e)
-            # Extract a clean message from verbose API errors
-            if "RESOURCE_EXHAUSTED" in error_str:
-                raise Exception(
-                    "Gemini API quota exceeded — try a different model or check your billing plan"
-                )
-            elif "401" in error_str or "UNAUTHENTICATED" in error_str:
-                raise Exception("Gemini API key is invalid or expired")
-            elif "403" in error_str or "PERMISSION_DENIED" in error_str:
-                raise Exception("Gemini API key lacks permission for this model")
-            else:
-                # Keep it short — strip the nested JSON
-                brief = error_str.split("\n")[0][:200]
-                raise Exception(f"Gemini API error: {brief}")
-
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        """
-        Calculate cost based on separate input/output token counts.
-
-        Args:
-            input_tokens: Number of input (prompt) tokens
-            output_tokens: Number of output (completion) tokens
-
-        Returns:
-            Cost in USD
-        """
-        pricing = MODEL_PRICING.get(self.model)
-        if not pricing:
-            return 0.0
-
-        input_cost = (input_tokens / 1_000_000) * pricing["input"]
-        output_cost = (output_tokens / 1_000_000) * pricing["output"]
-
-        return input_cost + output_cost
+        """Calculate USD cost for this searcher's model via the shared pricing table."""
+        return calculate_cost(self.model, input_tokens, output_tokens)

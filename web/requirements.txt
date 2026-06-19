@@ -5,6 +5,7 @@ gunicorn==22.*
 gevent==24.*
 deepgram-sdk==3.*
 deepgram-captions==1.*
+srt>=3.5,<4
 requests==2.*
 anthropic>=0.30.0,<1
 openai>=1.35.0,<2
