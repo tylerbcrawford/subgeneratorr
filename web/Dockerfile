@@ -25,8 +25,10 @@ COPY web/entrypoint.sh /entrypoint.sh
 COPY web/static/ ./static/
 COPY web/templates/ ./templates/
 
-# Create non-root user
+# Create non-root user; strip any CRLF the entrypoint may carry from a
+# Windows checkout so the Linux shebang resolves (see issue #1).
 RUN useradd -u 1000 -m -s /bin/bash appuser && \
+    sed -i 's/\r$//' /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \

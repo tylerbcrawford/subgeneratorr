@@ -21,7 +21,10 @@ COPY core/ /app/core/
 # Copy CLI application
 COPY cli/config.py cli/generate_subtitles.py cli/transcript_generator.py ./
 COPY cli/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Strip any CRLF the entrypoint may carry from a Windows checkout so the
+# Linux shebang resolves (see issue #1).
+RUN sed -i 's/\r$//' /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-u", "generate_subtitles.py"]
