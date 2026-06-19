@@ -845,6 +845,8 @@ function saveCurrentSettings() {
         redactPci: document.getElementById('redactPci')?.checked,
         redactPii: document.getElementById('redactPii')?.checked,
         redactNumbers: document.getElementById('redactNumbers')?.checked,
+        redactPhi: document.getElementById('redactPhi')?.checked,
+        redactAggressiveNumbers: document.getElementById('redactAggressiveNumbers')?.checked,
         findReplace: document.getElementById('findReplace')?.checked,
         replaceTerms: document.getElementById('replaceTerms')?.value || '',
         multichannel: document.getElementById('multichannel')?.checked,
@@ -907,6 +909,14 @@ function loadSavedSettings() {
             if (settings.redactNumbers !== undefined) {
                 const el = document.getElementById('redactNumbers');
                 if (el) el.checked = settings.redactNumbers;
+            }
+            if (settings.redactPhi !== undefined) {
+                const el = document.getElementById('redactPhi');
+                if (el) el.checked = settings.redactPhi;
+            }
+            if (settings.redactAggressiveNumbers !== undefined) {
+                const el = document.getElementById('redactAggressiveNumbers');
+                if (el) el.checked = settings.redactAggressiveNumbers;
             }
             if (settings.findReplace !== undefined) {
                 const el = document.getElementById('findReplace');
@@ -1848,6 +1858,8 @@ async function submitBatch() {
         if (document.getElementById('redactPci')?.checked) redactTypes.push('pci');
         if (document.getElementById('redactPii')?.checked) redactTypes.push('pii');
         if (document.getElementById('redactNumbers')?.checked) redactTypes.push('numbers');
+        if (document.getElementById('redactPhi')?.checked) redactTypes.push('phi');
+        if (document.getElementById('redactAggressiveNumbers')?.checked) redactTypes.push('aggressive_numbers');
     }
 
     // Find & replace

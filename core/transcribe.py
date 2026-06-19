@@ -31,6 +31,13 @@ AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wma"}
 # Neutral language tag used when the output language cannot be resolved safely
 NEUTRAL_SUBTITLE_LANG = "und"
 
+# Deepgram's improved speaker diarization model (batch / pre-recorded only, 2026-05-13).
+# diarize_model is self-contained: it both enables diarization and selects the model, and
+# Deepgram returns HTTP 400 if the legacy `diarize` boolean is also present in the request.
+# So when diarizing we send ONLY this (via the SDK addons escape hatch, since deepgram-sdk
+# 3.x does not model diarize_model on PrerecordedOptions) and omit `diarize` from the options.
+DIARIZE_MODEL = "v2"
+
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
 # Regional variants are normalized to their base language for filename purposes.
 _SUBTITLE_LANG_MAP = {
@@ -680,7 +687,6 @@ def transcribe_file(
         utterances=utterances,
         punctuate=True,
         paragraphs=paragraphs,
-        diarize=diarize,
         language=language,
         profanity_filter=use_profanity_filter,
     )
@@ -733,7 +739,11 @@ def transcribe_file(
     if tag:
         opts.tag = [tag]
 
-    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts)
+    # Diarization: send diarize_model=v2 (Deepgram's v2 speaker model) as a query addon.
+    # It is mutually exclusive with the legacy `diarize` boolean, which is why `diarize` is
+    # deliberately NOT set on `opts` above -- see DIARIZE_MODEL.
+    addons = {"diarize_model": DIARIZE_MODEL} if diarize else None
+    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts, addons=addons)
 
 
 def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):
