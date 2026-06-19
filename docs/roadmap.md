@@ -10,7 +10,10 @@ Future enhancements under consideration. Community contributions welcome — ope
 Consolidate Redis, Flask, and Celery into a single Docker container for simpler deployment. Reduce `docker-compose.yml` to one service for users who don't need horizontal scaling.
 
 ### LLM-Powered Translation
-Translate existing subtitles to other languages using Claude, GPT, or Gemini. Preserve SRT timing while translating dialogue. Generate multi-language subtitle files from a single transcription.
+**Next up (v2.4.0).** Translate generated subtitles to other languages using Claude, GPT, Gemini, or a local Ollama model. Preserve SRT timing while translating dialogue and write language-tagged sidecars so Plex, Jellyfin, and Emby auto-detect them. Generate multi-language subtitle files from a single transcription. With a local Ollama model this runs fully offline at no cost.
+
+### Local Engine (Whisper + Ollama)
+Optional fully-local mode: swap Deepgram Nova-3 for a local Whisper engine and use Ollama for keyterm generation and translation, so nothing leaves your machine and there is no per-minute cost. Planned as a pluggable engine with an opt-in local Docker image, after translation ships.
 
 ### Bazarr Auto-Fallback
 Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature (shipped in v2.1.0) provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.
