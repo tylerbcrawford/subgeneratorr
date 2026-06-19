@@ -18,14 +18,22 @@ from pathlib import Path
 
 import redis as redis_lib
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
-from tasks import celery_app, generate_keyterms_task, library_scan_task, make_batch
+from tasks import (
+    celery_app,
+    generate_keyterms_task,
+    library_scan_task,
+    make_batch,
+    translate_subtitles_task,
+)
 
 from core.transcribe import (
+    NEUTRAL_SUBTITLE_LANG,
     check_subtitles,
     get_keyterms_folder,
     get_video_duration,
     is_media,
     load_keyterms_from_csv,
+    resolve_subtitle_language_tag,
     save_keyterms_to_csv,
 )
 
@@ -152,6 +160,8 @@ def api_config():
     anthropic_ok = bool(os.getenv("ANTHROPIC_API_KEY"))
     openai_ok = bool(os.getenv("OPENAI_API_KEY"))
     google_ok = bool(os.getenv("GEMINI_API_KEY"))
+    # Ollama is "configured" when a host is set — it needs no API key (local).
+    ollama_ok = bool(os.getenv("OLLAMA_HOST"))
     return jsonify(
         {
             "default_model": DEFAULT_MODEL,
@@ -160,8 +170,14 @@ def api_config():
             "anthropic_api_key_configured": anthropic_ok,
             "openai_api_key_configured": openai_ok,
             "google_api_key_configured": google_ok,
+            "ollama_configured": ollama_ok,
             # Structured providers object
-            "providers": {"anthropic": anthropic_ok, "openai": openai_ok, "google": google_ok},
+            "providers": {
+                "anthropic": anthropic_ok,
+                "openai": openai_ok,
+                "google": google_ok,
+                "ollama": ollama_ok,
+            },
         }
     )
 
@@ -1159,6 +1175,191 @@ def api_keyterms_generate_status(task_id):
         # If we can't read the task state at all (e.g., corrupted Redis entry),
         # report it as a failure rather than returning 500 which the frontend
         # might not handle, causing infinite polling.
+        return jsonify({"state": "FAILURE", "error": f"Task state unreadable: {str(e)}"})
+
+
+# Provider -> environment variable holding its API key (cloud providers only;
+# Ollama is local and needs a host, not a key).
+_LLM_ENV_KEYS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
+}
+
+
+def _find_source_srt(video_path: Path):
+    """Return an existing same-stem .srt sidecar for a video, if any.
+
+    Matches both ``Movie.srt`` and language-tagged ``Movie.eng.srt`` (the form
+    this tool produces), preferring the first by sorted name.
+    """
+    stem = video_path.stem
+    try:
+        entries = sorted(p for p in video_path.parent.iterdir() if p.is_file())
+    except OSError:
+        return None
+    for p in entries:
+        if p.suffix.lower() != ".srt" or not p.name.startswith(stem):
+            continue
+        remainder = p.name[len(stem) :]
+        if remainder == ".srt" or remainder.startswith("."):
+            return p
+    return None
+
+
+def _estimate_translation(src_srt: Path, targets, provider, model):
+    """Rough translation cost estimate: ~1 token/4 chars in, ~1:1 out, per target."""
+    from core.llm_providers import LLMModel, calculate_cost
+
+    try:
+        text = src_srt.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        text = ""
+    input_tokens = max(1, len(text) // 4)
+    output_tokens = input_tokens  # translated subtitles are roughly the same length
+
+    if provider == "ollama":
+        per_target = 0.0
+    else:
+        try:
+            model_enum = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
+        except KeyError:
+            model_enum = None
+        per_target = calculate_cost(model_enum, input_tokens, output_tokens)
+
+    target_count = len(targets)
+    return {
+        "estimated_tokens": (input_tokens + output_tokens) * target_count,
+        "estimated_cost": round(per_target * target_count, 4),
+        "per_target_cost": round(per_target, 4),
+        "target_count": target_count,
+    }
+
+
+@app.post("/api/translate")
+def api_translate():
+    """
+    Translate a video's existing subtitles into one or more target languages.
+
+    Request Body (JSON):
+        video_path: Path to the video file (required)
+        targets: List of target language codes, e.g. ["es", "fr"] (required)
+        provider: LLM provider - anthropic/openai/google/ollama (default: anthropic)
+        model: Model id (cloud) or free-text model name (ollama)
+        overwrite: Re-translate even if the target sidecar exists (default: false)
+        ollama_host: Ollama endpoint (falls back to OLLAMA_HOST env)
+        source_srt: Explicit source .srt path (default: auto-located sidecar)
+        estimate_only: Return a cost estimate instead of queueing (default: false)
+
+    Returns:
+        estimate_only -> {estimated_cost, ...}; otherwise {task_id, status}.
+    """
+    _require_auth()
+
+    body = request.get_json(force=True) or {}
+    video_path = body.get("video_path")
+    targets = body.get("targets") or []
+    provider = body.get("provider", "anthropic")
+    model = body.get("model", "claude-sonnet-4-6")
+    overwrite = body.get("overwrite", False)
+    ollama_host = body.get("ollama_host") or os.environ.get("OLLAMA_HOST")
+    source_srt = body.get("source_srt")
+    estimate_only = body.get("estimate_only", False)
+
+    if not video_path:
+        return jsonify({"error": "video_path required"}), 400
+    vp = Path(video_path)
+    if not _check_media_path(vp):
+        return jsonify({"error": "Invalid path"}), 400
+
+    if not isinstance(targets, list) or not targets:
+        return jsonify({"error": "At least one target language is required"}), 400
+
+    # Reject any target that has no subtitle-tag mapping.
+    unknown = [
+        t
+        for t in targets
+        if resolve_subtitle_language_tag(requested_language=t) == NEUTRAL_SUBTITLE_LANG
+    ]
+    if unknown:
+        return jsonify({"error": f"Unsupported target language(s): {', '.join(unknown)}"}), 400
+
+    # Locate the source SRT (the generated subtitle we translate from). This is
+    # a request-input check, so it runs before server-side credential checks.
+    if source_srt:
+        src = Path(source_srt)
+        if not _check_media_path(src) or not src.exists() or src.suffix.lower() != ".srt":
+            return jsonify({"error": "Invalid source subtitle path"}), 400
+    else:
+        src = _find_source_srt(vp)
+        if src is None:
+            return jsonify(
+                {
+                    "error": "No source subtitle (.srt) found for this video — generate subtitles first"
+                }
+            ), 400
+
+    # Resolve credentials / host.
+    if provider == "ollama":
+        if not ollama_host:
+            return jsonify(
+                {"error": "Ollama host not configured — set OLLAMA_HOST or pass ollama_host"}
+            ), 400
+    else:
+        env_key = _LLM_ENV_KEYS.get(provider)
+        if not env_key:
+            return jsonify({"error": f"Unsupported provider: {provider}"}), 400
+        if not os.environ.get(env_key):
+            return jsonify({"error": f"{env_key} not configured"}), 500
+
+    if estimate_only:
+        return jsonify(_estimate_translation(src, targets, provider, model))
+
+    try:
+        task = translate_subtitles_task.delay(
+            video_path=str(vp),
+            source_srt=str(src),
+            targets=targets,
+            provider=provider,
+            model=model,
+            overwrite=overwrite,
+            ollama_host=ollama_host,
+        )
+        return jsonify({"task_id": task.id, "status": "pending"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to queue task: {str(e)}"}), 500
+
+
+@app.get("/api/translate/status/<task_id>")
+def api_translate_status(task_id):
+    """Check status of a translation task (mirrors keyterm-generate status)."""
+    _require_auth()
+
+    try:
+        task = celery_app.AsyncResult(task_id)
+
+        if task.state == "PENDING":
+            return jsonify({"state": "PENDING"})
+        elif task.state == "PROGRESS":
+            info = task.info or {}
+            return jsonify(
+                {
+                    "state": "PROGRESS",
+                    "stage": info.get("stage", "") if isinstance(info, dict) else "",
+                    "progress": info.get("progress", 0) if isinstance(info, dict) else 0,
+                }
+            )
+        elif task.state == "FAILURE":
+            error_msg = str(task.info) if task.info else "Unknown error"
+            return jsonify({"state": "FAILURE", "error": error_msg})
+        elif task.state == "SUCCESS":
+            result = task.info or {}
+            if isinstance(result, dict) and result.get("status") == "error":
+                return jsonify({"state": "FAILURE", "error": result.get("error", "Unknown error")})
+            return jsonify({"state": "SUCCESS", **(result if isinstance(result, dict) else {})})
+        else:
+            return jsonify({"state": task.state, "info": str(task.info) if task.info else None})
+    except Exception as e:
         return jsonify({"state": "FAILURE", "error": f"Task state unreadable: {str(e)}"})
 
 

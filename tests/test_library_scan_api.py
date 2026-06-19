@@ -78,6 +78,7 @@ def _install_app_dependency_stubs():
         tasks_module.make_batch = lambda *args, **kwargs: None
         tasks_module.generate_keyterms_task = DummyTask()
         tasks_module.library_scan_task = DummyTask()
+        tasks_module.translate_subtitles_task = DummyTask()
         sys.modules["tasks"] = tasks_module
 
 

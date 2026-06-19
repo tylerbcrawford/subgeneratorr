@@ -61,6 +61,7 @@ celery_app.conf.task_routes = {
     "transcribe_task": {"queue": "transcribe"},
     "batch_finalize": {"queue": "transcribe"},
     "generate_keyterms_task": {"queue": "transcribe"},
+    "translate_subtitles_task": {"queue": "transcribe"},
     "library_scan_task": {"queue": "scan"},
 }
 
@@ -500,6 +501,139 @@ def generate_keyterms_task(
         # Complex exception objects (e.g., Google API errors with nested
         # dicts) cause Celery's Redis backend serialization to fail,
         # which corrupts the task state and makes frontend polling hang forever.
+        error_msg = str(e)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        raise RuntimeError(error_msg)
+
+
+def _normalize_ollama_base_url(host: str) -> str:
+    """Coerce a user-supplied Ollama host into an OpenAI-compatible base URL.
+
+    Accepts ``ollama:11434``, ``http://ollama:11434``, or a full ``.../v1`` and
+    always returns ``http(s)://host:port/v1``.
+    """
+    base = host.strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = "http://" + base
+    if not base.endswith("/v1"):
+        base = base + "/v1"
+    return base
+
+
+# Provider -> environment variable holding its API key (cloud providers only).
+_TRANSLATE_ENV_KEYS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
+}
+
+
+@celery_app.task(bind=True, name="translate_subtitles_task")
+def translate_subtitles_task(
+    self,
+    video_path: str,
+    source_srt: str,
+    targets: list,
+    provider: str,
+    model: str,
+    overwrite: bool = False,
+    ollama_host: str = None,
+):
+    """
+    Async task to translate a source SRT into one or more target languages.
+
+    Args:
+        video_path: Path to the video (used only to load its keyterm glossary).
+        source_srt: Path to the generated SRT to translate from.
+        targets: Target language codes, e.g. ["es", "fr"].
+        provider: anthropic/openai/google/ollama.
+        model: Model id (cloud) or free-text model name (ollama).
+        overwrite: Re-translate even if the target sidecar exists.
+        ollama_host: Ollama endpoint (falls back to OLLAMA_HOST env).
+
+    Returns a per-target summary; mirrors generate_keyterms_task's progress and
+    error-to-RuntimeError handling (Celery's Redis backend can't serialize rich
+    provider exceptions).
+    """
+    vp = Path(video_path)
+    src = Path(source_srt)
+
+    try:
+        self.update_state(state="PROGRESS", meta={"stage": "initializing", "progress": 0})
+
+        # Resolve credentials / host.
+        api_key = None
+        ollama_base_url = None
+        if provider == "ollama":
+            host = ollama_host or os.environ.get("OLLAMA_HOST")
+            if not host:
+                raise ValueError("Ollama host not configured")
+            ollama_base_url = _normalize_ollama_base_url(host)
+        else:
+            env_key = _TRANSLATE_ENV_KEYS.get(provider)
+            if not env_key:
+                raise ValueError(f"Unsupported provider: {provider}")
+            api_key = os.environ.get(env_key)
+            if not api_key:
+                raise ValueError(f"API key not configured for {provider}")
+
+        from core.llm_providers import LLMModel, LLMProvider
+        from core.translate import SubtitleTranslator
+
+        provider_enum = LLMProvider[provider.upper()]
+        if provider == "ollama":
+            model_arg = model  # free-text model name; no enum/pricing
+        else:
+            try:
+                model_arg = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
+            except KeyError:
+                raise ValueError(f"Invalid model: {model}")
+
+        # Reuse the show's keyterms (if any) as a translation glossary so proper
+        # nouns stay consistent with the transcription.
+        keyterms = load_keyterms_from_csv(vp)
+
+        translator = SubtitleTranslator(
+            provider_enum,
+            model_arg,
+            api_key,
+            ollama_base_url=ollama_base_url,
+        )
+
+        results = []
+        total_cost = 0.0
+        n = len(targets)
+        for i, target in enumerate(targets):
+            self.update_state(
+                state="PROGRESS",
+                meta={"stage": f"translating to {target}", "progress": int((i / max(1, n)) * 100)},
+            )
+            r = translator.translate_file(src, target, keyterms=keyterms, overwrite=overwrite)
+            results.append(
+                {
+                    "target": target,
+                    "tag": r.target_tag,
+                    "output_path": str(r.output_path) if r.output_path else None,
+                    "skipped": bool(r.skipped),
+                    "cost": r.cost,
+                    "input_tokens": r.input_tokens,
+                    "output_tokens": r.output_tokens,
+                }
+            )
+            total_cost += r.cost
+
+        return {
+            "results": results,
+            "total_cost": total_cost,
+            "provider": provider,
+            "model": model,
+            "target_count": n,
+            "translated": sum(1 for r in results if not r["skipped"]),
+            "skipped_count": sum(1 for r in results if r["skipped"]),
+        }
+
+    except Exception as e:
         error_msg = str(e)
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + "..."
