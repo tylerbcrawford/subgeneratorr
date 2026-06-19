@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-19
+
 ### Added
 - Chinese language options in the web UI: Mandarin Simplified (`zh`), Mandarin Traditional (`zh-Hant`), and Cantonese (`zh-HK`). Available on the `nova-3` model (not `nova-3-medical`, which stays English-only).
 - PHI (medical) and aggressive-numbers redaction options in the web UI. PHI works best with the `nova-3-medical` model.
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Mobile accessibility: re-enabled pinch-zoom (removed `user-scalable=no` from the viewport) and kept text-entry fields at 16px so iOS Safari no longer auto-zooms on focus.
 - Mobile touch targets: raised the settings gear, AI-config toggle, language selector, and advanced-settings toggle to the 44px minimum tap size.
+- Windows: `web` and `worker` containers no longer restart-loop with `exec /entrypoint.sh: no such file or directory`. Pinned `*.sh` and the Dockerfiles to LF via `.gitattributes` and strip CRLF at build time so existing Windows clones build without re-cloning. (#1)
 
 ## [2.2.0] - 2026-06-14
 
