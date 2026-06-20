@@ -2719,3 +2719,40 @@ button:active,
     min-height: 44px;
   }
 }
+
+/* Translate Subtitles: selected target-language chips */
+.translate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  justify-content: center;
+  margin: var(--space-s) 0;
+}
+.translate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  font-size: var(--font-small);
+  color: var(--color-blue);
+  border: 1px solid var(--color-blue);
+  border-radius: var(--radius-md);
+}
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 14px;
+}
+.chip-remove:hover,
+.chip-remove:focus {
+  color: var(--color-red);
+}

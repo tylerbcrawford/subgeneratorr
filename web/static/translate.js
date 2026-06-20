@@ -76,26 +76,60 @@
 
     // --- DOM construction ---------------------------------------------------
 
-    function buildTargetCheckboxes() {
-        const container = $('translateTargets');
-        if (!container) return;
-        container.innerHTML = TRANSLATE_LANGUAGES.map(function (lang) {
+    let selectedTargets = []; // target language codes, in selection order
+
+    function buildTargetDropdown() {
+        const select = $('translateTargetSelect');
+        if (!select) return;
+        const placeholder = '<option value="" disabled selected>Add a language…</option>';
+        const opts = TRANSLATE_LANGUAGES.map(function (lang) {
+            return '<option value="' + lang.code + '">' + esc(lang.name) + '</option>';
+        }).join('');
+        select.innerHTML = placeholder + opts;
+    }
+
+    function _langName(code) {
+        const lang = TRANSLATE_LANGUAGES.find(function (l) { return l.code === code; });
+        return lang ? lang.name : code;
+    }
+
+    function renderChips() {
+        const box = $('translateChips');
+        if (!box) return;
+        box.innerHTML = selectedTargets.map(function (code) {
             return (
-                '<label class="checkbox-label" style="display:inline-flex; gap:4px; align-items:center;">' +
-                '<input type="checkbox" class="translate-target" value="' + lang.code + '" /> ' +
-                esc(lang.name) +
-                '</label>'
+                '<span class="translate-chip">' + esc(_langName(code)) +
+                '<button type="button" class="chip-remove" data-code="' + code +
+                '" aria-label="Remove ' + esc(_langName(code)) + '">✕</button></span>'
             );
         }).join('');
-        container.querySelectorAll('.translate-target').forEach(function (cb) {
-            cb.addEventListener('change', updateCostEstimate);
+        box.querySelectorAll('.chip-remove').forEach(function (btn) {
+            btn.addEventListener('click', function () { removeTarget(btn.getAttribute('data-code')); });
         });
+        // Grey out already-selected languages in the dropdown.
+        const select = $('translateTargetSelect');
+        if (select) {
+            Array.from(select.options).forEach(function (opt) {
+                if (opt.value) opt.disabled = selectedTargets.indexOf(opt.value) !== -1;
+            });
+        }
+    }
+
+    function addTarget(code) {
+        if (!code || selectedTargets.indexOf(code) !== -1) return;
+        selectedTargets.push(code);
+        renderChips();
+        updateCostEstimate();
+    }
+
+    function removeTarget(code) {
+        selectedTargets = selectedTargets.filter(function (c) { return c !== code; });
+        renderChips();
+        updateCostEstimate();
     }
 
     function getSelectedTargets() {
-        return Array.from(document.querySelectorAll('.translate-target:checked')).map(function (cb) {
-            return cb.value;
-        });
+        return selectedTargets.slice();
     }
 
     function getProviderModel() {
@@ -322,7 +356,16 @@
     }
 
     function init() {
-        buildTargetCheckboxes();
+        buildTargetDropdown();
+        renderChips();
+
+        const targetSelect = $('translateTargetSelect');
+        if (targetSelect) {
+            targetSelect.addEventListener('change', function () {
+                addTarget(targetSelect.value);
+                targetSelect.value = ''; // reset to the "Add a language…" placeholder
+            });
+        }
 
         const provider = $('translateProvider');
         if (provider) provider.addEventListener('change', onProviderChange);
