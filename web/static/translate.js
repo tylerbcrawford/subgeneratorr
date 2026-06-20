@@ -187,8 +187,9 @@
         const ok = !!providerStatus[provider];
 
         if (badge) {
-            badge.textContent = ok ? '✓ configured' : '✗ not configured';
-            badge.style.color = ok ? 'var(--text-secondary)' : 'var(--color-danger, #d9534f)';
+            badge.textContent = ok ? '✓' : '✗';
+            badge.title = ok ? 'Configured' : 'Not configured';
+            badge.style.color = ok ? 'var(--color-green)' : 'var(--color-red)';
         }
         if (notice) {
             if (ok) {

@@ -451,10 +451,9 @@
                     <div class="config-section" style="text-align: center;">
                         <div class="form-group">
                             <label class="section-label">Translate Subtitles</label>
-                            <small class="keyterms-help">Translate the selected video's subtitles into other languages — timing is preserved exactly.</small>
 
-                            <div class="form-group controls-aligned" style="margin-top: var(--space-s);">
-                                <label for="translateTargetSelect" style="font-size: var(--font-caption); color: var(--text-tertiary);">Target languages</label>
+                            <div class="form-group" style="margin-top: var(--space-s);">
+                                <label for="translateTargetSelect" style="display:block; font-size: var(--font-caption); color: var(--text-tertiary); margin-bottom: var(--space-xs);">Target languages</label>
                                 <select id="translateTargetSelect" class="action-bar-select" aria-label="Add a target language">
                                     <option value="" disabled selected>Add a language…</option>
                                 </select>
@@ -476,7 +475,7 @@
                             <div id="translateConfigPanel" class="ai-config-panel hidden">
                                 <div class="form-group">
                                     <label for="translateProvider">
-                                        Provider Status:
+                                        Provider
                                         <span id="translateKeyStatus" class="api-key-status" title="Provider status"></span>
                                     </label>
                                     <select id="translateProvider" aria-label="Translation provider">
@@ -512,6 +511,6 @@
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
     <script src="/static/app.js?v=20"></script>
-    <script src="/static/translate.js?v=2"></script>
+    <script src="/static/translate.js?v=3"></script>
 </body>
 </html>
