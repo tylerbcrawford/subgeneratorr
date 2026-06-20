@@ -70,7 +70,11 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+          # latest=auto: only move :latest for a real (non-prerelease) release, so
+          # pre-release tags like v2.4.0-beta.1 publish their own tag without
+          # clobbering the :latest that existing users pull.
+          flavor: |
+            latest=auto
 
       - name: Build and push
         id: build
@@ -89,7 +93,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:latest
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}
           format: table
           ignore-unfixed: true
           severity: CRITICAL,HIGH
