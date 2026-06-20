@@ -87,6 +87,12 @@ services:
     # Pre-built image (uncomment to skip building):
     # image: ghcr.io/tylerbcrawford/subgeneratorr-worker:latest
     command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=${WORKER_CONCURRENCY:-1}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks.celery_app inspect ping | grep -q pong || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
