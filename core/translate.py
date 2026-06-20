@@ -174,7 +174,11 @@ class SubtitleTranslator:
                 index=cue.index,
                 start=cue.start,
                 end=cue.end,
-                content=text,
+                # A blank translation (e.g. the model folded this cue into its
+                # neighbour and returned "" for it) falls back to the source
+                # text so the cue is never emitted empty — empty-content cues
+                # are silently dropped when the sidecar is composed.
+                content=text if (text and text.strip()) else cue.content,
                 proprietary=cue.proprietary,
             )
             for cue, text in zip(cues, translated_texts)
@@ -214,7 +218,10 @@ class SubtitleTranslator:
 
         cues = list(srt_lib.parse(srt_path.read_text(encoding="utf-8")))
         result = self.translate_cues(cues, target_language, keyterms=keyterms)
-        dest.write_text(srt_lib.compose(result.cues), encoding="utf-8")
+        # reindex=False keeps every cue's index/timing verbatim. The default
+        # (reindex=True) runs sort_and_reindex, which silently drops cues with
+        # empty content or non-positive duration and renumbers the survivors.
+        dest.write_text(srt_lib.compose(result.cues, reindex=False), encoding="utf-8")
         result.output_path = dest
         result.skipped = False
         return result

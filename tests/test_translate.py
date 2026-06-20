@@ -259,3 +259,64 @@ def test_default_translator_calls_llm_with_json_and_parses():
     assert result.input_tokens == 11 and result.output_tokens == 22
     assert captured["model"] == "gpt-4.1"  # LLMModel.value passed through to call_llm
     assert "Spanish" in captured["prompt"]
+
+
+# --- Blank-translation cue drop (regression) -------------------------------
+
+
+def test_blank_translation_falls_back_to_source_text():
+    # The LLM sometimes folds a short cue into its neighbour and returns a blank
+    # string for the swallowed cue. The COUNT is still correct, so the per-cue
+    # retry never fires. A blank cue must fall back to its source text, never be
+    # emitted empty (the SRT writer drops empty-content cues on compose).
+    cues = _make_cues(["alpha", "beta", "gamma"])
+
+    def blank_middle(texts, target_name, keyterms):
+        return [("" if t == "beta" else f"[es] {t}") for t in texts], 5, 5
+
+    tr = _new_translator(window_size=10, text_translator=blank_middle)
+
+    result = tr.translate_cues(cues, "es")
+
+    assert [c.content for c in result.cues] == ["[es] alpha", "beta", "[es] gamma"]
+
+
+def test_translate_file_does_not_drop_cue_on_blank_translation(tmp_path):
+    # Regression for the live v2.4.0 defect: French/German lost a cue (Spanish
+    # did not) because the LLM returned a blank for a swallowed cue and
+    # srt.compose(reindex=True) silently skipped the empty cue and renumbered.
+    src = tmp_path / "Movie.eng.srt"
+    src.write_text(srt_lib.compose(_make_cues(["one", "two", "three"])), encoding="utf-8")
+
+    def blank_middle(texts, target_name, keyterms):
+        return [("" if t == "two" else f"[es] {t}") for t in texts], 5, 5
+
+    tr = _new_translator(text_translator=blank_middle)
+    tr.translate_file(src, "es")
+
+    dest = tmp_path / "Movie.spa.srt"
+    out_cues = list(srt_lib.parse(dest.read_text(encoding="utf-8")))
+    src_cues = list(srt_lib.parse(src.read_text(encoding="utf-8")))
+
+    assert len(out_cues) == len(src_cues)  # no cue dropped
+    assert [c.index for c in out_cues] == [c.index for c in src_cues]  # indices verbatim
+    for o, s in zip(out_cues, src_cues):
+        assert o.start == s.start and o.end == s.end  # timing verbatim
+
+
+def test_translate_file_preserves_zero_duration_cue(tmp_path):
+    # srt.compose(reindex=True) also skips cues whose start >= end. Deepgram can
+    # emit ultra-short cues; a non-empty translation of one must survive, so the
+    # sidecar must be composed with reindex=False.
+    cues = _make_cues(["one", "two", "three"])
+    cues[1] = srt_lib.Subtitle(
+        index=cues[1].index, start=cues[1].start, end=cues[1].start, content="two"
+    )  # zero-duration middle cue
+    src = tmp_path / "Movie.eng.srt"
+    src.write_text(srt_lib.compose(cues, reindex=False), encoding="utf-8")
+
+    tr = _new_translator(text_translator=_recording_translator(lambda t: f"[es] {t}"))
+    tr.translate_file(src, "es")
+
+    out_cues = list(srt_lib.parse((tmp_path / "Movie.spa.srt").read_text(encoding="utf-8")))
+    assert len(out_cues) == 3
