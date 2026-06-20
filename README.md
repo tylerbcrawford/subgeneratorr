@@ -104,7 +104,7 @@ Provide them manually as a CSV, or click **Generate Keyterms** in the Web UI: an
 
 One transcription, many languages. After Nova-3 produces a subtitle, an LLM translates the cue text into the languages you pick and writes tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source frame for frame, so the translation never drifts, and the show's keyterms ride along as a glossary to keep names spelled consistently.
 
-Open the **Translate Subtitles** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00). Existing translations are skipped unless you choose to overwrite.
+Open the **Translate Subtitles** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00) — use a capable 3B+ model like `qwen2.5:7b` for reliable results. Existing translations are skipped unless you choose to overwrite.
 
 ### Find all missing subtitles
 

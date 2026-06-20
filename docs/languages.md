@@ -278,7 +278,7 @@ Arabic (ar), Bulgarian (bg), Catalan (ca), Chinese (zh), Czech (cs), Danish (da)
 ### Providers
 
 - **Anthropic Claude, OpenAI GPT, Google Gemini**: cloud providers, billed per token. The web UI shows a cost estimate before you run.
-- **Ollama (local)**: point `OLLAMA_HOST` at a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost. The model name is free-text (for example `llama3.1` or `qwen2.5`), and the cost estimate reports $0.00.
+- **Ollama (local)**: point `OLLAMA_HOST` at a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost. The model name is free-text, and the cost estimate reports $0.00. Use a capable instruction-following model (3B parameters or larger, for example `qwen2.5:7b` or `llama3.1:8b`) for reliable results. Translation is sent as a structured JSON request, and very small models (for example a 1.5B) often fail to honor it; any cues a model misses keep their original text rather than being dropped, so the subtitle stays complete and in sync but may be partly untranslated.
 
 ### Notes
 
