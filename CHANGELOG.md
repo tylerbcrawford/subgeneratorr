@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Gujarati (`gu`) and Thai (`th`) in the transcription language dropdown. Gujarati is a
+  Nova-3 language that was not previously offered; Thai was already supported by the
+  backend but was missing from the menu.
+- 16 languages are now available as LLM translation targets, bringing the total from 33
+  to 49: Belarusian, Bengali, Bosnian, Croatian, Gujarati, Hebrew, Kannada, Macedonian,
+  Marathi, Persian, Serbian, Slovenian, Tagalog, Tamil, Telugu, and Urdu.
+
+### Changed
+- Profanity filter is now a single on/off toggle. The previous Off/Tag/Remove options all
+  produced the same request because Deepgram's `profanity_filter` is boolean (it masks
+  with asterisks), so Tag and Remove behaved identically. Saved Tag/Remove preferences are
+  treated as on.
+- Numerals formatting now also applies in Multi-language mode, following Deepgram's
+  expansion of numerals to the Nova-3 multilingual languages (Subgeneratorr already sent
+  `numerals` regardless of language; the control's tooltip now notes this).
+- No change was required for Deepgram's May 2026 `nova-3-medical` batch model upgrade
+  (improved medical-term recognition, ~97.20% KRR): Subgeneratorr already uses
+  `model=nova-3-medical`, so existing medical jobs benefit automatically.
+
+### Fixed
+- Sixteen languages that transcribe correctly but were tagged with the neutral `.und.srt`
+  suffix now produce proper ISO 639-2/B sidecars (for example `.tam.srt`, `.ben.srt`,
+  `.srp.srt`) so Plex, Jellyfin, and Emby can identify them: Belarusian (`be`→`bel`),
+  Bengali (`bn`→`ben`), Bosnian (`bs`→`bos`), Croatian (`hr`→`hrv`), Gujarati (`gu`→`guj`),
+  Hebrew (`he`→`heb`), Kannada (`kn`→`kan`), Macedonian (`mk`→`mac`), Marathi (`mr`→`mar`),
+  Persian (`fa`→`per`), Serbian (`sr`→`srp`), Slovenian (`sl`→`slv`), Tagalog (`tl`→`tgl`),
+  Tamil (`ta`→`tam`), Telugu (`te`→`tel`), and Urdu (`ur`→`urd`). The same mapping gap had
+  blocked these as translation targets (HTTP 400 "Unsupported target language(s)").
+
 ## [2.4.0] - 2026-06-19
 
 ### Added

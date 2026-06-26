@@ -121,7 +121,7 @@ def transcribe_task(
         video_path: Path to video file
         model: Deepgram model to use (default: nova-3)
         language: Language code (default: en)
-        profanity_filter: Profanity filter mode - "off", "tag", or "remove" (default: off)
+        profanity_filter: Profanity filter - "off" or "on" (default: off)
         force_regenerate: Force overwrite existing subtitles
         enable_transcript: Generate transcript file in addition to subtitles
         keyterms: Optional list of keyterms for better recognition (Nova-3, all languages)
@@ -864,7 +864,7 @@ def make_batch(
         files: List of Path objects for videos to transcribe
         model: Deepgram model to use
         language: Language code
-        profanity_filter: Profanity filter mode - "off", "tag", or "remove"
+        profanity_filter: Profanity filter - "off" or "on"
         force_regenerate: Force overwrite existing subtitles
         enable_transcript: Generate transcript files in addition to subtitles
         keyterms: Optional list of keyterms for better recognition

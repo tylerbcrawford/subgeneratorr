@@ -118,6 +118,7 @@
                                     <option value="de">German</option>
                                     <option value="de-CH">German (Switzerland)</option>
                                     <option value="el">Greek</option>
+                                    <option value="gu">Gujarati</option>
                                     <option value="he">Hebrew</option>
                                     <option value="hi">Hindi</option>
                                     <option value="hu">Hungarian</option>
@@ -149,6 +150,7 @@
                                     <option value="tl">Tagalog</option>
                                     <option value="ta">Tamil</option>
                                     <option value="te">Telugu</option>
+                                    <option value="th">Thai</option>
                                     <option value="tr">Turkish</option>
                                     <option value="uk">Ukrainian</option>
                                     <option value="ur">Urdu</option>
@@ -269,25 +271,16 @@
 
                             <!-- Profanity Filter -->
                             <div class="form-group">
-                                <label style="text-align: center; font-size: var(--font-body); color: var(--text-secondary);">Profanity Filter</label>
-                                <div class="radio-group">
-                                    <label class="radio-label">
-                                        <input type="radio" name="profanityFilter" value="off" checked>
-                                        <span>Off</span>
-                                    </label>
-                                    <label class="radio-label">
-                                        <input type="radio" name="profanityFilter" value="tag">
-                                        <span>Tag</span>
-                                    </label>
-                                    <label class="radio-label">
-                                        <input type="radio" name="profanityFilter" value="remove">
-                                        <span>Remove</span>
+                                <div class="checkbox-group controls-aligned">
+                                    <label class="checkbox-label" title="Masks offensive words with asterisks (Deepgram's profanity_filter is on/off)">
+                                        <input type="checkbox" id="profanityFilter">
+                                        <span>Profanity filter (mask offensive words)</span>
                                     </label>
                                 </div>
                             </div>
 
                             <div class="checkbox-group controls-aligned" style="margin-top: var(--space-s);">
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" title="Converts spoken numbers to digits. Also works in Multi-language mode (Deepgram expanded numerals to the Nova-3 multilingual languages).">
                                     <input type="checkbox" id="numerals" checked>
                                     <span>Convert numbers to digits</span>
                                 </label>

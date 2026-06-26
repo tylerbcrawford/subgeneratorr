@@ -454,7 +454,7 @@ def api_submit():
     Request Body (JSON):
         model: Deepgram model to use (default: nova-3)
         language: Language code (default: en)
-        profanity_filter: Profanity filter mode - "off", "tag", or "remove" (default: off)
+        profanity_filter: Profanity filter - "off" or "on" (default: off)
         files: List of video file paths to process
         force_regenerate: Force overwrite existing subtitles (default: false)
         enable_transcript: Generate transcript in addition to subtitles (default: false)

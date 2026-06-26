@@ -21,7 +21,7 @@ class Config:
     # Force regeneration settings
     FORCE_REGENERATE = os.environ.get("FORCE_REGENERATE", "0") == "1"
 
-    # Profanity filter settings - "off", "tag", or "remove"
+    # Profanity filter settings - "off" or "on" (any non-"off" value enables masking)
     PROFANITY_FILTER = os.environ.get("PROFANITY_FILTER", "off")
 
     # Model configuration - Nova 3 only

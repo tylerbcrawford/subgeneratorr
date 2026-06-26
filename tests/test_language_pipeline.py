@@ -91,6 +91,46 @@ def test_resolve_subtitle_path_uses_neutral_fallback_for_unknown_detected_langua
     ) == Path("/media/show/episode.und.srt")
 
 
+def test_resolve_subtitle_path_tags_newly_added_languages():
+    # Languages that previously fell through to .und.srt now carry ISO 639-2/B tags so
+    # Plex/Jellyfin/Emby can identify them (regression guard for the Nova-3 language pass).
+    media = Path("/media/show/episode.mkv")
+    expected = {
+        "be": "bel",
+        "bn": "ben",
+        "bs": "bos",
+        "fa": "per",
+        "gu": "guj",
+        "he": "heb",
+        "hr": "hrv",
+        "kn": "kan",
+        "mk": "mac",
+        "mr": "mar",
+        "sl": "slv",
+        "sr": "srp",
+        "ta": "tam",
+        "te": "tel",
+        "tl": "tgl",
+        "ur": "urd",
+        "th": "tha",
+    }
+    for code, tag in expected.items():
+        assert resolve_subtitle_path(media, code) == Path(f"/media/show/episode.{tag}.srt")
+
+
+def test_language_maps_are_in_lockstep():
+    # The subtitle-tag map, stream-match map, and translation name map must agree
+    # key-for-key so a language can never be selectable-but-untaggable (the bug that
+    # tagged 15 dropdown languages as .und.srt and blocked them as translation targets).
+    from core.transcribe import _STREAM_LANG_MAP, _SUBTITLE_LANG_MAP
+    from core.translate import _LANGUAGE_NAMES
+
+    assert set(_SUBTITLE_LANG_MAP) == set(_STREAM_LANG_MAP)
+    assert set(_SUBTITLE_LANG_MAP) == set(_LANGUAGE_NAMES)
+    for code, tags in _STREAM_LANG_MAP.items():
+        assert code in tags, f"{code} stream-match set must include its own request code"
+
+
 def test_auto_detect_does_not_bias_audio_stream_selection():
     assert get_audio_selection_language("en", detect_language=True) is None
     assert get_audio_selection_language("multi") is None

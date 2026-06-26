@@ -786,9 +786,9 @@ function applyDefaultSettings() {
 
     setDefaultModel(serverDefaults.default_model);
 
-    // Reset profanity filter radio buttons to default (off)
-    const profanityFilterOff = document.querySelector('input[name="profanityFilter"][value="off"]');
-    if (profanityFilterOff) profanityFilterOff.checked = true;
+    // Reset profanity filter checkbox to default (off)
+    const profanityFilterReset = document.getElementById('profanityFilter');
+    if (profanityFilterReset) profanityFilterReset.checked = false;
 
     // Reset slider to default
     const uttSplit = document.getElementById('uttSplit');
@@ -829,7 +829,7 @@ function saveCurrentSettings() {
         numerals: document.getElementById('numerals')?.checked,
         measurements: document.getElementById('measurements')?.checked,
         fillerWords: document.getElementById('fillerWords')?.checked,
-        profanityFilter: document.querySelector('input[name="profanityFilter"]:checked')?.value,
+        profanityFilter: document.getElementById('profanityFilter')?.checked ? 'on' : 'off',
         saveRawJson: document.getElementById('saveRawJson')?.checked,
         diarization: document.getElementById('diarization')?.checked,
         utterances: document.getElementById('utterances')?.checked,
@@ -986,9 +986,12 @@ function loadSavedSettings() {
                 localStorage.setItem('autoClearFiles', settings.autoClearFiles);
             }
 
-            if (settings.profanityFilter) {
-                const radio = document.querySelector(`input[name="profanityFilter"][value="${settings.profanityFilter}"]`);
-                if (radio) radio.checked = true;
+            if (settings.profanityFilter !== undefined) {
+                // Back-compat: old saved "tag"/"remove" values both mean "on".
+                const profanityFilterEl = document.getElementById('profanityFilter');
+                if (profanityFilterEl) {
+                    profanityFilterEl.checked = !!settings.profanityFilter && settings.profanityFilter !== 'off';
+                }
             }
 
             // Restore folder path (will be returned and used for initial navigation)
@@ -1828,9 +1831,8 @@ async function submitBatch() {
     }
     // "multi" is sent as-is — Deepgram uses language="multi" for code-switching
 
-    // Get profanity filter value from radio buttons
-    const profanityFilterRadio = document.querySelector('input[name="profanityFilter"]:checked');
-    const profanityFilter = profanityFilterRadio ? profanityFilterRadio.value : 'off';
+    // Get profanity filter value from the on/off checkbox (string contract: "on"/"off")
+    const profanityFilter = document.getElementById('profanityFilter')?.checked ? 'on' : 'off';
 
     const enableTranscript = document.getElementById('enableTranscript').checked;
     const saveRawJson = document.getElementById('saveRawJson').checked;

@@ -42,7 +42,10 @@ DIARIZE_MODEL = "v2"
 # Regional variants are normalized to their base language for filename purposes.
 _SUBTITLE_LANG_MAP = {
     "ar": "ara",
+    "be": "bel",
     "bg": "bul",
+    "bn": "ben",
+    "bs": "bos",
     "ca": "cat",
     "cs": "cze",
     "da": "dan",
@@ -51,16 +54,23 @@ _SUBTITLE_LANG_MAP = {
     "en": "eng",
     "es": "spa",
     "et": "est",
+    "fa": "per",
     "fi": "fin",
     "fr": "fre",
+    "gu": "guj",
+    "he": "heb",
     "hi": "hin",
+    "hr": "hrv",
     "hu": "hun",
     "id": "ind",
     "it": "ita",
     "ja": "jpn",
+    "kn": "kan",
     "ko": "kor",
     "lt": "lit",
     "lv": "lav",
+    "mk": "mac",
+    "mr": "mar",
     "ms": "may",
     "nl": "dut",
     "no": "nor",
@@ -69,10 +79,16 @@ _SUBTITLE_LANG_MAP = {
     "ro": "rum",
     "ru": "rus",
     "sk": "slo",
+    "sl": "slv",
+    "sr": "srp",
     "sv": "swe",
+    "ta": "tam",
+    "te": "tel",
     "th": "tha",
+    "tl": "tgl",
     "tr": "tur",
     "uk": "ukr",
+    "ur": "urd",
     "vi": "vie",
     "zh": "chi",
 }
@@ -81,7 +97,10 @@ _SUBTITLE_LANG_MAP = {
 # Includes both /B and /T variants where they differ.
 _STREAM_LANG_MAP = {
     "ar": {"ar", "ara"},
+    "be": {"be", "bel"},
     "bg": {"bg", "bul"},
+    "bn": {"bn", "ben"},
+    "bs": {"bs", "bos"},
     "ca": {"ca", "cat"},
     "cs": {"cs", "cze", "ces"},
     "da": {"da", "dan"},
@@ -90,16 +109,23 @@ _STREAM_LANG_MAP = {
     "en": {"en", "eng"},
     "es": {"es", "spa"},
     "et": {"et", "est"},
+    "fa": {"fa", "per", "fas"},
     "fi": {"fi", "fin"},
     "fr": {"fr", "fre", "fra"},
+    "gu": {"gu", "guj"},
+    "he": {"he", "heb"},
     "hi": {"hi", "hin"},
+    "hr": {"hr", "hrv"},
     "hu": {"hu", "hun"},
     "id": {"id", "ind"},
     "it": {"it", "ita"},
     "ja": {"ja", "jpn"},
+    "kn": {"kn", "kan"},
     "ko": {"ko", "kor"},
     "lt": {"lt", "lit"},
     "lv": {"lv", "lav"},
+    "mk": {"mk", "mac", "mkd"},
+    "mr": {"mr", "mar"},
     "ms": {"ms", "may", "msa"},
     "nl": {"nl", "dut", "nld"},
     "no": {"no", "nor"},
@@ -108,10 +134,16 @@ _STREAM_LANG_MAP = {
     "ro": {"ro", "rum", "ron"},
     "ru": {"ru", "rus"},
     "sk": {"sk", "slo", "slk"},
+    "sl": {"sl", "slv"},
+    "sr": {"sr", "srp"},
     "sv": {"sv", "swe"},
+    "ta": {"ta", "tam"},
+    "te": {"te", "tel"},
     "th": {"th", "tha"},
+    "tl": {"tl", "tgl"},
     "tr": {"tr", "tur"},
     "uk": {"uk", "ukr"},
+    "ur": {"ur", "urd"},
     "vi": {"vi", "vie"},
     "zh": {"zh", "chi", "zho"},
 }
@@ -648,7 +680,8 @@ def transcribe_file(
         api_key: Deepgram API key
         model: Model to use (e.g., 'nova-3', 'nova-3-medical')
         language: Language code (e.g., 'en', 'multi')
-        profanity_filter: Profanity filter mode - "off", "tag", or "remove"
+        profanity_filter: Profanity filter - "off" or "on" (any non-"off"
+            value enables masking; Deepgram's profanity_filter is boolean)
         diarize: Enable speaker diarization
         keyterms: List of keyterms for better recognition
         numerals: Convert spoken numbers to digits
