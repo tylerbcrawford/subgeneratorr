@@ -130,8 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearSelectionBtnEl = document.getElementById('clearSelectionBtn');
     if (clearSelectionBtnEl) clearSelectionBtnEl.addEventListener('click', selectNone);
 
-    const advancedToggleBtnEl = document.getElementById('advancedToggle');
-    if (advancedToggleBtnEl) advancedToggleBtnEl.addEventListener('click', toggleAdvancedOptions);
+    initCollapsibleSections();
 
     const aiConfigToggleBtnEl = document.getElementById('aiConfigToggleBtn');
     if (aiConfigToggleBtnEl) aiConfigToggleBtnEl.addEventListener('click', toggleAiConfig);
@@ -1537,19 +1536,24 @@ function toggleTranscriptOptions() {
     options.style.display = checkbox.checked ? 'block' : 'none';
 }
 
-function toggleAdvancedOptions() {
-    const advancedOptions = document.getElementById('advancedOptions');
-    const toggleBtn = document.getElementById('advancedToggle');
-
-    if (advancedOptions.classList.contains('hidden')) {
-        advancedOptions.classList.remove('hidden');
-        toggleBtn.textContent = 'Transcription Settings ▲';
-        toggleBtn.setAttribute('aria-expanded', 'true');
-    } else {
-        advancedOptions.classList.add('hidden');
-        toggleBtn.textContent = 'Transcription Settings ▼';
-        toggleBtn.setAttribute('aria-expanded', 'false');
-    }
+// Remember each collapsible section's open/closed state across reloads (localStorage).
+// No saved value → the HTML default (collapsed) is kept, so first visit stays clean.
+function initCollapsibleSections() {
+    const PREFIX = 'subgen.collapse.';
+    let store;
+    try { store = window.localStorage; } catch (e) { store = null; }  // private mode / disabled
+    document.querySelectorAll('details.collapse-section[data-collapse-key]').forEach(function (d) {
+        const key = PREFIX + d.getAttribute('data-collapse-key');
+        if (store) {
+            const saved = store.getItem(key);
+            if (saved === 'open') d.open = true;
+            else if (saved === 'closed') d.open = false;
+        }
+        d.addEventListener('toggle', function () {
+            if (!store) return;
+            try { store.setItem(key, d.open ? 'open' : 'closed'); } catch (e) {}
+        });
+    });
 }
 
 function toggleGearPopover() {

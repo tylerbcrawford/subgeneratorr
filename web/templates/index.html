@@ -199,7 +199,7 @@
 
                     <!-- Keyterms Zone -->
                     <div class="config-section" style="text-align: center;">
-                        <details class="collapse-section">
+                        <details class="collapse-section" data-collapse-key="keyterms">
                             <summary class="section-label collapse-summary">Keyterms</summary>
                             <div class="form-group collapse-body">
                                 <textarea id="keyTerms" rows="2" placeholder="Character names, places, show-specific terms (comma-separated)" aria-label="Keyterms prompting"></textarea>
@@ -243,7 +243,7 @@
                     </div>
 
                     <!-- Transcription Settings (Collapsible) -->
-                    <details id="advancedOptions" class="config-section collapse-section">
+                    <details id="advancedOptions" class="config-section collapse-section" data-collapse-key="transcription">
                         <summary class="section-label collapse-summary">Transcription Settings</summary>
 
                         <!-- Quality -->
@@ -438,7 +438,7 @@
 
                     <!-- Translate Zone -->
                     <div class="config-section">
-                        <details class="collapse-section">
+                        <details class="collapse-section" data-collapse-key="translate">
                             <summary class="section-label collapse-summary">Translate</summary>
 
                             <div class="translate-zone">
@@ -501,7 +501,7 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=20"></script>
+    <script src="/static/app.js?v=21"></script>
     <script src="/static/translate.js?v=4"></script>
 </body>
 </html>
