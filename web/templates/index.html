@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=26">
+    <link rel="stylesheet" href="/static/styles.css?v=27">
 </head>
 <body>
     <div class="container">
@@ -199,56 +199,52 @@
 
                     <!-- Keyterms Zone -->
                     <div class="config-section" style="text-align: center;">
-                        <div class="form-group">
-                            <label for="keyTerms" class="section-label">Keyterms</label>
-                            <textarea id="keyTerms" rows="2" placeholder="Character names, places, show-specific terms (comma-separated)" aria-label="Keyterms prompting"></textarea>
-                            <small class="keyterms-help">Auto-loaded from CSV if available.</small>
+                        <details class="collapse-section">
+                            <summary class="section-label collapse-summary">Keyterms</summary>
+                            <div class="form-group collapse-body">
+                                <textarea id="keyTerms" rows="2" placeholder="Character names, places, show-specific terms (comma-separated)" aria-label="Keyterms prompting"></textarea>
+                                <small class="keyterms-help">Auto-loaded from CSV if available.</small>
 
-                            <div class="keyterms-generate-row">
-                                <button id="generateKeytermsBtn" class="btn-secondary" type="button">
-                                    Generate Keyterms
-                                </button>
-                                <span class="ai-model-label">
-                                    via <span id="aiModelDisplay">Claude Sonnet 4.6</span>
-                                    <button class="ai-config-toggle" id="aiConfigToggleBtn" aria-label="AI settings" aria-expanded="false" aria-controls="aiConfigPanel" type="button">⚙</button>
-                                </span>
-                            </div>
-                            <div id="providerKeyNotice" class="provider-key-notice" style="display:none;"></div>
-
-                            <!-- Inline AI Config (expandable) -->
-                            <div id="aiConfigPanel" class="ai-config-panel hidden">
-                                <div class="form-group">
-                                    <label for="llmProvider">
-                                        API Key Status:
-                                        <span id="apiKeyStatus" class="api-key-status" title="API key status"></span>
-                                    </label>
-                                    <select id="llmProvider" aria-label="LLM provider">
-                                        <option value="anthropic">Anthropic (Claude)</option>
-                                        <option value="openai">OpenAI (GPT)</option>
-                                        <option value="google">Google (Gemini)</option>
-                                    </select>
+                                <div class="keyterms-generate-row">
+                                    <button id="generateKeytermsBtn" class="btn-secondary" type="button">
+                                        Generate Keyterms
+                                    </button>
+                                    <span class="ai-model-label">
+                                        via <span id="aiModelDisplay">Claude Sonnet 4.6</span>
+                                        <button class="ai-config-toggle" id="aiConfigToggleBtn" aria-label="AI settings" aria-expanded="false" aria-controls="aiConfigPanel" type="button">⚙</button>
+                                    </span>
                                 </div>
-                                <div class="form-group">
-                                    <label for="llmModel">Model</label>
-                                    <select id="llmModel" aria-label="LLM model">
-                                        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
-                                        <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
-                                    </select>
-                                </div>
-                                <div id="keytermCostEstimate" class="ai-cost-estimate"></div>
-                            </div>
-                        </div>
+                                <div id="providerKeyNotice" class="provider-key-notice" style="display:none;"></div>
 
-                        <!-- Transcription Settings Toggle -->
-                        <div style="margin-top: var(--space-m); text-align: center;">
-                            <button id="advancedToggle" type="button" aria-expanded="false" aria-controls="advancedOptions">
-                                Transcription Settings ▼
-                            </button>
-                        </div>
+                                <!-- Inline AI Config (expandable) -->
+                                <div id="aiConfigPanel" class="ai-config-panel hidden">
+                                    <div class="form-group">
+                                        <label for="llmProvider">
+                                            API Key Status:
+                                            <span id="apiKeyStatus" class="api-key-status" title="API key status"></span>
+                                        </label>
+                                        <select id="llmProvider" aria-label="LLM provider">
+                                            <option value="anthropic">Anthropic (Claude)</option>
+                                            <option value="openai">OpenAI (GPT)</option>
+                                            <option value="google">Google (Gemini)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="llmModel">Model</label>
+                                        <select id="llmModel" aria-label="LLM model">
+                                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
+                                            <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
+                                        </select>
+                                    </div>
+                                    <div id="keytermCostEstimate" class="ai-cost-estimate"></div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
 
                     <!-- Transcription Settings (Collapsible) -->
-                    <div id="advancedOptions" class="config-section hidden" style="padding-top: var(--space-m);">
+                    <details id="advancedOptions" class="config-section collapse-section">
+                        <summary class="section-label collapse-summary">Transcription Settings</summary>
 
                         <!-- Quality -->
                         <div class="nova-settings">
@@ -438,13 +434,14 @@
                             </div>
                         </div>
 
-                    </div>
+                    </details>
 
-                    <!-- Translate Subtitles Zone -->
+                    <!-- Translate Zone -->
                     <div class="config-section">
-                        <label class="section-label">Translate Subtitles</label>
+                        <details class="collapse-section">
+                            <summary class="section-label collapse-summary">Translate</summary>
 
-                        <div class="translate-zone">
+                            <div class="translate-zone">
                             <div class="form-group">
                                 <select id="translateTargetSelect" class="action-bar-select" aria-label="Add a target language">
                                     <option value="" disabled selected>Add a language…</option>
@@ -493,6 +490,7 @@
                                 <!-- cost estimate intentionally removed from here -->
                             </div>
                         </div>
+                        </details>
                     </div>
                 </div>
             </section>

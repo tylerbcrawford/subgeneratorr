@@ -2724,6 +2724,37 @@ button:active,
 /* ============================================
    TRANSLATE SUBTITLES ZONE
    ============================================ */
+/* ============================================
+   COLLAPSIBLE SECTIONS — Keyterms / Transcription / Translate
+   Native <details>/<summary> disclosure, collapsed by default
+   ============================================ */
+.collapse-summary {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-xs);
+  cursor: pointer;
+  list-style: none;            /* remove default marker (Firefox) */
+  user-select: none;
+}
+.collapse-summary::-webkit-details-marker { display: none; }  /* Chrome/Safari */
+
+/* Custom chevron: points down when collapsed, flips up when open */
+.collapse-summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 150ms ease;
+  opacity: 0.55;
+}
+details[open] > .collapse-summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+.collapse-summary:hover::after { opacity: 1; }
+
 /* Center the section title over the centered card (title sits outside the zone) */
 .config-section:has(.translate-zone) {
   text-align: center;
