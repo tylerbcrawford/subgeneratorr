@@ -45,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 33 target languages for translation, written with the same media-server language tags used for transcription output.
 
 ### Changed
-- Refined the web UI "Translate Subtitles" panel: it now renders as a self-contained card, surfaces the cost estimate up front instead of hiding it behind the settings gear, and shows the provider status as the same colored dot used by the keyterms panel.
+- Refreshed the web UI: Keyterms, Transcription Settings, and Translate are now collapsible sections (click-to-open, collapsed by default) so the page stays focused on the primary transcribe flow — a big improvement on mobile. The Translate panel is also a self-contained card that surfaces its cost estimate up front (instead of hiding it behind the settings gear) and shows provider status as the same colored dot used elsewhere. ("Translate Subtitles" shortened to "Translate".)
 
 ## [2.3.0] - 2026-06-19
 
