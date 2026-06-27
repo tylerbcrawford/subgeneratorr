@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Subtitle generation for your Plex, Jellyfin, or Emby library — powered by Deepgram Nova-3, with keyterm prompting to get the proper nouns right.**
+**Generate and translate subtitles for your Plex, Jellyfin, or Emby library — Deepgram Nova-3 transcription with keyterm prompting, then LLM translation into 49 languages.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -13,7 +13,7 @@
   <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
 </p>
 
-Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. And once a subtitle exists, an LLM can translate it into 49 more languages — Claude, GPT, Gemini, or a free local Ollama model — preserving the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
 
 *I built it to close the hundreds of missing-subtitle gaps in my own library.*
 
@@ -104,7 +104,7 @@ Provide them manually as a CSV, or click **Generate Keyterms** in the Web UI: an
 
 One transcription, many languages. After Nova-3 produces a subtitle, an LLM translates the cue text into the languages you pick and writes tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source frame for frame, so the translation never drifts, and the show's keyterms ride along as a glossary to keep names spelled consistently.
 
-Open the **Translate Subtitles** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00) — use a capable 3B+ model like `qwen2.5:7b` for reliable results. Existing translations are skipped unless you choose to overwrite.
+Open the **Translate** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00) — use a capable 3B+ model like `qwen2.5:7b` for reliable results. Existing translations are skipped unless you choose to overwrite.
 
 ### Find all missing subtitles
 
@@ -173,6 +173,9 @@ Yes — it writes language-tagged SRT sidecars (`.eng.srt`, `.spa.srt`, etc.) th
 
 **Can I auto-generate keyterms?**
 Yes — one-click generation via Claude, GPT, or Gemini infers the title from the file path and returns 20–50 terms. Gemini's free tier makes it effectively free.
+
+**Can it translate subtitles?**
+Yes — after transcription, an LLM translates the cue text into any of 49 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
 
 **What languages are supported?**
 50+ with regional variants, plus auto-detect and a `multi` code-switching mode. See the [language guide](docs/languages.md).

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subgeneratorr"
-version = "2.3.0"
-description = "Automatically generate SRT subtitle files using Deepgram AI"
+version = "2.4.0"
+description = "Generate and translate SRT subtitles — Deepgram Nova-3 transcription plus LLM translation"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
