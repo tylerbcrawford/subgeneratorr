@@ -203,8 +203,9 @@ Subgeneratorr supports 50+ languages with regional variants, multilingual proces
 - Regional variants: `en-GB`, `pt-BR`, `es-419`, etc.
 - Multilingual: `LANGUAGE=multi` (10 languages simultaneously)
 - Auto-detect: `DETECT_LANGUAGE=1` (35 languages, batch mode only)
+- Translate finished subtitles into 49 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
 
-For the complete language matrix, regional variant guide, keyterm examples per language, and multilingual troubleshooting, see **[Language Support Guide](languages.md)**.
+For the complete language matrix, regional variant guide, keyterm examples per language, translation details, and multilingual troubleshooting, see **[Language Support Guide](languages.md)**.
 
 ---
 
@@ -284,9 +285,10 @@ See `examples/video-list-example.txt` for a complete example.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | - | Anthropic API key for AI keyterm generation (optional) |
-| `OPENAI_API_KEY` | - | OpenAI API key for AI keyterm generation (optional) |
-| `GEMINI_API_KEY` | - | Google Gemini API key for AI keyterm generation (optional, free tier available) |
+| `ANTHROPIC_API_KEY` | - | Anthropic API key for AI keyterm generation and subtitle translation (optional) |
+| `OPENAI_API_KEY` | - | OpenAI API key for AI keyterm generation and subtitle translation (optional) |
+| `GEMINI_API_KEY` | - | Google Gemini API key for AI keyterm generation and subtitle translation (optional, free tier available) |
+| `OLLAMA_HOST` | - | Local Ollama server (OpenAI-compatible endpoint) for free, offline subtitle translation, e.g. `http://localhost:11434` (optional) |
 
 ---
 
@@ -690,6 +692,53 @@ Generate keyterms using AI.
   "model_used": "claude-sonnet-4-6"
 }
 ```
+
+#### Subtitle Translation
+
+**POST `/api/translate`**
+
+Translate a video's existing `.srt` into one or more target languages, writing language-tagged sidecars (`.spa.srt`, `.fre.srt`, …). Timestamps are copied from the source verbatim — only the text is translated — and the show's keyterms ride along as a glossary.
+
+**Request:**
+```json
+{
+  "video_path": "/media/tv/Show/episode.mkv",
+  "targets": ["es", "fr"],
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
+  "overwrite": false,
+  "ollama_host": "http://localhost:11434",
+  "source_srt": "/media/tv/Show/episode.eng.srt",
+  "estimate_only": false
+}
+```
+
+- `video_path` (required), `targets` (required) — list of language codes from the [49 translation targets](languages.md#llm-powered-translation).
+- `provider` — `anthropic` · `openai` · `google` · `ollama` (default `anthropic`).
+- `model` — model id for cloud providers, or a free-text model name for Ollama.
+- `ollama_host` — Ollama endpoint; falls back to the `OLLAMA_HOST` env var.
+- `source_srt` — explicit source subtitle; defaults to the auto-located sidecar.
+- `overwrite` — re-translate even if the target sidecar already exists (default `false`).
+- `estimate_only` — return a cost estimate instead of queueing the job.
+
+**Response:**
+```json
+{
+  "task_id": "abc123",
+  "status": "pending"
+}
+```
+
+With `"estimate_only": true`, returns a cost estimate instead:
+```json
+{
+  "estimated_cost": 0.0234
+}
+```
+
+**GET `/api/translate/status/<task_id>`**
+
+Poll a translation task (mirrors the keyterm-generate status endpoint). Returns `state` — `PENDING`, `PROGRESS`, `SUCCESS`, or `FAILURE` — with progress detail while running and, on completion, how many sidecars were written and skipped.
 
 ---
 

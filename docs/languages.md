@@ -264,16 +264,18 @@ Translation is a post-processing step that runs on a subtitle Subgeneratorr alre
 
 ### How It Works
 
-1. Pick one or more target languages and a provider in the web UI's **Translate Subtitles** panel.
+1. Pick one or more target languages and a provider in the web UI's **Translate** panel.
 2. The generated SRT is parsed and its cues are translated in context-batched windows (the surrounding dialogue and the show's keyterms are sent along as a glossary), using structured JSON so each cue maps 1:1.
 3. Timestamps are copied from the source verbatim, so the translated subtitle stays frame-accurate. Only the text changes.
 4. Each target is written as a language-tagged sidecar (for example `.spa.srt`, `.fre.srt`) using the same tags as transcription output, so Plex, Jellyfin, and Emby auto-detect them.
 
 One transcription can produce many language outputs. Existing sidecars are skipped unless you choose to overwrite.
 
-### Supported Target Languages (33)
+### Supported Target Languages (49)
 
-Arabic (ar), Bulgarian (bg), Catalan (ca), Chinese (zh), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), German (de), Greek (el), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Korean (ko), Latvian (lv), Lithuanian (lt), Malay (ms), Norwegian (no), Polish (pl), Portuguese (pt), Romanian (ro), Russian (ru), Slovak (sk), Spanish (es), Swedish (sv), Thai (th), Turkish (tr), Ukrainian (uk), Vietnamese (vi).
+Arabic (ar), Belarusian (be), Bengali (bn), Bosnian (bs), Bulgarian (bg), Catalan (ca), Chinese (zh), Croatian (hr), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), German (de), Greek (el), Gujarati (gu), Hebrew (he), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Kannada (kn), Korean (ko), Latvian (lv), Lithuanian (lt), Macedonian (mk), Malay (ms), Marathi (mr), Norwegian (no), Persian (fa), Polish (pl), Portuguese (pt), Romanian (ro), Russian (ru), Serbian (sr), Slovak (sk), Slovenian (sl), Spanish (es), Swedish (sv), Tagalog (tl), Tamil (ta), Telugu (te), Thai (th), Turkish (tr), Ukrainian (uk), Urdu (ur), Vietnamese (vi).
+
+The source language is whatever Nova-3 transcribed; English is the implicit source and is not offered as a target.
 
 ### Providers
 
@@ -542,4 +544,4 @@ Deepgram continues expanding Nova-3 language support with focus on:
 
 ## Summary
 
-Nova-3's 40+ language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection makes Subgeneratorr a flexible subtitle solution for international media libraries.
+Nova-3's 40+ language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection — plus LLM translation of finished subtitles into 49 more languages — makes Subgeneratorr a flexible subtitle solution for international media libraries.
