@@ -7,15 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-26
+
 ### Added
+- LLM-powered subtitle translation. Translate a generated SRT into one or more target languages and write language-tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source verbatim so translations stay in sync, and the show's keyterms are passed to the model as a glossary. Available in the web UI Translate panel via `POST /api/translate`.
+- 49 target languages for translation, written with the same media-server language tags used for transcription output.
+- Ollama as a fourth LLM provider for keyterm generation and translation. Set `OLLAMA_HOST` to a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost; the cost estimate reports $0.00. The cloud providers (Anthropic, OpenAI, Google) are unchanged.
 - Gujarati (`gu`) and Thai (`th`) in the transcription language dropdown. Gujarati is a
   Nova-3 language that was not previously offered; Thai was already supported by the
   backend but was missing from the menu.
-- 16 languages are now available as LLM translation targets, bringing the total from 33
-  to 49: Belarusian, Bengali, Bosnian, Croatian, Gujarati, Hebrew, Kannada, Macedonian,
-  Marathi, Persian, Serbian, Slovenian, Tagalog, Tamil, Telugu, and Urdu.
 
 ### Changed
+- Refreshed the web UI: Keyterms, Transcription Settings, and Translate are now collapsible sections (click-to-open, collapsed by default) so the page stays focused on the primary transcribe flow — a big improvement on mobile. Each section's open/closed state and the light/dark theme are remembered across reloads. The Translate panel is also a self-contained card that surfaces its cost estimate up front (instead of hiding it behind the settings gear) and shows provider status as the same colored dot used elsewhere. ("Translate Subtitles" shortened to "Translate".)
 - Profanity filter is now a single on/off toggle. The previous Off/Tag/Remove options all
   produced the same request because Deepgram's `profanity_filter` is boolean (it masks
   with asterisks), so Tag and Remove behaved identically. Saved Tag/Remove preferences are
@@ -36,16 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Persian (`fa`→`per`), Serbian (`sr`→`srp`), Slovenian (`sl`→`slv`), Tagalog (`tl`→`tgl`),
   Tamil (`ta`→`tam`), Telugu (`te`→`tel`), and Urdu (`ur`→`urd`). The same mapping gap had
   blocked these as translation targets (HTTP 400 "Unsupported target language(s)").
-
-## [2.4.0] - 2026-06-19
-
-### Added
-- LLM-powered subtitle translation. Translate a generated SRT into one or more target languages and write language-tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source verbatim so translations stay in sync, and the show's keyterms are passed to the model as a glossary. Available in the web UI "Translate Subtitles" panel via `POST /api/translate`.
-- Ollama as a fourth LLM provider for keyterm generation and translation. Set `OLLAMA_HOST` to a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost; the cost estimate reports $0.00. The cloud providers (Anthropic, OpenAI, Google) are unchanged.
-- 33 target languages for translation, written with the same media-server language tags used for transcription output.
-
-### Changed
-- Refreshed the web UI: Keyterms, Transcription Settings, and Translate are now collapsible sections (click-to-open, collapsed by default) so the page stays focused on the primary transcribe flow — a big improvement on mobile. The Translate panel is also a self-contained card that surfaces its cost estimate up front (instead of hiding it behind the settings gear) and shows provider status as the same colored dot used elsewhere. ("Translate Subtitles" shortened to "Translate".)
+- Translation no longer drops cues when the model returns blank or empty output for a line;
+  the source text is kept so the translated SRT always has the same cue count and timing as
+  its source.
+- The Celery worker now has its own Docker healthcheck (`celery inspect ping`) so an
+  unhealthy worker surfaces in `docker compose ps` and orchestration instead of failing
+  silently.
 
 ## [2.3.0] - 2026-06-19
 
