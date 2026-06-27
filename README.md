@@ -13,7 +13,7 @@
   <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
 </p>
 
-Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. And once a subtitle exists, an LLM can translate it into 49 more languages — Claude, GPT, Gemini, or a free local Ollama model — preserving the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. And once a subtitle exists, an LLM can translate it into 49 more languages (Claude, GPT, Gemini, or a free local Ollama model), keeping the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
 
 *I built it to close the hundreds of missing-subtitle gaps in my own library.*
 
