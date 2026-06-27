@@ -2724,21 +2724,18 @@ button:active,
 /* ============================================
    TRANSLATE SUBTITLES ZONE
    ============================================ */
+/* Center the section title over the centered card (title sits outside the zone) */
+.config-section:has(.translate-zone) {
+  text-align: center;
+}
+
 .translate-zone {
   max-width: 380px;
-  margin: var(--space-l) auto 0;
+  margin: var(--space-s) auto 0;
   padding: var(--space-m);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  text-align: center;
-}
-
-.translate-field-label {
-  display: block;
-  font-size: var(--font-caption);
-  color: var(--text-tertiary);
-  margin-bottom: var(--space-xs);
   text-align: center;
 }
 
@@ -2750,11 +2747,10 @@ button:active,
   gap: var(--space-xs);
 }
 
-/* CSS-only empty state — :empty matches when renderChips() clears innerHTML */
-.translate-chips:empty::before {
-  content: "No languages selected yet";
-  font-size: var(--font-small);
-  color: var(--text-tertiary);
+/* No empty-state text (the dropdown placeholder is the affordance) — just
+   collapse the chip row's margin when nothing is selected so there's no gap */
+.translate-chips:empty {
+  margin: 0;
 }
 
 /* Translate Subtitles: selected target-language chips */
