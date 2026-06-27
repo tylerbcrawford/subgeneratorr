@@ -2072,7 +2072,8 @@ input[readonly] {
   font-size: 11px;
 }
 
-.keyterms-generate-row {
+.keyterms-generate-row,
+.ai-action-row {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2718,6 +2719,42 @@ button:active,
   #advancedToggle {
     min-height: 44px;
   }
+}
+
+/* ============================================
+   TRANSLATE SUBTITLES ZONE
+   ============================================ */
+.translate-zone {
+  max-width: 380px;
+  margin: var(--space-l) auto 0;
+  padding: var(--space-m);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.translate-field-label {
+  display: block;
+  font-size: var(--font-caption);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-xs);
+  text-align: center;
+}
+
+/* Centered overwrite checkbox (replaces the inline display:flex patch) */
+.translate-overwrite-label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* CSS-only empty state — :empty matches when renderChips() clears innerHTML */
+.translate-chips:empty::before {
+  content: "No languages selected yet";
+  font-size: var(--font-small);
+  color: var(--text-tertiary);
 }
 
 /* Translate Subtitles: selected target-language chips */

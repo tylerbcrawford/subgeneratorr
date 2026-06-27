@@ -441,27 +441,28 @@
                     </div>
 
                     <!-- Translate Subtitles Zone -->
-                    <div class="config-section" style="text-align: center;">
-                        <div class="form-group">
-                            <label class="section-label">Translate Subtitles</label>
+                    <div class="config-section">
+                        <label class="section-label">Translate Subtitles</label>
 
-                            <div class="form-group" style="margin-top: var(--space-s);">
-                                <label for="translateTargetSelect" style="display:block; font-size: var(--font-caption); color: var(--text-tertiary); margin-bottom: var(--space-xs);">Target languages</label>
+                        <div class="translate-zone">
+                            <div class="form-group">
+                                <label for="translateTargetSelect" class="translate-field-label">Target languages</label>
                                 <select id="translateTargetSelect" class="action-bar-select" aria-label="Add a target language">
                                     <option value="" disabled selected>Add a language…</option>
                                 </select>
                             </div>
                             <div id="translateChips" class="translate-chips" aria-live="polite"></div>
 
-                            <div class="keyterms-generate-row">
-                                <button id="translateBtn" class="btn-secondary" type="button">
-                                    Translate
-                                </button>
+                            <div class="ai-action-row">
+                                <button id="translateBtn" class="btn-secondary" type="button">Translate</button>
                                 <span class="ai-model-label">
                                     via <span id="translateModelDisplay">Claude Sonnet 4.6</span>
                                     <button class="ai-config-toggle" id="translateConfigToggleBtn" aria-label="Translation AI settings" aria-expanded="false" aria-controls="translateConfigPanel" type="button">⚙</button>
                                 </span>
                             </div>
+
+                            <!-- cost moved OUT of the gear panel: always visible for a paid action -->
+                            <div id="translateCostEstimate" class="ai-cost-estimate"></div>
                             <div id="translateKeyNotice" class="provider-key-notice" style="display:none;"></div>
 
                             <!-- Inline Translation AI Config (expandable) -->
@@ -487,10 +488,10 @@
                                     <label for="translateOllamaHost">Ollama Host</label>
                                     <input type="text" id="translateOllamaHost" placeholder="http://localhost:11434" aria-label="Ollama host" />
                                 </div>
-                                <label class="checkbox-label" style="justify-content:center; display:flex; gap: var(--space-xs); align-items:center;">
+                                <label class="checkbox-label translate-overwrite-label">
                                     <input type="checkbox" id="translateOverwrite" /> Overwrite existing translations
                                 </label>
-                                <div id="translateCostEstimate" class="ai-cost-estimate"></div>
+                                <!-- cost estimate intentionally removed from here -->
                             </div>
                         </div>
                     </div>
@@ -504,6 +505,6 @@
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
     <script src="/static/app.js?v=20"></script>
-    <script src="/static/translate.js?v=3"></script>
+    <script src="/static/translate.js?v=4"></script>
 </body>
 </html>

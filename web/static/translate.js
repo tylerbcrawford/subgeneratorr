@@ -193,11 +193,13 @@
         const badge = $('translateKeyStatus');
         const notice = $('translateKeyNotice');
         const ok = !!providerStatus[provider];
+        const label = provider.charAt(0).toUpperCase() + provider.slice(1);
 
         if (badge) {
-            badge.textContent = ok ? '✓' : '✗';
-            badge.title = ok ? 'Configured' : 'Not configured';
-            badge.style.color = ok ? 'var(--color-green)' : 'var(--color-red)';
+            badge.className = 'api-key-status ' + (ok ? 'configured' : 'missing');
+            const msg = ok ? label + ' configured' : label + ' not configured';
+            badge.setAttribute('data-status', msg);
+            badge.setAttribute('aria-label', msg);
         }
         if (notice) {
             if (ok) {
@@ -220,7 +222,7 @@
         const videoPath = currentVideo();
         const targets = getSelectedTargets();
         if (!videoPath || targets.length === 0) {
-            el.textContent = 'Est. cost: $0.00';
+            el.textContent = '';
             el.style.color = 'var(--text-tertiary)';
             return;
         }

@@ -44,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ollama as a fourth LLM provider for keyterm generation and translation. Set `OLLAMA_HOST` to a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost; the cost estimate reports $0.00. The cloud providers (Anthropic, OpenAI, Google) are unchanged.
 - 33 target languages for translation, written with the same media-server language tags used for transcription output.
 
+### Changed
+- Refined the web UI "Translate Subtitles" panel: it now renders as a self-contained card, surfaces the cost estimate up front instead of hiding it behind the settings gear, and shows the provider status as the same colored dot used by the keyterms panel.
+
 ## [2.3.0] - 2026-06-19
 
 ### Added
