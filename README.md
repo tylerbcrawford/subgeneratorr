@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Generate and translate subtitles for your Plex, Jellyfin, or Emby library — Deepgram Nova-3 transcription with keyterm prompting, then LLM translation into 49 languages.**
+**Multi-LLM subtitle generation for Plex, Jellyfin, and Emby: Deepgram Nova-3 transcription paired with your choice of Claude, GPT, Gemini, or a local Ollama model for keyterm prompting and translation into 49 languages.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -13,9 +13,11 @@
   <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
 </p>
 
-Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. And once a subtitle exists, an LLM can translate it into 49 more languages (Claude, GPT, Gemini, or a free local Ollama model), keeping the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. Once a subtitle exists, an LLM can translate it into 49 more languages (Claude, GPT, Gemini, or a free local Ollama model), keeping the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
 
 *I built it to close the hundreds of missing-subtitle gaps in my own library.*
+
+**Why multi-LLM?** Transcription is fixed on Deepgram Nova-3, but every AI step after it (keyterm generation and translation) is provider-agnostic. Claude, GPT, and Gemini each do better on different content and price points, Gemini's free tier makes keyterms effectively zero-cost, and a local Ollama model keeps translation free and fully offline when privacy or budget matters. Point each step at whichever endpoint fits the job; one adapter interface treats them all the same, so there is no lock-in to a single vendor.
 
 > Free and open-source. Not affiliated with Deepgram, Anthropic, OpenAI, or any other provider.
 
@@ -23,12 +25,12 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 
 ## Features
 
-- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 50+ languages (General + Medical variants)
+- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 40+ transcription languages (50+ counting regional variants; General + Medical models)
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
-- 🌐 **Subtitle translation** — turn one transcription into many languages: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
+- 🌐 **Subtitle translation into 49 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
 - 🗣️ **Speaker diarization** — labeled, character-named transcripts
-- 🌍 **50+ languages** — auto-detect, multilingual code-switching, and regional variants
+- 🌍 **Multilingual transcription** — auto-detect, `multi` code-switching, and regional variants across 50+ Nova-3 language codes
 - 🛡️ **Content control** — redaction (PCI/PII), profanity filtering, find & replace, dictation
 - 🧠 **Audio intelligence** — sentiment, summarization, topic/intent/entity detection (English)
 - 🐳 **Docker-based** — Web UI and CLI, batch processing with parallel workers and real-time progress
@@ -156,7 +158,7 @@ New Deepgram accounts get **$200 in free credits** — roughly 35,000 minutes (~
 ## Documentation
 
 - **[Technical docs](docs/technical.md)** — architecture, API endpoints, advanced config, speaker maps, AI model benchmarks
-- **[Language support](docs/languages.md)** — full 50+ language matrix and multilingual setup
+- **[Language support](docs/languages.md)** — the full Nova-3 transcription matrix (50+ with variants) and the 49 translation targets
 - **[Roadmap](docs/roadmap.md)** — planned features
 
 <details>
@@ -178,7 +180,7 @@ Yes — one-click generation via Claude, GPT, or Gemini infers the title from th
 Yes — after transcription, an LLM translates the cue text into any of 49 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
 
 **What languages are supported?**
-50+ with regional variants, plus auto-detect and a `multi` code-switching mode. See the [language guide](docs/languages.md).
+Nova-3 transcribes 40+ languages (50+ counting regional variants), with auto-detect and a `multi` code-switching mode. Translation then covers 49 target languages. See the [language guide](docs/languages.md).
 
 </details>
 
