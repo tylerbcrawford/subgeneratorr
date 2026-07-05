@@ -162,6 +162,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const enableSearchEl = document.getElementById('enableSearch');
     if (enableSearchEl) enableSearchEl.addEventListener('change', toggleSearchTerms);
 
+    // Engine selector (v3.0.0 local engine): gate options by capability
+    document.querySelectorAll('input[name="engine"]').forEach(radio => {
+        radio.addEventListener('change', applyEngineGating);
+    });
+    loadEngineCapabilities().then(applyEngineGating);
+
     const uttSplitEl = document.getElementById('uttSplit');
     if (uttSplitEl) uttSplitEl.addEventListener('input', function() {
         const display = document.getElementById('uttSplitValue');
@@ -1289,6 +1295,62 @@ function toggleSearchTerms() {
 }
 
 /* ============================================
+   ENGINE SELECTION & CAPABILITY GATING (v3.0.0)
+   ============================================ */
+
+// Per-engine capability sets from /api/capabilities — the backend is the
+// single source of truth; controls carry data-capability / data-engine tags.
+let engineCapabilities = null;
+
+function getSelectedEngine() {
+    const radio = document.querySelector('input[name="engine"]:checked');
+    return radio ? radio.value : 'deepgram';
+}
+
+async function loadEngineCapabilities() {
+    try {
+        const resp = await fetch('/api/capabilities');
+        if (resp.ok) engineCapabilities = await resp.json();
+    } catch (err) {
+        console.error('Failed to load engine capabilities:', err);
+    }
+}
+
+function applyEngineGating() {
+    const engine = getSelectedEngine();
+    const caps = engineCapabilities?.engines?.[engine]?.capabilities || null;
+
+    // Capability-tagged controls: visible only when the active engine
+    // declares the capability. If the capabilities fetch failed, fall back
+    // to showing everything on deepgram and only the safe set on whisper.
+    document.querySelectorAll('[data-capability]').forEach(el => {
+        const supported = caps ? caps.includes(el.dataset.capability) : engine === 'deepgram';
+        el.classList.toggle('hidden', !supported);
+    });
+
+    // Engine-exclusive controls (model pickers, raw JSON dump)
+    document.querySelectorAll('[data-engine]').forEach(el => {
+        el.classList.toggle('hidden', el.dataset.engine !== engine);
+    });
+
+    const isLocal = engine === 'whisper';
+    document.getElementById('engineLimitationsNote')?.classList.toggle('hidden', !isLocal);
+    document.getElementById('whisperModelGroup')?.classList.toggle('hidden', !isLocal);
+    document.getElementById('keytermsEngineNote')?.classList.toggle('hidden', !isLocal);
+
+    // Re-apply checkbox-driven sub-option visibility for controls the gating
+    // just re-showed (their state may have gone stale while hidden).
+    if (!isLocal) {
+        toggleRedactOptions();
+        toggleUttSplit();
+        toggleSearchTerms();
+    }
+
+    // Cost display depends on the engine (local = $0)
+    if (typeof calculateEstimates === 'function') calculateEstimates();
+}
+
+/* ============================================
    AUDIO INTELLIGENCE — LANGUAGE GATING & JSON LOCK
    ============================================ */
 
@@ -1686,7 +1748,8 @@ function calculateEstimatesAuto() {
 
     // For large selections, show instant rough estimate immediately
     if (selectedFiles.length > CHUNK_SIZE) {
-        const roughCost = (selectedFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
+        const rate = getSelectedEngine() === 'whisper' ? 0 : DEEPGRAM_RATE;
+        const roughCost = (selectedFiles.length * AVG_DURATION / 60) * rate;
         const roughDuration = selectedFiles.length * AVG_DURATION;
         const fileText = selectedFiles.length === 1 ? 'file' : 'files';
         const costStr = roughCost < 0.01 ? roughCost.toFixed(4) : roughCost.toFixed(2);
@@ -1703,7 +1766,7 @@ async function _calculateEstimatesDebounced() {
         const response = await fetch('/api/estimate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: selectedFiles })
+            body: JSON.stringify({ files: selectedFiles, engine: getSelectedEngine() })
         });
 
         if (!response.ok) {
@@ -1908,10 +1971,14 @@ async function submitBatch() {
     // Tier 3: Request tag
     const tag = document.getElementById('requestTag')?.value.trim() || '';
 
+    // ASR engine selection (v3.0.0)
+    const engine = getSelectedEngine();
+
     const requestBody = {
         files: selectedFilesList,
         model: model,
         language: language,
+        engine: engine,
         profanity_filter: profanityFilter,
         force_regenerate: forceRegenerate,
         save_raw_json: saveRawJson,
@@ -1927,6 +1994,9 @@ async function submitBatch() {
     };
 
     // Conditional fields (only send when active)
+    if (engine === 'whisper') {
+        requestBody.whisper_model = document.getElementById('whisperModel')?.value || 'small';
+    }
     if (redactTypes.length > 0) requestBody.redact = redactTypes;
     if (replaceTerms.length > 0) requestBody.replace = replaceTerms;
     if (uttSplit !== null) requestBody.utt_split = uttSplit;

@@ -204,6 +204,7 @@
                             <div class="form-group collapse-body">
                                 <textarea id="keyTerms" rows="2" placeholder="Character names, places, show-specific terms (comma-separated)" aria-label="Keyterms prompting"></textarea>
                                 <small class="keyterms-help">Auto-loaded from CSV if available.</small>
+                                <small id="keytermsEngineNote" class="keyterms-help hidden">Local engine: best-effort hotword biasing (weaker than Nova-3 keyterm prompting; long lists are capped).</small>
 
                                 <div class="keyterms-generate-row">
                                     <button id="generateKeytermsBtn" class="btn-secondary" type="button">
@@ -246,12 +247,46 @@
                     <details id="advancedOptions" class="config-section collapse-section" data-collapse-key="transcription">
                         <summary class="section-label collapse-summary">Transcription Settings</summary>
 
+                        <!-- Engine (v3.0.0 local engine) -->
+                        <div class="nova-settings">
+                            <h3 class="section-label-quiet">Engine</h3>
+                            <div class="form-group">
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="engine" value="deepgram" checked>
+                                        <span>Cloud (Deepgram)</span>
+                                    </label>
+                                    <label class="radio-label" title="Runs on this server via faster-whisper — free, private, slower. Requires the -local image.">
+                                        <input type="radio" name="engine" value="whisper">
+                                        <span>Local (Whisper)</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="engineLimitationsNote" class="status info hidden">
+                                <span style="font-size: var(--font-caption);">
+                                    Local mode: no audio intelligence, redaction, or speaker diarization.
+                                    Keyterms are best-effort. Processing runs near real-time on CPU.
+                                </span>
+                            </div>
+                            <!-- Whisper model picker (local engine only) -->
+                            <div class="form-group hidden" id="whisperModelGroup" style="max-width: 340px; margin: 0 auto;">
+                                <label for="whisperModel" style="text-align: center; font-size: var(--font-caption); color: var(--text-tertiary);">Local model</label>
+                                <select id="whisperModel" aria-label="Whisper model size">
+                                    <option value="tiny">tiny — smallest, fastest, lowest quality</option>
+                                    <option value="base">base — fast, basic quality</option>
+                                    <option value="small" selected>small — recommended (baked into image)</option>
+                                    <option value="medium">medium — needs ~2 GB RAM, slow on low-power CPUs</option>
+                                    <option value="large-v3">large-v3 — needs ~4 GB RAM, very slow on CPU</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <!-- Quality -->
                         <div class="nova-settings">
                             <h3 class="section-label-quiet">Quality</h3>
 
-                            <!-- Model Selector -->
-                            <div class="form-group">
+                            <!-- Model Selector (Deepgram only) -->
+                            <div class="form-group" data-engine="deepgram">
                                 <label style="text-align: center; font-size: var(--font-body); color: var(--text-secondary);">Model</label>
                                 <div class="radio-group">
                                     <label class="radio-label">
@@ -266,7 +301,7 @@
                             </div>
 
                             <!-- Profanity Filter -->
-                            <div class="form-group">
+                            <div class="form-group" data-capability="profanity_filter">
                                 <div class="checkbox-group controls-aligned">
                                     <label class="checkbox-label" title="Masks offensive words with asterisks (Deepgram's profanity_filter is on/off)">
                                         <input type="checkbox" id="profanityFilter">
@@ -276,30 +311,30 @@
                             </div>
 
                             <div class="checkbox-group controls-aligned" style="margin-top: var(--space-s);">
-                                <label class="checkbox-label" title="Converts spoken numbers to digits. Also works in Multi-language mode (Deepgram expanded numerals to the Nova-3 multilingual languages).">
+                                <label class="checkbox-label" data-capability="smart_format" title="Converts spoken numbers to digits. Also works in Multi-language mode (Deepgram expanded numerals to the Nova-3 multilingual languages).">
                                     <input type="checkbox" id="numerals" checked>
                                     <span>Convert numbers to digits</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="smart_format">
                                     <input type="checkbox" id="measurements" checked>
                                     <span>Convert measurements to symbols</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="smart_format">
                                     <input type="checkbox" id="fillerWords">
                                     <span>Remove filler words</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="smart_format">
                                     <input type="checkbox" id="dictation">
                                     <span>Dictation mode</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="redaction">
                                     <input type="checkbox" id="redact">
                                     <span>Redact sensitive info</span>
                                 </label>
                             </div>
 
                             <!-- Redaction sub-options -->
-                            <div id="redactOptions" class="sub-options hidden">
+                            <div id="redactOptions" class="sub-options hidden" data-capability="redaction">
                                 <div class="checkbox-group controls-aligned">
                                     <label class="checkbox-label">
                                         <input type="checkbox" id="redactPci">
@@ -345,22 +380,22 @@
                                     <input type="checkbox" id="enableTranscript">
                                     <span>Generate Transcript</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-engine="deepgram">
                                     <input type="checkbox" id="saveRawJson">
                                     <span>Save Raw JSON</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="diarization">
                                     <input type="checkbox" id="diarization" checked>
                                     <span>Speaker diarization</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="utterances">
                                     <input type="checkbox" id="utterances" checked>
                                     <span>Utterance segmentation</span>
                                 </label>
                             </div>
 
                             <!-- Utterance split threshold slider -->
-                            <div id="uttSplitOptions" class="sub-options">
+                            <div id="uttSplitOptions" class="sub-options" data-capability="utterances">
                                 <label class="slider-label">
                                     Pause threshold: <span id="uttSplitValue">0.8s</span>
                                 </label>
@@ -369,11 +404,11 @@
                             </div>
 
                             <div class="checkbox-group controls-aligned">
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="smart_format">
                                     <input type="checkbox" id="paragraphs" checked>
                                     <span>Paragraph formatting</span>
                                 </label>
-                                <label class="checkbox-label">
+                                <label class="checkbox-label" data-capability="multichannel">
                                     <input type="checkbox" id="multichannel">
                                     <span>Multichannel (stereo)</span>
                                 </label>
@@ -389,7 +424,7 @@
                         </div>
 
                         <!-- Audio Intelligence (English only) -->
-                        <div class="nova-settings" id="intelligenceSection">
+                        <div class="nova-settings" id="intelligenceSection" data-capability="audio_intelligence">
                             <h3 class="section-label-quiet">Audio Intelligence <span class="badge-english">English only</span></h3>
                             <p class="help-text" style="text-align: center; margin-bottom: var(--space-s); font-size: var(--font-caption); color: var(--text-tertiary);">
                                 Analysis saved to JSON. Does not affect subtitles.
@@ -501,7 +536,7 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=21"></script>
+    <script src="/static/app.js?v=22"></script>
     <script src="/static/translate.js?v=4"></script>
 </body>
 </html>
