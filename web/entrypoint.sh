@@ -27,7 +27,7 @@ if [ "$(id -u)" = "0" ]; then
     # -local image: the whisper model cache must be writable so larger models
     # can download at runtime (the baked default stays root-owned, read-only).
     if [ -d /models ]; then
-        chown appuser:"$target_group" /models 2>/dev/null || true
+        chown -R appuser:"$target_group" /models 2>/dev/null || true
     fi
     exec gosu appuser "$@"
 fi
