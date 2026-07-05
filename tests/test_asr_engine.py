@@ -2,9 +2,12 @@
 
 import sys
 import types
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.asr_engine import (
     CAP_AUDIO_INTELLIGENCE,
@@ -265,9 +268,7 @@ def test_whisper_progress_callback(fake_faster_whisper):
 
 def test_whisper_find_replace(fake_faster_whisper):
     eng = WhisperEngine(model="tiny")
-    result = eng.transcribe(
-        b"a", TranscribeOptions(language="en", replace=["Kenobi:Skywalker"])
-    )
+    result = eng.transcribe(b"a", TranscribeOptions(language="en", replace=["Kenobi:Skywalker"]))
     assert result.segments[1].text == "General Skywalker."
     assert result.segments[1].words[1].word == "Skywalker."
 

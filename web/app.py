@@ -552,7 +552,9 @@ def api_submit():
     engine = body.get("engine", "deepgram")
     whisper_model = body.get("whisper_model")
     if engine not in VALID_ENGINES:
-        abort(400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}")
+        abort(
+            400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}"
+        )
     if whisper_model is not None and whisper_model not in ALLOWED_WHISPER_MODELS:
         abort(
             400,

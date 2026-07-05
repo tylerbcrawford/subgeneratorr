@@ -331,9 +331,7 @@ class WhisperEngine(ASREngine):
                 for w in (seg.words or [])
             ]
             segments.append(
-                NormalizedSegment(
-                    start=seg.start, end=seg.end, text=seg.text.strip(), words=words
-                )
+                NormalizedSegment(start=seg.start, end=seg.end, text=seg.text.strip(), words=words)
             )
             if progress_callback is not None:
                 progress_callback(seg.end, total)
@@ -364,6 +362,4 @@ def get_engine(name: str, **kwargs) -> ASREngine:
 
 def engine_capabilities() -> dict:
     """JSON-friendly capability map for /api/capabilities."""
-    return {
-        name: {"capabilities": sorted(cls.capabilities())} for name, cls in ENGINES.items()
-    }
+    return {name: {"capabilities": sorted(cls.capabilities())} for name, cls in ENGINES.items()}

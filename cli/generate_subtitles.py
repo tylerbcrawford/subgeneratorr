@@ -96,9 +96,7 @@ class SubtitleGenerator:
         Config.validate()
         self.engine = Config.ASR_ENGINE
         self.client = (
-            DeepgramClient(api_key=Config.DEEPGRAM_API_KEY)
-            if self.engine == "deepgram"
-            else None
+            DeepgramClient(api_key=Config.DEEPGRAM_API_KEY) if self.engine == "deepgram" else None
         )
         self.stats = {
             "processed": 0,
@@ -453,9 +451,7 @@ class SubtitleGenerator:
                         and write_normalized_transcript(normalized, transcript_path)
                     )
                 else:
-                    self.log(
-                        "  🗣️  Transcript feature enabled — generating diarized transcript..."
-                    )
+                    self.log("  🗣️  Transcript feature enabled — generating diarized transcript...")
                     transcript_generated = self._generate_transcript(
                         video_path, audio_path, response, keyterms=keyterms
                     )

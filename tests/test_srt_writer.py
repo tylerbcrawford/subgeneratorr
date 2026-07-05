@@ -1,7 +1,12 @@
 """Tests for the native SRT writer (core/srt_writer.py) — cue segmentation policy."""
 
+import sys
+from pathlib import Path
+
 import pytest
 import srt as srt_lib
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.asr_engine import NormalizedResult, NormalizedSegment, NormalizedWord
 from core.srt_writer import (
@@ -126,9 +131,7 @@ def test_no_line_exceeds_max_chars_and_two_lines():
 
 def test_overlong_single_word_is_not_broken():
     long_word = "Donaudampfschifffahrtsgesellschaftskapitän!"  # > 42 chars
-    result = NormalizedResult(
-        segments=[_seg(0.0, 2.0, long_word, _words([(long_word, 0.0, 2.0)]))]
-    )
+    result = NormalizedResult(segments=[_seg(0.0, 2.0, long_word, _words([(long_word, 0.0, 2.0)]))])
     cues = _cues(build_srt(result))
     assert cues[0].content == long_word
 
@@ -198,9 +201,7 @@ def test_sentence_punctuation_splits_cue():
 
 
 def test_short_cue_extended_to_min_duration():
-    result = NormalizedResult(
-        segments=[_seg(0.0, 0.3, "Hi.", _words([("Hi.", 0.0, 0.3)]))]
-    )
+    result = NormalizedResult(segments=[_seg(0.0, 0.3, "Hi.", _words([("Hi.", 0.0, 0.3)]))])
     cues = _cues(build_srt(result))
     assert (cues[0].end - cues[0].start).total_seconds() == pytest.approx(1.0)
 

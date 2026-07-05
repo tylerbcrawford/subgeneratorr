@@ -59,9 +59,7 @@ class Config:
             bool: True if validation passes
         """
         if cls.ASR_ENGINE not in ("deepgram", "whisper"):
-            raise ValueError(
-                f"ASR_ENGINE must be 'deepgram' or 'whisper', got {cls.ASR_ENGINE!r}"
-            )
+            raise ValueError(f"ASR_ENGINE must be 'deepgram' or 'whisper', got {cls.ASR_ENGINE!r}")
         if cls.ASR_ENGINE == "deepgram" and not cls.DEEPGRAM_API_KEY:
             raise ValueError("DEEPGRAM_API_KEY environment variable not set")
         return True

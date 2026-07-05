@@ -173,9 +173,7 @@ def write_normalized_transcript(result: NormalizedResult, dest: Path) -> Optiona
     return dest
 
 
-def write_normalized_srt(
-    result: NormalizedResult, dest: Path, lang: Optional[str] = None
-) -> Path:
+def write_normalized_srt(result: NormalizedResult, dest: Path, lang: Optional[str] = None) -> Path:
     """
     Write SRT from a NormalizedResult, mirroring write_srt()'s path contract:
     when a language tag is given, the destination is forced to `.{lang}.srt`.
