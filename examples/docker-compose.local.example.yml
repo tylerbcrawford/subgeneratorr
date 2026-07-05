@@ -13,8 +13,10 @@
 #   4. docker compose up -d    (Web UI at http://localhost:5000)
 #
 # Expectations vs the cloud engine:
-#   - Transcription runs near real-time on a modest CPU with the default
-#     `small` model (a 40-minute episode takes roughly 40 minutes).
+#   - Transcription runs near real-time or faster on a modest CPU with the
+#     default `small` model — measured 0.3-0.65x runtime on a low-power
+#     Intel N100 (a 40-minute episode takes ~15-25 minutes; budget up to
+#     real-time on slower hardware).
 #   - Keep worker concurrency at 1 — two whisper jobs will thrash the CPU
 #     and can exhaust RAM.
 #   - `medium`/`large-v3` models need ~2/~4 GB extra RAM — raise the worker
