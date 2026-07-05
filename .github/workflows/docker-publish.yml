@@ -53,6 +53,10 @@ jobs:
             dockerfile: web/Dockerfile
             context: .
             target: local
+          - image: subgeneratorr-cli-local
+            dockerfile: cli/Dockerfile
+            context: .
+            target: local
 
     steps:
       - name: Checkout

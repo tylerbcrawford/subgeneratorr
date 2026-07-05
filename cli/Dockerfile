@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 LABEL org.opencontainers.image.source="https://github.com/tylerbcrawford/subgeneratorr" \
       org.opencontainers.image.description="Subgeneratorr CLI — AI-powered subtitle generation for Plex, Jellyfin, and Emby" \
@@ -28,3 +28,30 @@ RUN sed -i 's/\r$//' /entrypoint.sh && \
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-u", "generate_subtitles.py"]
+
+
+# ============================================================================
+# -local variant (build with: docker build --target local -f cli/Dockerfile .)
+# Adds the faster-whisper engine and bakes the default model into the image so
+# ASR_ENGINE=whisper works offline from first run (mirrors web/Dockerfile).
+# ============================================================================
+FROM base AS local
+
+RUN pip install --no-cache-dir "faster-whisper>=1.0,<2"
+
+ENV ASR_ENGINE=whisper \
+    WHISPER_MODEL=small \
+    WHISPER_MODEL_DIR=/models \
+    WHISPER_COMPUTE_TYPE=int8
+
+# Bake the default model. download_model() only fetches files (no ctranslate2
+# model load), so this also works under QEMU cross-arch builds in CI. Bake
+# uid/gid 1000 ownership so the default PUID/PGID needs no startup chown.
+RUN python -c "from faster_whisper import download_model; download_model('small', cache_dir='/models')" && \
+    chown -R 1000:1000 /models && \
+    chmod -R a+rX /models
+
+
+# Lean default image — this stage is last so an untargeted `docker build`
+# produces the Deepgram-only image, unchanged in size for existing users.
+FROM base AS default

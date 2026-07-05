@@ -56,8 +56,12 @@ ENV ASR_ENGINE=whisper \
     WHISPER_COMPUTE_TYPE=int8
 
 # Bake the default model. download_model() only fetches files (no ctranslate2
-# model load), so this also works under QEMU cross-arch builds in CI.
+# model load), so this also works under QEMU cross-arch builds in CI. Bake
+# appuser ownership so the default PUID/PGID needs no startup chown — a
+# blanket runtime chown would copy-up ~500 MB into the writable layer on
+# every container recreate (overlayfs).
 RUN python -c "from faster_whisper import download_model; download_model('small', cache_dir='/models')" && \
+    chown -R appuser:appuser /models && \
     chmod -R a+rX /models
 
 

@@ -18,5 +18,14 @@ fi
 # Change ownership of working directory
 chown -R abc:abc /app
 
+# -local image: the whisper model cache must be writable so larger models can
+# download at runtime. Only touch files whose ownership differs — a blanket
+# chown -R would copy-up the ~500 MB baked model into the writable layer on
+# every recreate. Ownership is baked at build for the default uid/gid.
+if [ -d /models ]; then
+    find /models \( ! -user abc -o ! -group abc \) \
+        -exec chown abc:abc {} + 2>/dev/null || true
+fi
+
 # Execute the command as the abc user
 exec gosu abc "$@"
