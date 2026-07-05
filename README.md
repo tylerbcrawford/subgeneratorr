@@ -111,7 +111,7 @@ Open the **Translate** panel in the Web UI, pick your target languages, and choo
 
 ### Run fully local (no cloud, $0)
 
-Prefer to keep everything on your own hardware? The opt-in `-local` image swaps Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running on CPU, with the `small` model baked in so it works offline from first boot (bigger models download into a cache volume; the picker shows RAM/speed guidance). Choose the engine per job in the Web UI — Deepgram stays the default and is untouched. Combined with Ollama for keyterms and translation, no audio, text, or API key ever leaves your machine. Start from `examples/docker-compose.local.example.yml`; expect near-real-time processing on a modest CPU, and note that Deepgram-only extras (audio intelligence, redaction, diarization) hide automatically in local mode.
+Prefer to keep everything on your own hardware? The opt-in `-local` images swap Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running on CPU, with the `small` model baked in so it works offline from first boot (bigger models download into a cache volume; the picker shows RAM/speed guidance). Choose the engine per job in the Web UI — it preselects your server's `ASR_ENGINE`, and on the standard image Deepgram remains the default with the Local option shown as unavailable (cloud output is untouched either way). Combined with Ollama for keyterms and translation, no audio, text, or API key ever leaves your machine. Start from `examples/docker-compose.local.example.yml`, which builds both web and worker from the `local` target; for headless runs, the `subgeneratorr-cli-local` image brings the same engine to the CLI via `ASR_ENGINE=whisper`. Expect near-real-time processing on a modest CPU, and note that Deepgram-only extras (audio intelligence, redaction, diarization) hide automatically in local mode.
 
 ### Find all missing subtitles
 
@@ -139,7 +139,7 @@ Two values are required; everything else has sensible defaults.
 | `WHISPER_MODEL` | Local model: `tiny` · `base` · `small` · `medium` · `large-v3` | `small` |
 | `LANGUAGE` | Language code, or `auto` / `multi` | `en` |
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
-| `PROFANITY_FILTER` | `off` · `tag` · `remove` | `off` |
+| `PROFANITY_FILTER` | `off` or `on` — masks profanity with asterisks | `off` |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI keyterm generation and translation (optional) | – |
 | `OLLAMA_HOST` | Local Ollama endpoint for free offline translation, e.g. `http://localhost:11434` (optional) | – |
 
@@ -200,6 +200,8 @@ Nova-3 transcribes 40+ languages (50+ counting regional variants), with auto-det
 
 **API errors** — Verify the key in `.env` and check your balance at the [Deepgram Console](https://console.deepgram.com/).
 
+**"Local whisper engine is not installed" (400)** — You're running the standard (Deepgram-only) image. Deploy the `-local` images — start from `examples/docker-compose.local.example.yml` — to enable the Local engine.
+
 **Keyterms not loading** — Confirm the path `{Show}/Transcripts/Keyterms/{ShowName}_keyterms.csv`, UTF-8 encoding, and that the filename matches the show directory exactly.
 
 **Docker networking** — If `docker compose build` hangs at the APT layer or containers can't resolve DNS on the default bridge (but `--network host` works), use the Linux host-network override:
@@ -221,4 +223,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-Built on [Deepgram](https://deepgram.com/) (Nova-3, [Python SDK](https://github.com/deepgram/deepgram-python-sdk), [captions](https://github.com/deepgram/deepgram-python-captions)) and [Claude Code](https://claude.com/claude-code).
+Built on [Deepgram](https://deepgram.com/) (Nova-3, [Python SDK](https://github.com/deepgram/deepgram-python-sdk), [captions](https://github.com/deepgram/deepgram-python-captions)), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) by SYSTRAN (the local engine), and [Claude Code](https://claude.com/claude-code).
