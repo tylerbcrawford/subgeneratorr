@@ -26,6 +26,12 @@ from tasks import (
     translate_subtitles_task,
 )
 
+from core.asr_engine import (
+    ALLOWED_WHISPER_MODELS,
+    DEFAULT_WHISPER_MODEL,
+    VALID_ENGINES,
+    engine_capabilities,
+)
 from core.transcribe import (
     NEUTRAL_SUBTITLE_LANG,
     check_subtitles,
@@ -178,6 +184,26 @@ def api_config():
                 "google": google_ok,
                 "ollama": ollama_ok,
             },
+        }
+    )
+
+
+@app.get("/api/capabilities")
+def api_capabilities():
+    """
+    Per-engine capability sets for UI option gating (single source of truth).
+
+    Returns:
+        JSON with each engine's capability list, the default engine, and the
+        whisper model choices for the local engine's model picker.
+    """
+    _require_auth()
+    return jsonify(
+        {
+            "engines": engine_capabilities(),
+            "default_engine": os.environ.get("ASR_ENGINE", "deepgram"),
+            "whisper_models": list(ALLOWED_WHISPER_MODELS),
+            "default_whisper_model": os.environ.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL),
         }
     )
 
@@ -406,6 +432,7 @@ def api_estimate():
     _require_auth()
     body = request.get_json(force=True) or {}
     raw_files = body.get("files", [])
+    engine = body.get("engine", "deepgram")
 
     # Updated Nova-3 pricing to match actual API charges
     # Previous estimate was ~25% low (e.g., estimated $0.71 vs actual $0.94)
@@ -413,6 +440,15 @@ def api_estimate():
     PROCESSING_TIME_MULTIPLIER = (
         0.0109  # Based on real data: ~1.09% of video length (25 jobs, 23.3 hours analyzed)
     )
+    # Local whisper on a low-power CPU runs near real-time (int8 small); this
+    # is a coarse expectation-setter, not a measurement.
+    WHISPER_TIME_MULTIPLIER = 1.0
+    if engine == "whisper":
+        price_per_minute = 0.0
+        time_multiplier = WHISPER_TIME_MULTIPLIER
+    else:
+        price_per_minute = NOVA3_PRICE_PER_MINUTE
+        time_multiplier = PROCESSING_TIME_MULTIPLIER
 
     total_duration = 0.0
     file_durations = []
@@ -430,8 +466,8 @@ def api_estimate():
             )
 
     total_minutes = total_duration / 60.0
-    estimated_cost = total_minutes * NOVA3_PRICE_PER_MINUTE
-    estimated_time = total_duration * PROCESSING_TIME_MULTIPLIER
+    estimated_cost = total_minutes * price_per_minute
+    estimated_time = total_duration * time_multiplier
 
     return jsonify(
         {
@@ -440,7 +476,8 @@ def api_estimate():
             "total_duration_minutes": total_minutes,
             "estimated_cost_usd": round(estimated_cost, 4),
             "estimated_processing_time_seconds": estimated_time,
-            "price_per_minute": NOVA3_PRICE_PER_MINUTE,
+            "price_per_minute": price_per_minute,
+            "engine": engine,
             "files": file_durations,
         }
     )
@@ -511,6 +548,20 @@ def api_submit():
     # Operational
     tag = body.get("tag")
 
+    # ASR engine selection (v3.0.0)
+    engine = body.get("engine", "deepgram")
+    whisper_model = body.get("whisper_model")
+    if engine not in VALID_ENGINES:
+        abort(400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}")
+    if whisper_model is not None and whisper_model not in ALLOWED_WHISPER_MODELS:
+        abort(
+            400,
+            description=(
+                f"Unknown whisper_model {whisper_model!r}; "
+                f"expected one of {', '.join(ALLOWED_WHISPER_MODELS)}"
+            ),
+        )
+
     # Handle auto-detect language
     if language == "auto":
         detect_language = True
@@ -556,6 +607,8 @@ def api_submit():
         detect_entities=detect_entities,
         search=search,
         tag=tag,
+        engine=engine,
+        whisper_model=whisper_model,
     )
 
     # Store batch metadata in Redis for timeout tracking

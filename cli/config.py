@@ -7,6 +7,12 @@ class Config:
     """Application configuration"""
 
     DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
+
+    # ASR engine selection (v3.0.0): "deepgram" (cloud, default) or "whisper"
+    # (local faster-whisper; requires the -local image).
+    ASR_ENGINE = os.environ.get("ASR_ENGINE", "deepgram")
+    WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
+
     MEDIA_PATH = os.environ.get("MEDIA_PATH", "/media")
     FILE_LIST_PATH = os.environ.get("FILE_LIST_PATH")
     LOG_PATH = os.environ.get("LOG_PATH", "/logs")
@@ -42,12 +48,20 @@ class Config:
         """
         Validate required configuration values.
 
+        DEEPGRAM_API_KEY is only required for the cloud engine — a fully-local
+        deployment (ASR_ENGINE=whisper) must be able to run without it.
+
         Raises:
-            ValueError: If DEEPGRAM_API_KEY is not set
+            ValueError: If ASR_ENGINE is unknown, or if the deepgram engine is
+                selected without DEEPGRAM_API_KEY set
 
         Returns:
             bool: True if validation passes
         """
-        if not cls.DEEPGRAM_API_KEY:
+        if cls.ASR_ENGINE not in ("deepgram", "whisper"):
+            raise ValueError(
+                f"ASR_ENGINE must be 'deepgram' or 'whisper', got {cls.ASR_ENGINE!r}"
+            )
+        if cls.ASR_ENGINE == "deepgram" and not cls.DEEPGRAM_API_KEY:
             raise ValueError("DEEPGRAM_API_KEY environment variable not set")
         return True

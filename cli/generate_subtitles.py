@@ -53,7 +53,9 @@ if __name__ == "__main__":
     if "-h" in sys.argv or "--help" in sys.argv:
         print(_USAGE)
         sys.exit(0)
-    if not os.environ.get("DEEPGRAM_API_KEY"):
+    # The Deepgram key is only required for the cloud engine; a fully-local
+    # run (ASR_ENGINE=whisper) must start without it.
+    if not os.environ.get("DEEPGRAM_API_KEY") and os.environ.get("ASR_ENGINE") != "whisper":
         print(_USAGE, file=sys.stderr)
         print("Error: DEEPGRAM_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
@@ -63,6 +65,8 @@ from deepgram import DeepgramClient, PrerecordedOptions
 from deepgram_captions import DeepgramConverter, srt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from core.asr_engine import TranscribeOptions, WhisperEngine
+from core.srt_writer import build_srt, write_normalized_transcript
 from core.transcribe import (
     extract_audio as core_extract_audio,
 )
@@ -90,7 +94,12 @@ class SubtitleGenerator:
 
     def __init__(self):
         Config.validate()
-        self.client = DeepgramClient(api_key=Config.DEEPGRAM_API_KEY)
+        self.engine = Config.ASR_ENGINE
+        self.client = (
+            DeepgramClient(api_key=Config.DEEPGRAM_API_KEY)
+            if self.engine == "deepgram"
+            else None
+        )
         self.stats = {
             "processed": 0,
             "skipped": 0,
@@ -221,6 +230,29 @@ class SubtitleGenerator:
             self.log(f"  ❌ Deepgram API error: {e}")
             return None
 
+    def transcribe_local(self, audio_path: str, keyterms: list = None):
+        """
+        Transcribe audio with the local whisper engine (ASR_ENGINE=whisper).
+
+        Returns:
+            NormalizedResult, or None if transcription failed
+        """
+        try:
+            with open(audio_path, "rb") as f:
+                buf = f.read()
+            engine = WhisperEngine(model=Config.WHISPER_MODEL)
+            return engine.transcribe(
+                buf,
+                TranscribeOptions(
+                    language=Config.LANGUAGE,
+                    detect_language=Config.DETECT_LANGUAGE,
+                    keyterms=keyterms,
+                ),
+            )
+        except Exception as e:
+            self.log(f"  ❌ Local transcription error: {e}")
+            return None
+
     def generate_srt(self, deepgram_response: dict) -> str:
         try:
             if Config.SAVE_RAW_JSON:
@@ -322,8 +354,11 @@ class SubtitleGenerator:
 
         try:
             duration = self.get_video_duration(str(video_path))
-            cost = duration * Config.COST_PER_MINUTE
-            self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: ${cost:.2f}")
+            if self.engine == "whisper":
+                self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: $0.00 (local)")
+            else:
+                cost = duration * Config.COST_PER_MINUTE
+                self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: ${cost:.2f}")
 
             self.log("  📢 Extracting audio...")
             audio_path = self.extract_audio(str(video_path))
@@ -335,27 +370,38 @@ class SubtitleGenerator:
 
             # Generate SRT if it doesn't exist OR if force regenerate is enabled
             if output_state["needs_subtitle"] or output_state["needs_transcript"]:
-                self.log("  🧠 Transcribing (nova-3)...")
-                response = self.transcribe_audio(
-                    str(audio_path),
-                    keyterms=keyterms,
-                    numerals=Config.NUMERALS,
-                    filler_words=Config.FILLER_WORDS,
-                    detect_language=Config.DETECT_LANGUAGE,
-                    measurements=Config.MEASUREMENTS,
-                )
-                if not response:
-                    raise Exception("Transcription failed")
+                normalized = None
+                if self.engine == "whisper":
+                    self.log(f"  🧠 Transcribing ({Config.WHISPER_MODEL} whisper, local)...")
+                    normalized = self.transcribe_local(str(audio_path), keyterms=keyterms)
+                    if normalized is None:
+                        raise Exception("Transcription failed")
+                    self.log("  💾 Generating SRT...")
+                    srt_content = build_srt(normalized)
+                else:
+                    self.log("  🧠 Transcribing (nova-3)...")
+                    response = self.transcribe_audio(
+                        str(audio_path),
+                        keyterms=keyterms,
+                        numerals=Config.NUMERALS,
+                        filler_words=Config.FILLER_WORDS,
+                        detect_language=Config.DETECT_LANGUAGE,
+                        measurements=Config.MEASUREMENTS,
+                    )
+                    if not response:
+                        raise Exception("Transcription failed")
 
-                self.log("  💾 Generating SRT...")
-                srt_content = self.generate_srt(response)
+                    self.log("  💾 Generating SRT...")
+                    srt_content = self.generate_srt(response)
 
+                detected_language_code = normalized.detected_language if normalized else None
                 post_response_state = inspect_requested_outputs(
                     video_path,
                     Config.LANGUAGE,
                     detect_language=Config.DETECT_LANGUAGE,
                     enable_transcript=Config.ENABLE_TRANSCRIPT,
                     force_regenerate=Config.FORCE_REGENERATE,
+                    detected_language=detected_language_code,
                     resp=response,
                 )
                 resolved_srt_path = post_response_state["subtitle_path"]
@@ -363,6 +409,7 @@ class SubtitleGenerator:
                     video_path,
                     Config.LANGUAGE,
                     detect_language=Config.DETECT_LANGUAGE,
+                    detected_language=detected_language_code,
                     resp=response,
                 )
 
@@ -398,10 +445,20 @@ class SubtitleGenerator:
             if Config.ENABLE_TRANSCRIPT and (
                 Config.FORCE_REGENERATE or not transcript_path.exists()
             ):
-                self.log("  🗣️  Transcript feature enabled — generating diarized transcript...")
-                transcript_generated = self._generate_transcript(
-                    video_path, audio_path, response, keyterms=keyterms
-                )
+                if self.engine == "whisper":
+                    # Local engine has no diarization — plain segment transcript
+                    self.log("  🗣️  Generating transcript (no speaker labels on local)...")
+                    transcript_generated = bool(
+                        normalized is not None
+                        and write_normalized_transcript(normalized, transcript_path)
+                    )
+                else:
+                    self.log(
+                        "  🗣️  Transcript feature enabled — generating diarized transcript..."
+                    )
+                    transcript_generated = self._generate_transcript(
+                        video_path, audio_path, response, keyterms=keyterms
+                    )
                 # Count as processed if transcript generation was the only new output.
                 if transcript_generated and not srt_written:
                     self.stats["processed"] += 1

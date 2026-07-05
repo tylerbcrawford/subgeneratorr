@@ -22,6 +22,15 @@ from celery import Celery, group
 
 # Add parent directory to path to import core module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from core.asr_engine import (
+    VALID_ENGINES,
+    TranscribeOptions,
+    WhisperEngine,
+)
+from core.srt_writer import (
+    write_normalized_srt,
+    write_normalized_transcript,
+)
 from core.transcribe import (
     extract_audio,
     find_speaker_map,
@@ -113,6 +122,8 @@ def transcribe_task(
     detect_entities=False,
     search=None,
     tag=None,
+    engine="deepgram",
+    whisper_model=None,
 ):
     """
     Transcribe a single video file.
@@ -146,6 +157,8 @@ def transcribe_task(
         detect_entities: Enable entity detection (default: False)
         search: List of search terms (default: None)
         tag: Request label tag (default: None)
+        engine: ASR engine — "deepgram" (cloud, default) or "whisper" (local)
+        whisper_model: faster-whisper model when engine=whisper (default: env/small)
 
     Returns:
         dict: Status and file paths
@@ -164,7 +177,11 @@ def transcribe_task(
     11. Clean up temporary audio file
     """
     vp = Path(video_path)
-    if not DG_KEY:
+    if engine not in VALID_ENGINES:
+        raise ValueError(f"Unknown ASR engine {engine!r}; expected one of {sorted(VALID_ENGINES)}")
+    # The key is only required for the cloud engine — zero-cloud deployments
+    # (engine=whisper) must run without DEEPGRAM_API_KEY set at all.
+    if engine == "deepgram" and not DG_KEY:
         raise RuntimeError("DEEPGRAM_API_KEY not set — configure it in .env")
     output_state = inspect_requested_outputs(
         vp,
@@ -188,6 +205,7 @@ def transcribe_task(
         "filename": vp.name,
         "video_duration_seconds": video_duration,
         "start_time": start_time,
+        "engine": engine,
     }
 
     if enable_transcript:
@@ -223,8 +241,37 @@ def transcribe_task(
         # Transcribe with optional parameters
         self.update_state(state="PROGRESS", meta={"current_file": vp.name, "stage": "transcribing"})
         with open(audio_tmp, "rb") as f:
+            audio_buf = f.read()
+
+        resp = None
+        normalized = None
+        if engine == "whisper":
+            whisper_engine = WhisperEngine(model=whisper_model)
+
+            def _report_progress(done_seconds, total_seconds):
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "current_file": vp.name,
+                        "stage": "transcribing",
+                        "progress_seconds": done_seconds,
+                        "total_seconds": total_seconds,
+                    },
+                )
+
+            normalized = whisper_engine.transcribe(
+                audio_buf,
+                TranscribeOptions(
+                    language=language,
+                    detect_language=detect_language,
+                    keyterms=keyterms,
+                    replace=replace,
+                ),
+                progress_callback=_report_progress,
+            )
+        else:
             resp = transcribe_file(
-                f.read(),
+                audio_buf,
                 DG_KEY,
                 model,
                 language,
@@ -255,12 +302,14 @@ def transcribe_task(
         self.update_state(
             state="PROGRESS", meta={"current_file": vp.name, "stage": "generating_srt"}
         )
+        detected_language_code = normalized.detected_language if normalized else None
         post_response_state = inspect_requested_outputs(
             vp,
             language,
             detect_language=detect_language,
             enable_transcript=enable_transcript,
             force_regenerate=force_regenerate,
+            detected_language=detected_language_code,
             resp=resp,
         )
         resolved_srt_out = post_response_state["subtitle_path"]
@@ -268,6 +317,7 @@ def transcribe_task(
             vp,
             language,
             detect_language=detect_language,
+            detected_language=detected_language_code,
             resp=resp,
         )
         meta["srt"] = str(resolved_srt_out)
@@ -275,7 +325,10 @@ def transcribe_task(
         produced_outputs = []
 
         if post_response_state["needs_subtitle"]:
-            write_srt(resp, resolved_srt_out)
+            if engine == "whisper":
+                write_normalized_srt(normalized, resolved_srt_out)
+            else:
+                write_srt(resp, resolved_srt_out)
             produced_outputs.append("subtitle")
 
             # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
@@ -305,20 +358,25 @@ def transcribe_task(
             )
 
             if post_response_state["needs_transcript"]:
-                # Auto-detect speaker map from Transcripts/Speakermap/
-                speaker_map_path = find_speaker_map(vp)
+                if engine == "whisper":
+                    # Local engine has no diarization — plain segment transcript
+                    write_normalized_transcript(normalized, txt_out)
+                else:
+                    # Auto-detect speaker map from Transcripts/Speakermap/
+                    speaker_map_path = find_speaker_map(vp)
 
-                if speaker_map_path:
-                    logger.debug("Using speaker map: %s", speaker_map_path)
+                    if speaker_map_path:
+                        logger.debug("Using speaker map: %s", speaker_map_path)
 
-                write_transcript(resp, txt_out, speaker_map_path)
+                    write_transcript(resp, txt_out, speaker_map_path)
                 if txt_out.exists():
                     produced_outputs.append("transcript")
             else:
                 logger.debug("Skipping transcript write for existing file: %s", txt_out)
 
-        # Save raw JSON if enabled (either globally or per-request)
-        if SAVE_RAW_JSON or save_raw_json:
+        # Save raw JSON if enabled (either globally or per-request; the local
+        # engine has no provider response to dump)
+        if (SAVE_RAW_JSON or save_raw_json) and resp is not None:
             self.update_state(
                 state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_raw_json"}
             )
@@ -329,8 +387,9 @@ def transcribe_task(
                 logger.warning("Failed to save raw JSON: %s", e)
 
         # Save intelligence summary if any intelligence features were enabled
+        # (Deepgram-only; the UI gates these off for the local engine)
         has_intelligence = any([sentiment, summarize, topics, intents, detect_entities, search])
-        if has_intelligence:
+        if has_intelligence and resp is not None:
             self.update_state(
                 state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_intelligence"}
             )
@@ -854,6 +913,8 @@ def make_batch(
     detect_entities=False,
     search=None,
     tag=None,
+    engine="deepgram",
+    whisper_model=None,
 ):
     """
     Create a batch of transcription jobs.
@@ -889,6 +950,8 @@ def make_batch(
         detect_entities: Enable entity detection
         search: List of search terms
         tag: Request label tag
+        engine: ASR engine — "deepgram" (cloud) or "whisper" (local)
+        whisper_model: faster-whisper model when engine=whisper
 
     Returns:
         AsyncResult: Celery async result for tracking batch progress
@@ -923,6 +986,8 @@ def make_batch(
             detect_entities,
             search,
             tag,
+            engine,
+            whisper_model,
         )
         for f in files
     ]
