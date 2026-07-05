@@ -25,7 +25,7 @@ if [ "$(id -u)" = "0" ]; then
 
     chown appuser:"$target_group" /logs 2>/dev/null || true
     # -local image: the whisper model cache must be writable so larger models
-    # can download at runtime (the baked default stays root-owned, read-only).
+    # can download at runtime and hf_hub can refresh revision refs.
     if [ -d /models ]; then
         chown -R appuser:"$target_group" /models 2>/dev/null || true
     fi
