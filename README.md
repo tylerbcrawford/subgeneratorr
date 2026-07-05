@@ -72,18 +72,24 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 
 ## Quick Start (~10 minutes)
 
-**Requirements:** Docker + Docker Compose · a [Deepgram API key](https://console.deepgram.com/) ($200 free credits) · media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, …)
+**Pick your flavor:**
+
+- ☁️ **Cloud (default)** — Deepgram Nova-3: best accuracy, processes in ~1% of runtime, ~$0.0057/min with [$200 free credits](https://console.deepgram.com/). Needs an API key.
+- 🏠 **Fully local** — faster-whisper on your CPU: $0, offline, no account or key needed, near-real-time processing (larger image). Both engines stay selectable per job.
+
+**Requirements:** Docker + Docker Compose · media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, …) · a [Deepgram API key](https://console.deepgram.com/) for the cloud flavor only
 
 ```bash
 git clone https://github.com/tylerbcrawford/subgeneratorr.git
 cd subgeneratorr
 
 cp .env.example .env
-cp examples/docker-compose.example.yml docker-compose.yml
+cp examples/docker-compose.example.yml docker-compose.yml          # ☁️ cloud (default)
+# cp examples/docker-compose.local.example.yml docker-compose.yml  # 🏠 fully local
 
-# In .env, set the two required values:
-#   DEEPGRAM_API_KEY=your_key_here
+# In .env, set:
 #   MEDIA_PATH=/path/to/your/media
+#   DEEPGRAM_API_KEY=your_key_here   # ☁️ cloud flavor only
 
 docker compose build
 docker compose up -d          # Web UI at http://localhost:5000

@@ -138,6 +138,42 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # ==========================================================================
+  # CLI Tool - One-shot batch subtitle generation (run manually, -local image)
+  # ==========================================================================
+  # Usage: docker compose run --rm cli
+  cli:
+    build:
+      context: .
+      dockerfile: cli/Dockerfile
+      target: local
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-cli-local:latest
+    profiles:
+      - cli
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      ASR_ENGINE: ${ASR_ENGINE:-whisper}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_CPU_THREADS: ${WHISPER_CPU_THREADS:-0}  # 0 = auto
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only for ASR_ENGINE=deepgram
+      MEDIA_PATH: /media
+      BATCH_SIZE: ${BATCH_SIZE:-10}
+      LOG_PATH: /logs
+      LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+      - whisper-models:/models  # shared with the worker; persists larger downloads
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'   # whisper is CPU-bound; give it the cores you can spare
+          memory: 4G    # small fits in ~1 GB; large-v3 needs ~4 GB
+
 volumes:
   logs:
     driver: local
