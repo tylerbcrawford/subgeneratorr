@@ -255,6 +255,19 @@ def test_whisper_model_cache_reuses_instance(fake_faster_whisper):
     assert len(_FakeWhisperModel.init_calls) == 1
 
 
+def test_whisper_model_cache_evicts_previous_model(fake_faster_whisper):
+    """Switching models across jobs must not accumulate instances — every
+    size ever selected staying loaded would OOM a memory-capped worker."""
+    import core.asr_engine as ae
+
+    WhisperEngine(model="tiny").transcribe(b"a", TranscribeOptions())
+    WhisperEngine(model="base").transcribe(b"b", TranscribeOptions())
+
+    assert len(_FakeWhisperModel.init_calls) == 2
+    assert len(ae._MODEL_CACHE) == 1
+    assert next(iter(ae._MODEL_CACHE))[0] == "base"
+
+
 def test_whisper_progress_callback(fake_faster_whisper):
     eng = WhisperEngine(model="tiny")
     calls = []

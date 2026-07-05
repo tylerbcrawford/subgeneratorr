@@ -18,9 +18,11 @@ Capability constants drive the Web UI's option gating (``/api/capabilities``):
 controls tagged with a capability the active engine lacks are hidden.
 """
 
+import importlib.util
 import io
 import logging
 import os
+import sys
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -54,10 +56,22 @@ WHISPER_MAX_HOTWORD_CHARS = 500
 DEFAULT_WHISPER_MODEL = "small"
 ALLOWED_WHISPER_MODELS = ("tiny", "base", "small", "medium", "large-v3")
 
-# One loaded model per (name, compute_type) per worker process. Model load is
-# expensive (seconds + hundreds of MB); jobs must reuse the instance.
+# At most ONE loaded model per worker process: repeat jobs reuse the instance
+# (load costs seconds + hundreds of MB), and switching models evicts the old
+# one first — keeping every size ever selected would blow the worker's memory
+# limit (small + medium + large-v3 ≈ 5 GB against a 4 GB cap).
 _MODEL_CACHE = {}
 _MODEL_CACHE_LOCK = threading.Lock()
+
+
+def whisper_available() -> bool:
+    """True when faster-whisper is installed (the -local images only)."""
+    try:
+        return importlib.util.find_spec("faster_whisper") is not None
+    except ValueError:
+        # find_spec raises for a sys.modules entry with __spec__ = None
+        # (e.g. a test stub) — the import would still succeed.
+        return "faster_whisper" in sys.modules
 
 
 # --------------------------------------------------------------------------
@@ -156,6 +170,11 @@ class ASREngine(ABC):
     @abstractmethod
     def capabilities(cls) -> set:
         """Capability constants this engine supports (drives UI gating)."""
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Whether this engine can actually run in the current image."""
+        return True
 
     @abstractmethod
     def transcribe(
@@ -273,6 +292,12 @@ class WhisperEngine(ASREngine):
         # vocabulary is Deepgram-only and gated off in the UI.
         return {CAP_KEYTERM, CAP_FIND_REPLACE, CAP_LANGUAGE_DETECT}
 
+    @classmethod
+    def is_available(cls) -> bool:
+        # The lean default image does not ship faster-whisper; advertising the
+        # engine there would let jobs fail mid-worker instead of at submit.
+        return whisper_available()
+
     def _load_model(self):
         key = (self.model, self.compute_type, self.model_dir, self.cpu_threads)
         with _MODEL_CACHE_LOCK:
@@ -282,6 +307,13 @@ class WhisperEngine(ASREngine):
             # Lazy import: the lean image does not ship faster-whisper.
             from faster_whisper import WhisperModel
 
+            if _MODEL_CACHE:
+                logger.info(
+                    "Evicting cached whisper model(s) %s before loading %s",
+                    [k[0] for k in _MODEL_CACHE],
+                    self.model,
+                )
+                _MODEL_CACHE.clear()
             logger.info(
                 "Loading whisper model %s (compute=%s, dir=%s)",
                 self.model,
@@ -362,4 +394,7 @@ def get_engine(name: str, **kwargs) -> ASREngine:
 
 def engine_capabilities() -> dict:
     """JSON-friendly capability map for /api/capabilities."""
-    return {name: {"capabilities": sorted(cls.capabilities())} for name, cls in ENGINES.items()}
+    return {
+        name: {"capabilities": sorted(cls.capabilities()), "available": cls.is_available()}
+        for name, cls in ENGINES.items()
+    }

@@ -129,6 +129,9 @@ def _common_patches(monkeypatch, tmp_path, dg_key=""):
     monkeypatch.setattr(tasks_module, "get_video_duration", lambda *a, **k: 60.0)
     monkeypatch.setattr(tasks_module, "extract_audio", lambda *a, **k: audio_file)
     monkeypatch.setattr(tasks_module, "load_keyterms_from_csv", lambda *a, **k: None)
+    # Simulate the -local image (faster-whisper installed); the availability
+    # fail-fast has its own dedicated test below.
+    monkeypatch.setattr(tasks_module, "whisper_available", lambda: True)
 
 
 def test_whisper_task_runs_without_deepgram_key(monkeypatch, tmp_path):
@@ -174,6 +177,23 @@ def test_unknown_engine_rejected(monkeypatch, tmp_path):
         tasks_module.transcribe_task(
             RecordingTaskContext(), str(media), language="en", engine="siri"
         )
+
+
+def test_whisper_unavailable_fails_fast_before_extraction(monkeypatch, tmp_path):
+    """Lean image + whisper job: fail with an actionable message, not a lazy
+    ModuleNotFoundError after burning audio-extraction time."""
+    media = tmp_path / "episode.mkv"
+    media.write_text("video")
+    _common_patches(monkeypatch, tmp_path, dg_key="")
+    monkeypatch.setattr(tasks_module, "whisper_available", lambda: False)
+    extracted = []
+    monkeypatch.setattr(tasks_module, "extract_audio", lambda *a, **k: extracted.append(1))
+
+    with pytest.raises(RuntimeError, match="faster-whisper is not installed"):
+        tasks_module.transcribe_task(
+            RecordingTaskContext(), str(media), language="en", engine="whisper"
+        )
+    assert not extracted, "audio extraction must not run when the engine is unavailable"
 
 
 def test_whisper_model_passed_to_engine(monkeypatch, tmp_path):

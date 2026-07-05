@@ -26,6 +26,7 @@ from core.asr_engine import (
     VALID_ENGINES,
     TranscribeOptions,
     WhisperEngine,
+    whisper_available,
 )
 from core.srt_writer import (
     write_normalized_srt,
@@ -183,6 +184,13 @@ def transcribe_task(
     # (engine=whisper) must run without DEEPGRAM_API_KEY set at all.
     if engine == "deepgram" and not DG_KEY:
         raise RuntimeError("DEEPGRAM_API_KEY not set — configure it in .env")
+    # Fail fast BEFORE audio extraction: on the lean image a whisper job would
+    # otherwise burn extraction time per file and die on a lazy import.
+    if engine == "whisper" and not whisper_available():
+        raise RuntimeError(
+            "Local whisper engine requested but faster-whisper is not installed — "
+            "this worker is running the lean image; deploy subgeneratorr-worker-local"
+        )
     output_state = inspect_requested_outputs(
         vp,
         language,
@@ -385,10 +393,23 @@ def transcribe_task(
                 produced_outputs.append("raw_json")
             except Exception as e:
                 logger.warning("Failed to save raw JSON: %s", e)
+        elif SAVE_RAW_JSON or save_raw_json:
+            logger.warning(
+                "Raw JSON requested for %s but engine %r has no provider response — skipping",
+                vp.name,
+                engine,
+            )
 
         # Save intelligence summary if any intelligence features were enabled
         # (Deepgram-only; the UI gates these off for the local engine)
         has_intelligence = any([sentiment, summarize, topics, intents, detect_entities, search])
+        if has_intelligence and resp is None:
+            logger.warning(
+                "Audio intelligence outputs requested for %s but engine %r does not "
+                "support them (Deepgram-only) — no intelligence JSON will be written",
+                vp.name,
+                engine,
+            )
         if has_intelligence and resp is not None:
             self.update_state(
                 state="PROGRESS", meta={"current_file": vp.name, "stage": "saving_intelligence"}

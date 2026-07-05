@@ -31,6 +31,7 @@ from core.asr_engine import (
     DEFAULT_WHISPER_MODEL,
     VALID_ENGINES,
     engine_capabilities,
+    whisper_available,
 )
 from core.transcribe import (
     NEUTRAL_SUBTITLE_LANG,
@@ -433,6 +434,10 @@ def api_estimate():
     body = request.get_json(force=True) or {}
     raw_files = body.get("files", [])
     engine = body.get("engine", "deepgram")
+    if engine not in VALID_ENGINES:
+        abort(
+            400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}"
+        )
 
     # Updated Nova-3 pricing to match actual API charges
     # Previous estimate was ~25% low (e.g., estimated $0.71 vs actual $0.94)
@@ -555,6 +560,15 @@ def api_submit():
         abort(
             400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}"
         )
+    if engine == "whisper" and not whisper_available():
+        abort(
+            400,
+            description=(
+                "The local whisper engine is not installed in this image — "
+                "deploy the -local images (subgeneratorr-web-local / "
+                "subgeneratorr-worker-local) to transcribe locally"
+            ),
+        )
     if whisper_model is not None and whisper_model not in ALLOWED_WHISPER_MODELS:
         abort(
             400,
@@ -615,7 +629,12 @@ def api_submit():
 
     # Store batch metadata in Redis for timeout tracking
     file_count = len(files)
-    timeout_seconds = max(600, file_count * 300)  # 5 min per file, minimum 10 min
+    if engine == "whisper":
+        # Local transcription runs near realtime (a 3h movie takes ~3h), so
+        # the timeout is hang protection only — never a progress estimate.
+        timeout_seconds = max(7200, file_count * 14400)  # 4 h per file, minimum 2 h
+    else:
+        timeout_seconds = max(600, file_count * 300)  # 5 min per file, minimum 10 min
     batch_meta = {
         "submitted_at": time.time(),
         "file_count": file_count,

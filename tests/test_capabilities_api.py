@@ -6,6 +6,7 @@ POST /api/estimate ($0 for local). Mirrors the test_translate_api.py setup.
 """
 
 import importlib
+import json
 import os
 import sys
 import types
@@ -106,6 +107,16 @@ def test_capabilities_reports_default_engine_and_models():
     assert body["default_whisper_model"] == "small"
 
 
+def test_capabilities_reports_availability():
+    """The UI must know which engines the running image can actually execute:
+    this test env has no faster-whisper, mirroring the lean image."""
+    with app.test_client() as client:
+        resp = client.get("/api/capabilities")
+    body = resp.get_json()
+    assert body["engines"]["deepgram"]["available"] is True
+    assert body["engines"]["whisper"]["available"] is False
+
+
 # --- POST /api/submit validation ----------------------------------------------
 
 
@@ -120,10 +131,20 @@ def test_submit_rejects_unknown_engine():
     assert resp.status_code == 400
 
 
-def test_submit_rejects_unknown_whisper_model():
+def test_submit_rejects_unknown_whisper_model(monkeypatch):
+    monkeypatch.setattr(app_module, "whisper_available", lambda: True)
     with app.test_client() as client:
         resp = _submit(client, engine="whisper", whisper_model="enormous-v9")
     assert resp.status_code == 400
+
+
+def test_submit_rejects_whisper_when_not_installed():
+    """Lean image: a whisper submit must 400 at the API, not die per-file in
+    the worker with a ModuleNotFoundError."""
+    with app.test_client() as client:
+        resp = _submit(client, engine="whisper")
+    assert resp.status_code == 400
+    assert b"-local" in resp.data
 
 
 def test_submit_passes_engine_to_batch(monkeypatch):
@@ -134,11 +155,38 @@ def test_submit_passes_engine_to_batch(monkeypatch):
         return SimpleNamespace(id="batch-id")
 
     monkeypatch.setattr(app_module, "make_batch", fake_make_batch)
+    monkeypatch.setattr(app_module, "whisper_available", lambda: True)
     with app.test_client() as client:
         resp = _submit(client, engine="whisper", whisper_model="base")
     assert resp.status_code == 200
     assert captured["engine"] == "whisper"
     assert captured["whisper_model"] == "base"
+
+
+def test_submit_timeout_budget_is_engine_aware(monkeypatch):
+    """Whisper runs near realtime — the deepgram budget (5 min/file) would
+    falsely TIMEOUT any long local job that is still transcribing."""
+    stored = {}
+
+    class RecordingRedis:
+        def set(self, key, value, ex=None):
+            stored[key] = json.loads(value)
+            return True
+
+    monkeypatch.setattr(app_module, "_redis", RecordingRedis())
+    monkeypatch.setattr(app_module, "whisper_available", lambda: True)
+    monkeypatch.setattr(app_module, "make_batch", lambda *a, **k: SimpleNamespace(id="batch-id"))
+
+    with app.test_client() as client:
+        _submit(client, engine="whisper")
+    whisper_timeout = stored["batch:batch-id:meta"]["timeout_seconds"]
+
+    with app.test_client() as client:
+        _submit(client)
+    deepgram_timeout = stored["batch:batch-id:meta"]["timeout_seconds"]
+
+    assert whisper_timeout == 7200
+    assert deepgram_timeout == 600
 
 
 def test_submit_defaults_to_deepgram(monkeypatch):
@@ -175,3 +223,11 @@ def test_estimate_deepgram_keeps_pricing():
     body = resp.get_json()
     assert body["price_per_minute"] == 0.0057
     assert body["engine"] == "deepgram"
+
+
+def test_estimate_rejects_unknown_engine():
+    """Same validation as /api/submit — 'Whisper' or a typo must not be
+    silently priced as deepgram."""
+    with app.test_client() as client:
+        resp = client.post("/api/estimate", json={"files": [], "engine": "Whisper"})
+    assert resp.status_code == 400

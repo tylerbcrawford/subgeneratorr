@@ -1,5 +1,6 @@
 """Configuration management for Subgeneratorr"""
 
+import importlib.util
 import os
 
 
@@ -52,8 +53,9 @@ class Config:
         deployment (ASR_ENGINE=whisper) must be able to run without it.
 
         Raises:
-            ValueError: If ASR_ENGINE is unknown, or if the deepgram engine is
-                selected without DEEPGRAM_API_KEY set
+            ValueError: If ASR_ENGINE is unknown, if the deepgram engine is
+                selected without DEEPGRAM_API_KEY set, or if the whisper engine
+                is selected without faster-whisper installed
 
         Returns:
             bool: True if validation passes
@@ -62,4 +64,11 @@ class Config:
             raise ValueError(f"ASR_ENGINE must be 'deepgram' or 'whisper', got {cls.ASR_ENGINE!r}")
         if cls.ASR_ENGINE == "deepgram" and not cls.DEEPGRAM_API_KEY:
             raise ValueError("DEEPGRAM_API_KEY environment variable not set")
+        # Fail at startup, not per-file mid-batch: the lean CLI image does not
+        # ship faster-whisper (use subgeneratorr-cli-local or pip install it).
+        if cls.ASR_ENGINE == "whisper" and importlib.util.find_spec("faster_whisper") is None:
+            raise ValueError(
+                "ASR_ENGINE=whisper but faster-whisper is not installed — "
+                "use the subgeneratorr-cli-local image or `pip install faster-whisper`"
+            )
         return True

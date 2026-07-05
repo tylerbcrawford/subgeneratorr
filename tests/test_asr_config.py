@@ -34,7 +34,17 @@ def test_validate_passes_with_key_for_deepgram(monkeypatch):
 def test_validate_whisper_needs_no_key(monkeypatch):
     """Zero-cloud mode: ASR_ENGINE=whisper with no Deepgram key must not raise."""
     monkeypatch.setattr(Config, "ASR_ENGINE", "whisper")
+    # Simulate the -local image where faster-whisper is installed
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: object())
     assert Config.validate() is True
+
+
+def test_validate_whisper_requires_faster_whisper(monkeypatch):
+    """Lean image + ASR_ENGINE=whisper: fail at startup, not per-file mid-batch."""
+    monkeypatch.setattr(Config, "ASR_ENGINE", "whisper")
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    with pytest.raises(ValueError, match="faster-whisper"):
+        Config.validate()
 
 
 def test_validate_rejects_unknown_engine(monkeypatch):

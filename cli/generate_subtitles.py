@@ -374,6 +374,11 @@ class SubtitleGenerator:
                     normalized = self.transcribe_local(str(audio_path), keyterms=keyterms)
                     if normalized is None:
                         raise Exception("Transcription failed")
+                    if Config.SAVE_RAW_JSON:
+                        self.log(
+                            "  ⚠️  SAVE_RAW_JSON is Deepgram-only — the local engine "
+                            "has no raw API response to save"
+                        )
                     self.log("  💾 Generating SRT...")
                     srt_content = build_srt(normalized)
                 else:
