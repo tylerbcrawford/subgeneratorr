@@ -1338,6 +1338,14 @@ function applyEngineGating() {
     document.getElementById('whisperModelGroup')?.classList.toggle('hidden', !isLocal);
     document.getElementById('keytermsEngineNote')?.classList.toggle('hidden', !isLocal);
 
+    // Honest one-liner under the switch: what this choice actually means
+    const caption = document.getElementById('engineCaption');
+    if (caption) {
+        caption.textContent = isLocal
+            ? 'Whisper on this server · $0 · nothing leaves your machine'
+            : 'Deepgram Nova‑3 API · ~$0.0057/min';
+    }
+
     // Re-apply checkbox-driven sub-option visibility for controls the gating
     // just re-showed (their state may have gone stale while hidden).
     if (!isLocal) {

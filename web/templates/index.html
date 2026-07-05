@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=27">
+    <link rel="stylesheet" href="/static/styles.css?v=28">
 </head>
 <body>
     <div class="container">
@@ -31,7 +31,7 @@
                                     <circle cx="9" cy="15" r="1.5" fill="currentColor"/>
                                 </svg>
                             </button>
-                            <p class="subtitle">Subtitle Generation via Deepgram Nova-3</p>
+                            <p class="subtitle">AI subtitle generation &mdash; cloud or fully local</p>
                         </div>
 
                         <!-- Gear Popover (Browser Preferences) -->
@@ -62,6 +62,24 @@
                                     <span class="theme-icon theme-icon-light" style="display: none;">🌙</span>
                                 </button>
                             </div>
+                        </div>
+                        <!-- Engine switch — the product's dual nature, on the primary surface -->
+                        <div class="engine-switch-wrap">
+                            <div class="engine-switch" role="radiogroup" aria-label="Transcription engine">
+                                <label class="engine-segment">
+                                    <input type="radio" name="engine" value="deepgram" checked>
+                                    <span class="engine-dot engine-dot-cloud" aria-hidden="true"></span>
+                                    <span class="engine-segment-name">Cloud</span>
+                                    <span class="engine-segment-sub">Nova&#8209;3</span>
+                                </label>
+                                <label class="engine-segment">
+                                    <input type="radio" name="engine" value="whisper">
+                                    <span class="engine-dot engine-dot-local" aria-hidden="true"></span>
+                                    <span class="engine-segment-name">Local</span>
+                                    <span class="engine-segment-sub">Whisper</span>
+                                </label>
+                            </div>
+                            <p class="engine-caption" id="engineCaption">Deepgram Nova&#8209;3 API &middot; ~$0.0057/min</p>
                         </div>
                         <div class="action-bar-controls">
                             <button id="submitBtn" class="btn-primary" disabled type="button">Transcribe</button>
@@ -247,21 +265,9 @@
                     <details id="advancedOptions" class="config-section collapse-section" data-collapse-key="transcription">
                         <summary class="section-label collapse-summary">Transcription Settings</summary>
 
-                        <!-- Engine (v3.0.0 local engine) -->
-                        <div class="nova-settings">
-                            <h3 class="section-label-quiet">Engine</h3>
-                            <div class="form-group">
-                                <div class="radio-group">
-                                    <label class="radio-label">
-                                        <input type="radio" name="engine" value="deepgram" checked>
-                                        <span>Cloud (Deepgram)</span>
-                                    </label>
-                                    <label class="radio-label" title="Runs on this server via faster-whisper — free, private, slower. Requires the -local image.">
-                                        <input type="radio" name="engine" value="whisper">
-                                        <span>Local (Whisper)</span>
-                                    </label>
-                                </div>
-                            </div>
+                        <!-- Local engine details (engine switch lives in the action bar) -->
+                        <div class="nova-settings" data-engine="whisper">
+                            <h3 class="section-label-quiet">Local Engine</h3>
                             <div id="engineLimitationsNote" class="status info hidden">
                                 <span style="font-size: var(--font-caption);">
                                     Local mode: no audio intelligence, redaction, or speaker diarization.
@@ -536,7 +542,7 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=22"></script>
+    <script src="/static/app.js?v=23"></script>
     <script src="/static/translate.js?v=4"></script>
 </body>
 </html>

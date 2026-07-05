@@ -2820,3 +2820,101 @@ details[open] > .collapse-summary::after {
 .chip-remove:focus {
   color: var(--color-red);
 }
+
+/* ============================================
+   ENGINE SWITCH (v3 — Cloud vs Local on the primary surface)
+   Geometric segmented control: monochrome structure, one functional
+   color dot per engine, honest one-line caption. 1px borders, no shadows.
+   ============================================ */
+
+.engine-switch-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.engine-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  max-width: 340px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.engine-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: color 150ms ease, background 150ms ease;
+  user-select: none;
+}
+
+.engine-segment + .engine-segment {
+  border-left: 1px solid var(--border);
+}
+
+.engine-segment input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.engine-segment-name {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.engine-segment-sub {
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.engine-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.25;
+  transition: opacity 150ms ease;
+}
+
+.engine-dot-cloud { background: var(--color-blue); }
+.engine-dot-local { background: var(--color-green); }
+
+.engine-segment:hover {
+  color: var(--text-secondary);
+}
+
+.engine-segment:has(input:checked) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.engine-segment:has(input:checked) .engine-dot {
+  opacity: 1;
+}
+
+.engine-segment:has(input:focus-visible) {
+  outline: 2px solid var(--color-blue);
+  outline-offset: -2px;
+}
+
+.engine-caption {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+  text-align: center;
+  margin: 0;
+  min-height: 14px;
+}
