@@ -125,6 +125,7 @@ def transcribe_task(
     tag=None,
     engine="deepgram",
     whisper_model=None,
+    speaker_labels=False,
 ):
     """
     Transcribe a single video file.
@@ -160,6 +161,7 @@ def transcribe_task(
         tag: Request label tag (default: None)
         engine: ASR engine — "deepgram" (cloud, default) or "whisper" (local)
         whisper_model: faster-whisper model when engine=whisper (default: env/small)
+        speaker_labels: Keep "[speaker N]" tags in subtitle cues (default: strip)
 
     Returns:
         dict: Status and file paths
@@ -336,7 +338,7 @@ def transcribe_task(
             if engine == "whisper":
                 write_normalized_srt(normalized, resolved_srt_out)
             else:
-                write_srt(resp, resolved_srt_out)
+                write_srt(resp, resolved_srt_out, speaker_labels=speaker_labels)
             produced_outputs.append("subtitle")
 
             # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess
@@ -936,6 +938,7 @@ def make_batch(
     tag=None,
     engine="deepgram",
     whisper_model=None,
+    speaker_labels=False,
 ):
     """
     Create a batch of transcription jobs.
@@ -973,6 +976,7 @@ def make_batch(
         tag: Request label tag
         engine: ASR engine — "deepgram" (cloud) or "whisper" (local)
         whisper_model: faster-whisper model when engine=whisper
+        speaker_labels: Keep "[speaker N]" tags in subtitle cues (default: strip)
 
     Returns:
         AsyncResult: Celery async result for tracking batch progress
@@ -1009,6 +1013,7 @@ def make_batch(
             tag,
             engine,
             whisper_model,
+            speaker_labels,
         )
         for f in files
     ]

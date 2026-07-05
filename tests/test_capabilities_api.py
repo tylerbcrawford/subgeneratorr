@@ -189,6 +189,22 @@ def test_submit_timeout_budget_is_engine_aware(monkeypatch):
     assert deepgram_timeout == 600
 
 
+def test_submit_passes_speaker_labels(monkeypatch):
+    """Subtitle speaker tags are opt-in: absent from the request means False."""
+    captured = {}
+
+    def fake_make_batch(files, model, language, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id="batch-id")
+
+    monkeypatch.setattr(app_module, "make_batch", fake_make_batch)
+    with app.test_client() as client:
+        _submit(client, speaker_labels=True)
+        assert captured["speaker_labels"] is True
+        _submit(client)
+        assert captured["speaker_labels"] is False
+
+
 def test_submit_defaults_to_deepgram(monkeypatch):
     captured = {}
 

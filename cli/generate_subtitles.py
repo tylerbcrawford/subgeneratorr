@@ -79,6 +79,7 @@ from core.transcribe import (
     is_media,
     load_keyterms_from_csv,
     resolve_synced_marker_path,
+    strip_speaker_labels,
     write_raw_json,
 )
 
@@ -306,7 +307,10 @@ class SubtitleGenerator:
             self.log(f"  🎤 Detected {len(words)} words in transcription")
 
             transcription = DeepgramConverter(deepgram_response)
-            return srt(transcription)
+            srt_content = srt(transcription)
+            if not Config.SPEAKER_LABELS:
+                srt_content = strip_speaker_labels(srt_content)
+            return srt_content
         except ValueError as e:
             raise Exception(f"SRT generation failed: {str(e)}")
         except Exception as e:

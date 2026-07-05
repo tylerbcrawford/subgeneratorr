@@ -777,7 +777,7 @@ function applyDefaultSettings() {
     // Reset checkboxes that should be unchecked by default
     const uncheckIds = [
         'enableTranscript', 'saveRawJson', 'numerals', 'fillerWords',
-        'diarization', 'dictation', 'redact', 'findReplace', 'multichannel',
+        'diarization', 'speakerLabels', 'dictation', 'redact', 'findReplace', 'multichannel',
         'sentiment', 'summarize', 'topics', 'intents', 'detectEntities', 'enableSearch'
     ];
     uncheckIds.forEach(id => {
@@ -840,6 +840,7 @@ function saveCurrentSettings() {
         profanityFilter: document.getElementById('profanityFilter')?.checked ? 'on' : 'off',
         saveRawJson: document.getElementById('saveRawJson')?.checked,
         diarization: document.getElementById('diarization')?.checked,
+        speakerLabels: document.getElementById('speakerLabels')?.checked,
         utterances: document.getElementById('utterances')?.checked,
         paragraphs: document.getElementById('paragraphs')?.checked,
         onlyFoldersWithVideos: document.getElementById('onlyFoldersWithVideos')?.checked,
@@ -894,6 +895,7 @@ function loadSavedSettings() {
             if (settings.fillerWords !== undefined) document.getElementById('fillerWords').checked = settings.fillerWords;
             if (settings.saveRawJson !== undefined) document.getElementById('saveRawJson').checked = settings.saveRawJson;
             if (settings.diarization !== undefined) document.getElementById('diarization').checked = settings.diarization;
+            if (settings.speakerLabels !== undefined) document.getElementById('speakerLabels').checked = settings.speakerLabels;
             if (settings.utterances !== undefined) document.getElementById('utterances').checked = settings.utterances;
             if (settings.paragraphs !== undefined) document.getElementById('paragraphs').checked = settings.paragraphs;
 
@@ -1966,6 +1968,7 @@ async function submitBatch() {
 
     // Advanced Transcript Features
     const diarization = document.getElementById('diarization')?.checked || false;
+    const speakerLabels = document.getElementById('speakerLabels')?.checked || false;
     const utterances = document.getElementById('utterances')?.checked || false;
     const paragraphs = document.getElementById('paragraphs')?.checked || false;
 
@@ -2058,6 +2061,7 @@ async function submitBatch() {
     if (engine === 'whisper') {
         requestBody.whisper_model = document.getElementById('whisperModel')?.value || 'small';
     }
+    if (speakerLabels && diarization) requestBody.speaker_labels = true;
     if (redactTypes.length > 0) requestBody.redact = redactTypes;
     if (replaceTerms.length > 0) requestBody.replace = replaceTerms;
     if (uttSplit !== null) requestBody.utt_split = uttSplit;

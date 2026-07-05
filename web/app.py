@@ -538,6 +538,7 @@ def api_submit():
 
     # Advanced Transcript Features
     diarization = body.get("diarization", True)  # Default to True (current behavior)
+    speaker_labels = body.get("speaker_labels", False)  # "[speaker N]" tags in subtitle cues
     utterances = body.get("utterances", True)  # Default to True (current behavior)
     paragraphs = body.get("paragraphs", True)  # Default to True (current behavior)
     utt_split = body.get("utt_split")  # float, only sent when non-default
@@ -625,6 +626,7 @@ def api_submit():
         tag=tag,
         engine=engine,
         whisper_model=whisper_model,
+        speaker_labels=speaker_labels,
     )
 
     # Store batch metadata in Redis for timeout tracking

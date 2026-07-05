@@ -25,6 +25,9 @@ class Config:
     # Raw JSON output toggle - saves raw Deepgram API response for debugging
     SAVE_RAW_JSON = os.environ.get("SAVE_RAW_JSON", "0") == "1"
 
+    # Keep "[speaker N]" tags in subtitle cues (Deepgram engine; default: strip)
+    SPEAKER_LABELS = os.environ.get("SPEAKER_LABELS", "0") == "1"
+
     # Force regeneration settings
     FORCE_REGENERATE = os.environ.get("FORCE_REGENERATE", "0") == "1"
 

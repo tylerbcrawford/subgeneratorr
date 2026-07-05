@@ -9,6 +9,7 @@ that can be used by both the CLI tool and the Web UI.
 import csv
 import json
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -779,7 +780,32 @@ def transcribe_file(
     return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts, addons=addons)
 
 
-def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):
+# deepgram-captions injects a "[speaker N]" line into cue text at every
+# speaker change when the response carries diarization data.
+_SPEAKER_LABEL_RE = re.compile(r"^\[speaker \d+\]\s*$", re.IGNORECASE)
+
+
+def strip_speaker_labels(srt_text: str) -> str:
+    """
+    Remove deepgram-captions "[speaker N]" lines from SRT cue text.
+
+    Anonymous numbered labels are transcript metadata, not subtitle
+    convention — diarization data still powers speaker-mapped transcripts.
+    Cues left empty by the strip are dropped and the rest renumbered.
+    """
+    import srt as srt_lib  # local alias: this module's `srt` name is deepgram_captions.srt
+
+    cues = []
+    for cue in srt_lib.parse(srt_text):
+        lines = [ln for ln in cue.content.splitlines() if not _SPEAKER_LABEL_RE.match(ln)]
+        content = "\n".join(lines).strip()
+        if content:
+            cue.content = content
+            cues.append(cue)
+    return srt_lib.compose(cues)
+
+
+def write_srt(resp: dict, dest: Path, lang: Optional[str] = None, speaker_labels: bool = False):
     """
     Generate and write SRT subtitle file from Deepgram response.
 
@@ -787,6 +813,7 @@ def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):
         resp: Deepgram transcription response
         dest: Path where SRT file should be written
         lang: Optional language code to force into the filename
+        speaker_labels: Keep "[speaker N]" tags in cue text (default: strip)
 
     Raises:
         Exception: If SRT generation or writing fails
@@ -809,6 +836,8 @@ def write_srt(resp: dict, dest: Path, lang: Optional[str] = None):
         )
 
     srt_content = srt(DeepgramConverter(resp))
+    if not speaker_labels:
+        srt_content = strip_speaker_labels(srt_content)
     dest.write_text(srt_content, encoding="utf-8")
 
 
