@@ -2910,6 +2910,16 @@ details[open] > .collapse-summary::after {
   outline-offset: -2px;
 }
 
+/* Engine not installed in this image (e.g. Local on the lean image) */
+.engine-segment-unavailable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.engine-segment-unavailable:hover {
+  color: var(--text-tertiary);
+}
+
 .engine-caption {
   font-size: 11px;
   color: var(--text-tertiary);

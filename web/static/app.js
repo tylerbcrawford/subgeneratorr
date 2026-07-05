@@ -166,7 +166,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('input[name="engine"]').forEach(radio => {
         radio.addEventListener('change', applyEngineGating);
     });
-    loadEngineCapabilities().then(applyEngineGating);
+    loadEngineCapabilities().then(() => {
+        applyServerDefaults();
+        applyEngineGating();
+    });
 
     const uttSplitEl = document.getElementById('uttSplit');
     if (uttSplitEl) uttSplitEl.addEventListener('input', function() {
@@ -1316,6 +1319,48 @@ async function loadEngineCapabilities() {
     }
 }
 
+// Sync the UI to the server's configuration: disable engines the running
+// image can't execute, preselect ASR_ENGINE, and reflect WHISPER_MODEL in
+// the model picker (index.html's hardcoded defaults are only a JS-off
+// fallback — the server is the source of truth).
+function applyServerDefaults() {
+    const caps = engineCapabilities;
+    if (!caps) return;
+
+    document.querySelectorAll('input[name="engine"]').forEach(radio => {
+        const available = caps.engines?.[radio.value]?.available !== false;
+        radio.disabled = !available;
+        const segment = radio.closest('.engine-segment');
+        if (segment) {
+            segment.classList.toggle('engine-segment-unavailable', !available);
+            if (!available) {
+                segment.title = 'Not installed in this image — deploy the -local images to transcribe locally';
+            } else {
+                segment.removeAttribute('title');
+            }
+        }
+        // Never leave an unavailable engine selected (e.g. hardcoded default)
+        if (!available && radio.checked) radio.checked = false;
+    });
+
+    const defaultEngine = caps.default_engine;
+    if (defaultEngine && caps.engines?.[defaultEngine]?.available !== false) {
+        const radio = document.querySelector(`input[name="engine"][value="${defaultEngine}"]`);
+        if (radio) radio.checked = true;
+    }
+    if (!document.querySelector('input[name="engine"]:checked')) {
+        const fallback = document.querySelector('input[name="engine"]:not(:disabled)');
+        if (fallback) fallback.checked = true;
+    }
+
+    const modelSelect = document.getElementById('whisperModel');
+    const defaultModel = caps.default_whisper_model;
+    if (modelSelect && defaultModel &&
+        Array.from(modelSelect.options).some(o => o.value === defaultModel)) {
+        modelSelect.value = defaultModel;
+    }
+}
+
 function applyEngineGating() {
     const engine = getSelectedEngine();
     const caps = engineCapabilities?.engines?.[engine]?.capabilities || null;
@@ -1355,7 +1400,7 @@ function applyEngineGating() {
     }
 
     // Cost display depends on the engine (local = $0)
-    if (typeof calculateEstimates === 'function') calculateEstimates();
+    calculateEstimatesAuto();
 }
 
 /* ============================================
@@ -1982,6 +2027,14 @@ async function submitBatch() {
     // ASR engine selection (v3.0.0)
     const engine = getSelectedEngine();
 
+    // Deepgram-only extras must be DROPPED here, not just hidden by the
+    // gating: saved preferences can restore checkbox state for controls the
+    // engine switch hid, and the worker would silently produce nothing.
+    const engineCaps = engineCapabilities?.engines?.[engine]?.capabilities;
+    const supportsIntelligence = engineCaps
+        ? engineCaps.includes('audio_intelligence')
+        : engine === 'deepgram';
+
     const requestBody = {
         files: selectedFilesList,
         model: model,
@@ -1989,7 +2042,7 @@ async function submitBatch() {
         engine: engine,
         profanity_filter: profanityFilter,
         force_regenerate: forceRegenerate,
-        save_raw_json: saveRawJson,
+        save_raw_json: engine === 'deepgram' ? saveRawJson : false,
         numerals: numerals,
         filler_words: fillerWords,
         detect_language: detectLanguage,
@@ -2008,12 +2061,14 @@ async function submitBatch() {
     if (redactTypes.length > 0) requestBody.redact = redactTypes;
     if (replaceTerms.length > 0) requestBody.replace = replaceTerms;
     if (uttSplit !== null) requestBody.utt_split = uttSplit;
-    if (sentiment) requestBody.sentiment = true;
-    if (summarize) requestBody.summarize = true;
-    if (topics) requestBody.topics = true;
-    if (intents) requestBody.intents = true;
-    if (detectEntities) requestBody.detect_entities = true;
-    if (searchTerms.length > 0) requestBody.search = searchTerms;
+    if (supportsIntelligence) {
+        if (sentiment) requestBody.sentiment = true;
+        if (summarize) requestBody.summarize = true;
+        if (topics) requestBody.topics = true;
+        if (intents) requestBody.intents = true;
+        if (detectEntities) requestBody.detect_entities = true;
+        if (searchTerms.length > 0) requestBody.search = searchTerms;
+    }
     if (tag) requestBody.tag = tag;
 
     const keyTerms = document.getElementById('keyTerms').value.trim();
