@@ -9,8 +9,8 @@ Future enhancements under consideration. Community contributions welcome — ope
 ### Single-Container Option
 Consolidate Redis, Flask, and Celery into a single Docker container for simpler deployment. Reduce `docker-compose.yml` to one service for users who don't need horizontal scaling.
 
-### Local Engine (Whisper + Ollama)
-Optional fully-local mode: swap Deepgram Nova-3 for a local Whisper engine and use Ollama for keyterm generation and translation, so nothing leaves your machine and there is no per-minute cost. Planned as a pluggable engine with an opt-in local Docker image. The Ollama (LLM) half shipped with translation in v2.4.0; the remaining work is the local Whisper ASR engine.
+### Local Engine (Whisper + Ollama) — in progress, targeting v3.0.0
+Optional fully-local mode: swap Deepgram Nova-3 for a local Whisper engine and use Ollama for keyterm generation and translation, so nothing leaves your machine and there is no per-minute cost. The Ollama (LLM) half shipped with translation in v2.4.0; the local Whisper ASR engine (pluggable engine interface, capability-gated UI, opt-in `-local` image with a baked default model) is built on the `feat/local-engine` branch and ships as v3.0.0. GPU support and local diarization remain deferred as future tiers.
 
 ### Bazarr Auto-Fallback
 Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature (shipped in v2.1.0) provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.

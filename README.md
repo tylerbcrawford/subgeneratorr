@@ -26,6 +26,7 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 ## Features
 
 - 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 40+ transcription languages (50+ counting regional variants; General + Medical models)
+- 🏠 **Local engine (v3)** — opt-in `-local` image transcribes on your own hardware via faster-whisper (CPU, offline, $0); pair with Ollama and the entire pipeline runs with nothing leaving your machine
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
 - 🌐 **Subtitle translation into 49 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
@@ -108,6 +109,10 @@ One transcription, many languages. After Nova-3 produces a subtitle, an LLM tran
 
 Open the **Translate** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00) — use a capable 3B+ model like `qwen2.5:7b` for reliable results. Existing translations are skipped unless you choose to overwrite.
 
+### Run fully local (no cloud, $0)
+
+Prefer to keep everything on your own hardware? The opt-in `-local` image swaps Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running on CPU, with the `small` model baked in so it works offline from first boot (bigger models download into a cache volume; the picker shows RAM/speed guidance). Choose the engine per job in the Web UI — Deepgram stays the default and is untouched. Combined with Ollama for keyterms and translation, no audio, text, or API key ever leaves your machine. Start from `examples/docker-compose.local.example.yml`; expect near-real-time processing on a modest CPU, and note that Deepgram-only extras (audio intelligence, redaction, diarization) hide automatically in local mode.
+
 ### Find all missing subtitles
 
 Point it at a library of thousands of files and it tells you exactly what's missing. A two-phase scan checks sidecar files (seconds), then optionally probes embedded tracks with ffprobe (~50–100ms/file). Results come back grouped by directory, persist across page reloads, and export to CSV. A 4,662-file library scans in ~6 minutes with embedded detection on, or in seconds in sidecar-only mode.
@@ -128,8 +133,10 @@ Two values are required; everything else has sensible defaults.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEEPGRAM_API_KEY` | Deepgram API key (**required**) | – |
+| `DEEPGRAM_API_KEY` | Deepgram API key (**required** for the cloud engine; optional with `ASR_ENGINE=whisper`) | – |
 | `MEDIA_PATH` | Media directory to scan (**required**) | `/media` |
+| `ASR_ENGINE` | `deepgram` (cloud) or `whisper` (local `-local` image) | `deepgram` |
+| `WHISPER_MODEL` | Local model: `tiny` · `base` · `small` · `medium` · `large-v3` | `small` |
 | `LANGUAGE` | Language code, or `auto` / `multi` | `en` |
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
 | `PROFANITY_FILTER` | `off` · `tag` · `remove` | `off` |

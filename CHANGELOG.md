@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Local transcription engine (Whisper).** An opt-in `-local` Docker image bundles [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CPU, int8) with the `small` model baked in, so the whole pipeline — transcription, keyterms, and translation (via Ollama) — can run offline with nothing leaving your machine and no per-minute cost. Deepgram Nova-3 remains the default engine and its output is byte-for-byte unchanged. Select the engine per job in the Web UI (or set `ASR_ENGINE=whisper`); `DEEPGRAM_API_KEY` is no longer required when running local-only. Includes a native SRT writer with readability-focused cue segmentation (max 2×42-char lines, ≤7 s cues, splits at sentence ends and silence gaps), VAD + anti-hallucination settings tuned for movie/TV audio, per-segment progress reporting, a model picker with RAM/speed guidance, and `examples/docker-compose.local.example.yml` for a fully-local stack. Web UI options the local engine can't support (audio intelligence, redaction, diarization, and so on) hide automatically via the new `/api/capabilities` endpoint; keyterms map to whisper hotwords (best-effort, capped). The CLI honors `ASR_ENGINE=whisper` for subtitle generation.
+
 ## [2.4.0] - 2026-06-26
 
 ### Added

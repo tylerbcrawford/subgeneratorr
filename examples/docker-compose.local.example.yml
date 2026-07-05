@@ -1,0 +1,145 @@
+# Subgeneratorr — fully-local stack (v3.0.0 local engine)
+# https://github.com/tylerbcrawford/subgeneratorr
+#
+# Runs transcription on your own hardware via faster-whisper (CPU, int8) —
+# no Deepgram account or API key needed. Pair with an Ollama server
+# (OLLAMA_HOST) for local keyterm generation and subtitle translation, and
+# nothing leaves your machine.
+#
+# Quick start:
+#   1. Copy this file: cp examples/docker-compose.local.example.yml docker-compose.yml
+#   2. Copy .env.example to .env and set MEDIA_PATH (DEEPGRAM_API_KEY optional)
+#   3. docker compose build
+#   4. docker compose up -d    (Web UI at http://localhost:5000)
+#
+# Expectations vs the cloud engine:
+#   - Transcription runs near real-time on a modest CPU with the default
+#     `small` model (a 40-minute episode takes roughly 40 minutes).
+#   - Keep worker concurrency at 1 — two whisper jobs will thrash the CPU
+#     and can exhaust RAM.
+#   - `medium`/`large-v3` models need ~2/~4 GB extra RAM — raise the worker
+#     memory limit below before selecting them in the UI.
+#   - The default `small` model is baked into the image; other sizes download
+#     on first use into the whisper-models volume.
+
+services:
+  # ==========================================================================
+  # Redis - Task queue broker
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ==========================================================================
+  # Web UI - Gunicorn app server (-local image)
+  # ==========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      target: local
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-web-local:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ASR_ENGINE: ${ASR_ENGINE:-whisper}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only needed to also use the cloud engine
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_ROOT: /media
+      LOG_ROOT: /logs
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
+      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
+      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline keyterms + translation
+      DISABLE_AUTH: ${DISABLE_AUTH:-true}
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/healthz | grep ok"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5000}:5000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # lets OLLAMA_HOST reach an Ollama server on the host
+
+  # ==========================================================================
+  # Celery Worker - runs the whisper engine (-local image)
+  # ==========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      target: local
+    # Pre-built image (uncomment to skip building):
+    # image: ghcr.io/tylerbcrawford/subgeneratorr-worker-local:latest
+    # Concurrency pinned to 1: parallel whisper jobs thrash CPU and RAM.
+    command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=1
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks.celery_app inspect ping | grep -q pong || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ASR_ENGINE: ${ASR_ENGINE:-whisper}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_CPU_THREADS: ${WHISPER_CPU_THREADS:-0}  # 0 = auto
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only needed to also use the cloud engine
+      REDIS_URL: redis://redis:6379/0
+      MEDIA_ROOT: /media
+      LOG_ROOT: /logs
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
+      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      CELERYD_CONCURRENCY: 1
+    volumes:
+      - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
+      - logs:/logs
+      - whisper-models:/models  # seeds from the baked model; persists larger downloads
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'   # whisper is CPU-bound; give it the cores you can spare
+          memory: 4G    # small fits in ~1 GB; large-v3 needs ~4 GB
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  logs:
+    driver: local
+  whisper-models:
+    driver: local

@@ -44,6 +44,15 @@ jobs:
           - image: subgeneratorr-cli
             dockerfile: cli/Dockerfile
             context: .
+          # -local variants: faster-whisper + baked small model (v3.0.0)
+          - image: subgeneratorr-web-local
+            dockerfile: web/Dockerfile
+            context: .
+            target: local
+          - image: subgeneratorr-worker-local
+            dockerfile: web/Dockerfile
+            context: .
+            target: local
 
     steps:
       - name: Checkout
@@ -82,6 +91,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target || '' }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
