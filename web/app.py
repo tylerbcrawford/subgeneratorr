@@ -30,6 +30,8 @@ from core.asr_engine import (
     ALLOWED_WHISPER_MODELS,
     DEFAULT_WHISPER_MODEL,
     VALID_ENGINES,
+    deepgram_available,
+    default_engine,
     engine_capabilities,
     whisper_available,
 )
@@ -100,6 +102,21 @@ _TERMINAL_CHILD_STATES = {"SUCCESS", "FAILURE", "REVOKED"}
 def _validate_task_id(task_id):
     if not _TASK_ID_RE.match(task_id):
         abort(400, description="Invalid task ID format")
+
+
+def _progress_fields(info):
+    """UI-facing metadata for a PROGRESS child. Whisper jobs additionally
+    report real per-file progress (progress_seconds/total_seconds); the keys
+    are omitted — not null — for cloud jobs so the UI keeps its stage
+    heuristics."""
+    fields = {
+        "current_file": info.get("current_file", ""),
+        "stage": info.get("stage", ""),
+    }
+    for key in ("progress_seconds", "total_seconds"):
+        if info.get(key) is not None:
+            fields[key] = info[key]
+    return fields
 
 
 def _extract_terminal_child_info(task_result):
@@ -202,7 +219,7 @@ def api_capabilities():
     return jsonify(
         {
             "engines": engine_capabilities(),
-            "default_engine": os.environ.get("ASR_ENGINE", "deepgram"),
+            "default_engine": default_engine(),
             "whisper_models": list(ALLOWED_WHISPER_MODELS),
             "default_whisper_model": os.environ.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL),
         }
@@ -433,7 +450,7 @@ def api_estimate():
     _require_auth()
     body = request.get_json(force=True) or {}
     raw_files = body.get("files", [])
-    engine = body.get("engine", "deepgram")
+    engine = body.get("engine") or default_engine()
     if engine not in VALID_ENGINES:
         abort(
             400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}"
@@ -555,7 +572,7 @@ def api_submit():
     tag = body.get("tag")
 
     # ASR engine selection (v3.0.0)
-    engine = body.get("engine", "deepgram")
+    engine = body.get("engine") or default_engine()
     whisper_model = body.get("whisper_model")
     if engine not in VALID_ENGINES:
         abort(
@@ -568,6 +585,14 @@ def api_submit():
                 "The local whisper engine is not installed in this image — "
                 "deploy the -local images (subgeneratorr-web-local / "
                 "subgeneratorr-worker-local) to transcribe locally"
+            ),
+        )
+    if engine == "deepgram" and not deepgram_available():
+        abort(
+            400,
+            description=(
+                "DEEPGRAM_API_KEY is not set — add it to .env, or select the "
+                "local whisper engine to transcribe without the cloud"
             ),
         )
     if whisper_model is not None and whisper_model not in ALLOWED_WHISPER_MODELS:
@@ -699,8 +724,7 @@ def api_job(rid):
                 if child.state == "PROGRESS":
                     started_count += 1
                     if child.info:
-                        child_info["current_file"] = child.info.get("current_file", "")
-                        child_info["stage"] = child.info.get("stage", "")
+                        child_info.update(_progress_fields(child.info))
                 elif child.state == "SUCCESS":
                     completed_count += 1
                     child_info = _extract_terminal_child_info(child)
@@ -789,8 +813,7 @@ def api_job(rid):
 
                     # Get task metadata if available
                     if child_result.state == "PROGRESS" and child_result.info:
-                        child_info["current_file"] = child_result.info.get("current_file", "")
-                        child_info["stage"] = child_result.info.get("stage", "")
+                        child_info.update(_progress_fields(child_result.info))
                     elif child_result.ready():
                         result = child_result.get(propagate=False)
                         # Handle exceptions in child results

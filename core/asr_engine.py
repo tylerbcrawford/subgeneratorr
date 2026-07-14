@@ -74,6 +74,21 @@ def whisper_available() -> bool:
         return "faster_whisper" in sys.modules
 
 
+def deepgram_available() -> bool:
+    """True when a Deepgram API key is configured — the cloud engine is
+    unusable without one, so a zero-cloud deploy must not advertise it."""
+    return bool(os.environ.get("DEEPGRAM_API_KEY"))
+
+
+def default_engine() -> str:
+    """Engine for requests that omit `engine`: ASR_ENGINE env, validated."""
+    name = os.environ.get("ASR_ENGINE", DEFAULT_ENGINE)
+    if name not in VALID_ENGINES:
+        logger.warning("Invalid ASR_ENGINE %r — using %r", name, DEFAULT_ENGINE)
+        return DEFAULT_ENGINE
+    return name
+
+
 # --------------------------------------------------------------------------
 # Request / response contract
 # --------------------------------------------------------------------------
@@ -194,6 +209,10 @@ class DeepgramEngine(ASREngine):
     def __init__(self, api_key: Optional[str] = None, model: str = "nova-3"):
         self.api_key = api_key if api_key is not None else os.environ.get("DEEPGRAM_API_KEY", "")
         self.model = model
+
+    @classmethod
+    def is_available(cls) -> bool:
+        return deepgram_available()
 
     @classmethod
     def capabilities(cls) -> set:

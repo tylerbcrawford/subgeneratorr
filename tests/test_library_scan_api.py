@@ -127,9 +127,10 @@ def test_api_config_returns_runtime_default_model():
     assert response.get_json()["default_model"] == "nova-3-medical"
 
 
-def test_submit_uses_runtime_default_model_when_request_omits_model(tmp_path):
+def test_submit_uses_runtime_default_model_when_request_omits_model(tmp_path, monkeypatch):
     media_file = tmp_path / "episode.mkv"
     media_file.write_text("video")
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "dg-test-key")
     captured = {}
 
     def fake_make_batch(files, model, language, **kwargs):

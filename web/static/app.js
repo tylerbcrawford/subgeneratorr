@@ -2900,7 +2900,11 @@ function updateJobDisplay(data) {
             // Find the currently processing child
             const processing = data.children.find(c => c.state === 'PROGRESS' || c.state === 'STARTED');
             const stage = processing?.stage || '';
-            const stagePercent = STAGE_PROGRESS[stage] || 0;
+            // Whisper reports real per-file seconds; cloud jobs only have stage heuristics
+            const filePercent = processing?.total_seconds > 0 && processing?.progress_seconds != null
+                ? Math.min(99, Math.round(processing.progress_seconds / processing.total_seconds * 100))
+                : null;
+            const stagePercent = filePercent ?? (STAGE_PROGRESS[stage] || 0);
             const currentFile = processing?.current_file || processing?.filename || '';
 
             // Blend task-level and stage-level progress
@@ -2908,7 +2912,10 @@ function updateJobDisplay(data) {
             const percent = Math.round((done / total * 100) + (stagePercent / 100 * perTaskSlice));
 
             // Build status message with stage label
-            const stageLabel = STAGE_LABELS[stage] || '';
+            let stageLabel = STAGE_LABELS[stage] || '';
+            if (filePercent !== null && stageLabel) {
+                stageLabel = `${stageLabel.replace(/\.\.\.$/, '')} ${filePercent}%`;
+            }
             let statusMsg;
             if (total === 1) {
                 // Single file: just show stage and filename
