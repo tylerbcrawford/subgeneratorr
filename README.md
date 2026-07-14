@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Multi-LLM subtitle generation for Plex, Jellyfin, and Emby: Deepgram Nova-3 transcription paired with your choice of Claude, GPT, Gemini, or a local Ollama model for keyterm prompting and translation into 49 languages.**
+**AI subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle keyterms and translation into 49 languages.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
@@ -13,11 +13,24 @@
   <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
 </p>
 
-Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, and uses **keyterm prompting** to feed character names and show-specific vocabulary to [Deepgram's Nova-3](https://deepgram.com/learn/nova-3-speech-to-ai) so proper nouns come out right. Once a subtitle exists, an LLM can translate it into 49 more languages (Claude, GPT, Gemini, or a free local Ollama model), keeping the original timing. Transcription runs ~$0.0057/min, and new Deepgram accounts get **$200 in free credits** (~585 hours).
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 49 more languages with the original timing preserved.
 
 *I built it to close the hundreds of missing-subtitle gaps in my own library.*
 
-**Why multi-LLM?** Transcription is fixed on Deepgram Nova-3, but every AI step after it (keyterm generation and translation) is provider-agnostic. Claude, GPT, and Gemini each do better on different content and price points, Gemini's free tier makes keyterms effectively zero-cost, and a local Ollama model keeps translation free and fully offline when privacy or budget matters. Point each step at whichever endpoint fits the job; one adapter interface treats them all the same, so there is no lock-in to a single vendor.
+## Cloud or local — you choose
+
+Since v3, transcription is a per-job switch right on the main screen:
+
+| | ☁️ **Cloud** — Deepgram Nova-3 | 🏠 **Local** — Whisper *(new in v3, beta)* |
+|---|---|---|
+| **Accuracy** | Best in class; keyterms boost proper nouns up to ~90% | ~89% word-level agreement with Nova-3 (`small` model) |
+| **Speed** | ~1% of runtime | Near-real-time on a modest CPU (0.3× measured on an N100) |
+| **Cost** | ~$0.0057/min, [$200 free credits](https://console.deepgram.com/) (~585 hrs) | **$0, forever** |
+| **Privacy** | Audio goes to Deepgram's API | **Nothing leaves your machine** |
+| **Setup** | API key | No account, no key; larger image with the model baked in |
+| **Extras** | Diarization, redaction, audio intelligence | Core transcription (cloud-only options hide automatically) |
+
+Every AI step after transcription (keyterms, translation) is provider-agnostic too: Claude, GPT, Gemini, or a local **Ollama** model — pair Local Whisper with Ollama and the entire pipeline runs offline at $0, with no vendor lock-in anywhere.
 
 > Free and open-source. Not affiliated with Deepgram, Anthropic, OpenAI, or any other provider.
 
@@ -26,7 +39,7 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 ## Features
 
 - 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 40+ transcription languages (50+ counting regional variants; General + Medical models)
-- 🏠 **Local engine (v3)** — opt-in `-local` image transcribes on your own hardware via faster-whisper (CPU, offline, $0); pair with Ollama and the entire pipeline runs with nothing leaving your machine
+- 🏠 **Local engine (v3)** — opt-in `-local` images transcribe on your own hardware via faster-whisper: CPU-only, offline, $0, default model baked in
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
 - 🌐 **Subtitle translation into 49 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
@@ -117,7 +130,13 @@ Open the **Translate** panel in the Web UI, pick your target languages, and choo
 
 ### Run fully local (no cloud, $0)
 
-Prefer to keep everything on your own hardware? The opt-in `-local` images swap Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running on CPU, with the `small` model baked in so it works offline from first boot (bigger models download into a cache volume; the picker shows RAM/speed guidance). Choose the engine per job in the Web UI — it preselects your server's `ASR_ENGINE`, and on the standard image Deepgram remains the default with the Local option shown as unavailable. The one change to cloud output in v3: subtitle cues no longer embed `[speaker N]` tags by default — re-enable them with the "Speaker labels in subtitles" toggle (or `SPEAKER_LABELS=1` for the CLI). Combined with Ollama for keyterms and translation, no audio, text, or API key ever leaves your machine. Start from `examples/docker-compose.local.example.yml`, which builds both web and worker from the `local` target; for headless runs, the `subgeneratorr-cli-local` image brings the same engine to the CLI via `ASR_ENGINE=whisper`. Expect near-real-time or faster processing on a modest CPU — measured on a low-power Intel N100, a 21-minute episode transcribed in 6½ minutes (0.3× runtime) with the `small` model, with ~89% word-level agreement against Nova-3 on the same episode. Deepgram-only extras (audio intelligence, redaction, diarization) hide automatically in local mode.
+The opt-in `-local` images swap Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU. The `small` model is baked in, so it works offline from first boot; bigger models download into a cache volume, and the model picker shows RAM/speed guidance for each.
+
+Start from `examples/docker-compose.local.example.yml`, which builds web, worker, and CLI from the `local` target. No `DEEPGRAM_API_KEY` needed — without one the UI greys out the Cloud engine and defaults to Local. For headless runs, the `subgeneratorr-cli-local` image uses the same engine via `ASR_ENGINE=whisper`. Add Ollama for keyterms and translation and no audio, text, or API key ever leaves your machine.
+
+On the standard image it's the reverse: Deepgram stays the default and Local shows as unavailable. Either way the engine is a per-job switch in the Web UI, preselected from your server's `ASR_ENGINE`.
+
+One change to cloud output in v3: subtitle cues no longer embed `[speaker N]` tags by default — re-enable them with the "Speaker labels in subtitles" toggle (or `SPEAKER_LABELS=1` for the CLI).
 
 ### Find all missing subtitles
 
@@ -179,6 +198,9 @@ New Deepgram accounts get **$200 in free credits** — roughly 35,000 minutes (~
 
 **How is this different from Bazarr?**
 Bazarr finds *existing* community subtitles; Subgeneratorr *generates* them from audio for whatever Bazarr can't find. Run Bazarr first, then Subgeneratorr on the gaps.
+
+**Cloud or local — which engine should I pick?**
+Cloud (Nova-3) for the best accuracy and speed at ~$0.0057/min; Local (Whisper) for $0, offline, fully private transcription at near-real-time speed. It's a per-job switch, so you can use both — see the [comparison table](#cloud-or-local--you-choose).
 
 **What is keyterm prompting?**
 A list of show-specific terms (character names, places, made-up words) that Nova-3 prioritizes during transcription — up to ~90% better accuracy on those terms.
