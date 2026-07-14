@@ -1329,6 +1329,10 @@ function applyServerDefaults() {
     const caps = engineCapabilities;
     if (!caps) return;
 
+    const UNAVAILABLE_ENGINE_HINTS = {
+        whisper: 'Not installed in this image — deploy the -local images to transcribe locally',
+        deepgram: 'DEEPGRAM_API_KEY is not set — add it to .env to use the cloud engine',
+    };
     document.querySelectorAll('input[name="engine"]').forEach(radio => {
         const available = caps.engines?.[radio.value]?.available !== false;
         radio.disabled = !available;
@@ -1336,7 +1340,8 @@ function applyServerDefaults() {
         if (segment) {
             segment.classList.toggle('engine-segment-unavailable', !available);
             if (!available) {
-                segment.title = 'Not installed in this image — deploy the -local images to transcribe locally';
+                segment.title = UNAVAILABLE_ENGINE_HINTS[radio.value]
+                    || 'This engine is not available on this server';
             } else {
                 segment.removeAttribute('title');
             }
