@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-07-14
+
 ### Added
 - **Local transcription engine (Whisper).** An opt-in `-local` Docker image bundles [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CPU, int8) with the `small` model baked in, so the whole pipeline — transcription, keyterms, and translation (via Ollama) — can run offline with nothing leaving your machine and no per-minute cost. Deepgram Nova-3 remains the default engine, and its output is unchanged apart from the new speaker-label default described under Changed. Select the engine per job in the Web UI (or set `ASR_ENGINE=whisper`); `DEEPGRAM_API_KEY` is no longer required when running local-only. Includes a native SRT writer with readability-focused cue segmentation (max 2×42-char lines, ≤7 s cues, splits at sentence ends and silence gaps), VAD + anti-hallucination settings tuned for movie/TV audio, per-segment progress reporting, a model picker with RAM/speed guidance, and `examples/docker-compose.local.example.yml` for a fully-local stack. Web UI options the local engine can't support (audio intelligence, redaction, diarization, and so on) hide automatically via the new `/api/capabilities` endpoint; keyterms map to whisper hotwords (best-effort, capped). The CLI honors `ASR_ENGINE=whisper` for subtitle generation via the new `subgeneratorr-cli-local` image (or `pip install faster-whisper` on the lean one).
 
@@ -192,7 +194,8 @@ Initial public release.
 - **Path traversal protection**: Input validation on file paths to prevent directory escape
 - **Error path hardening**: Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.4.1...v3.0.0
 [2.4.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.1.1...v2.2.0
