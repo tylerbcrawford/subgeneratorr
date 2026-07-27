@@ -15,7 +15,7 @@
 
 Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 49 more languages with the original timing preserved.
 
-*I built it to close the hundreds of missing-subtitle gaps in my own library.*
+*I created it to fill the hundreds of missing-subtitle gaps in my own media library.*
 
 ## Cloud or local — you choose
 
