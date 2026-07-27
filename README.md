@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**AI subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle keyterms and translation into 49 languages.**
+**Subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle translation into 49 languages.**
 
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
