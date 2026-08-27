@@ -21,7 +21,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python3 -m compileall cli core web scripts tests
       - run: pytest tests/ -v
-      - run: pip install ruff
+      - run: pip install 'ruff==0.16.5'  # exact pin, same as ci.yml
       - run: ruff check .
       - run: ruff format --check .
 
