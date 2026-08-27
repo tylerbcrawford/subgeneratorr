@@ -821,10 +821,7 @@ For an overview of keyterms (what they are, how to create them, AI generation), 
 
 **API Parameter:**
 ```python
-opts = PrerecordedOptions(
-    model="nova-3",
-    keyterm=["Walter White", "Jesse Pinkman", "Heisenberg"]
-)
+opts = PrerecordedOptions(model="nova-3", keyterm=["Walter White", "Jesse Pinkman", "Heisenberg"])
 ```
 
 **Token Estimation:**
@@ -1024,7 +1021,7 @@ opts = PrerecordedOptions(
     paragraphs=True,
     diarize=enable_diarization,
     language=language,
-    profanity_filter=use_profanity_filter  # Boolean: True or False
+    profanity_filter=use_profanity_filter,  # Boolean: True or False
 )
 
 # Add keyterms if provided (Nova-3 feature, supports all languages)
