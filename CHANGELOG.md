@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-08-30
+
 ### Added
 - **Five new Nova-3 transcription languages** — Afrikaans (`af`), Armenian (`hy`),
   Georgian (`ka`), Nepali (`ne`), and Punjabi (`pa`), following Deepgram's August 2026
