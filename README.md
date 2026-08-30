@@ -10,7 +10,7 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-subgeneratorr--web-blue?logo=github)](https://github.com/tylerbcrawford/subgeneratorr/pkgs/container/subgeneratorr-web)
 
 <p align="center">
-  <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, and transcribe with Deepgram Nova-3">
+  <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, transcribe with Deepgram Nova-3, and translate into more languages">
 </p>
 
 Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 54 more languages with the original timing preserved.
@@ -38,7 +38,7 @@ Every AI step after transcription (keyterms, translation) is provider-agnostic t
 
 ## Features
 
-- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 45+ transcription languages (55+ counting regional variants; General + Medical models)
+- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 45+ transcription languages (55+ counting regional variants; General + Medical models), including the five added in Deepgram's August 2026 expansion: Afrikaans, Armenian, Georgian, Nepali, and Punjabi
 - 🏠 **Local engine (v3)** — opt-in `-local` images transcribe on your own hardware via faster-whisper: CPU-only, offline, $0, default model baked in
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
 - 🌐 **Subtitle translation into 54 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
@@ -55,8 +55,8 @@ Every AI step after transcription (keyterms, translation) is provider-agnostic t
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/library-browse.png" width="780" alt="Library browser showing movie folders"><br>
-  <sub>Browse your media library.</sub>
+  <img src="docs/screenshots/library-browse.png" width="780" alt="Library browser showing movie folders, with the Cloud/Local engine switch in the action bar"><br>
+  <sub>Browse your media library — the ☁️ Cloud / 🏠 Local engine switch lives right in the action bar.</sub>
 </p>
 
 <p align="center">
@@ -65,8 +65,8 @@ Every AI step after transcription (keyterms, translation) is provider-agnostic t
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/keyterm-generation.png" width="780" alt="AI keyterm generation populated with character names and locations"><br>
-  <sub>One-click AI keyterms — here it read the filename and pulled 28 terms from <em>Tears of Steel</em> on its own.</sub>
+  <img src="docs/screenshots/keyterm-generation.png" width="780" alt="AI keyterm generation populated with character names and locations, with cost and token readout"><br>
+  <sub>One-click AI keyterms — here it read the filename and pulled 22 terms from <em>Tears of Steel</em> on its own, for $0.004.</sub>
 </p>
 
 <p align="center">
@@ -77,6 +77,11 @@ Every AI step after transcription (keyterms, translation) is provider-agnostic t
 <p align="center">
   <img src="docs/screenshots/transcription-complete.png" width="780" alt="Completed transcription run with per-file status and generated subtitle output"><br>
   <sub>Watch progress per file and confirm each subtitle as it lands.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/translate-panel.png" width="780" alt="Translate panel with target language chips (Spanish, French, Japanese, Punjabi, Georgian) and a live cost estimate"><br>
+  <sub>Turn one subtitle into many — pick target languages (54 available) and an LLM provider; timing is preserved.</sub>
 </p>
 
 <sub>Demo library uses Creative Commons / public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.</sub>

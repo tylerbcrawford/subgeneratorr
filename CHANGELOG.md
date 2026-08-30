@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Docs: refreshed all README screenshots and the demo GIF to the v3.1 UI** —
+  the old captures predated the Cloud/Local engine switch and the collapsible
+  Keyterms/Transcription Settings/Translate sections. Added a new Translate-panel
+  screenshot showing target-language chips (including the new Punjabi and Georgian
+  targets) with the live cost estimate. Demo library rebuilt from Creative Commons /
+  public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead).
+
 ## [3.1.0] - 2026-08-30
 
 ### Added
