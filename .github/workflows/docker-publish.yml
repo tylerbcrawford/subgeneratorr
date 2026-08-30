@@ -38,25 +38,31 @@ jobs:
           - image: subgeneratorr-web
             dockerfile: web/Dockerfile
             context: .
+            description: "Subgeneratorr Web UI — generate & translate subtitles for Plex, Jellyfin, and Emby with Deepgram Nova-3 (keyterm prompting, LLM translation into 54 languages)"
           - image: subgeneratorr-worker
             dockerfile: web/Dockerfile
             context: .
+            description: "Subgeneratorr worker — Celery batch transcription and library-scan worker for the Subgeneratorr Web UI (Deepgram Nova-3)"
           - image: subgeneratorr-cli
             dockerfile: cli/Dockerfile
             context: .
+            description: "Subgeneratorr CLI — headless batch subtitle generation for Plex, Jellyfin, and Emby via Deepgram Nova-3"
           # -local variants: faster-whisper + baked small model (v3.0.0)
           - image: subgeneratorr-web-local
             dockerfile: web/Dockerfile
             context: .
             target: local
+            description: "Subgeneratorr Web UI (local) — fully offline subtitle generation with faster-whisper on CPU: no API key, $0, small model baked in"
           - image: subgeneratorr-worker-local
             dockerfile: web/Dockerfile
             context: .
             target: local
+            description: "Subgeneratorr worker (local) — offline Celery transcription worker using faster-whisper on CPU"
           - image: subgeneratorr-cli-local
             dockerfile: cli/Dockerfile
             context: .
             target: local
+            description: "Subgeneratorr CLI (local) — fully offline batch subtitle generation with faster-whisper on CPU; no API key needed"
 
     steps:
       - name: Checkout
@@ -99,7 +105,11 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          # matrix description last so it overrides the repo-level description
+          # from metadata-action — each GHCR package page gets its own blurb.
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.description=${{ matrix.description }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

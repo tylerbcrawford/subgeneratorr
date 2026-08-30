@@ -1,9 +1,8 @@
 FROM python:3.11-slim AS base
 
 LABEL org.opencontainers.image.source="https://github.com/tylerbcrawford/subgeneratorr" \
-      org.opencontainers.image.description="Subgeneratorr CLI — AI-powered subtitle generation for Plex, Jellyfin, and Emby" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="2.2.0"
+      org.opencontainers.image.description="Subgeneratorr CLI — headless batch subtitle generation for Plex, Jellyfin, and Emby (Deepgram Nova-3 or local Whisper)" \
+      org.opencontainers.image.licenses="MIT"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg gosu && \

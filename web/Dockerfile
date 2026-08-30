@@ -1,9 +1,8 @@
 FROM python:3.11-slim AS base
 
 LABEL org.opencontainers.image.source="https://github.com/tylerbcrawford/subgeneratorr" \
-      org.opencontainers.image.description="Subgeneratorr web UI — AI-powered subtitle generation for Plex, Jellyfin, and Emby" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="2.2.0"
+      org.opencontainers.image.description="Subgeneratorr Web UI — generate and translate subtitles for Plex, Jellyfin, and Emby (Deepgram Nova-3 or local Whisper)" \
+      org.opencontainers.image.licenses="MIT"
 
 # Install system dependencies
 RUN apt-get update && \
