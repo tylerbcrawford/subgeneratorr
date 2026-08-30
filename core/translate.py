@@ -48,6 +48,7 @@ TRANSLATE_SYSTEM_PROMPT = (
 # Human-readable names for the supported subtitle target codes (keys of
 # _SUBTITLE_LANG_MAP). Used to phrase the translation prompt clearly.
 _LANGUAGE_NAMES = {
+    "af": "Afrikaans",
     "ar": "Arabic",
     "be": "Belarusian",
     "bg": "Bulgarian",
@@ -69,9 +70,11 @@ _LANGUAGE_NAMES = {
     "hi": "Hindi",
     "hr": "Croatian",
     "hu": "Hungarian",
+    "hy": "Armenian",
     "id": "Indonesian",
     "it": "Italian",
     "ja": "Japanese",
+    "ka": "Georgian",
     "kn": "Kannada",
     "ko": "Korean",
     "lt": "Lithuanian",
@@ -79,8 +82,10 @@ _LANGUAGE_NAMES = {
     "mk": "Macedonian",
     "mr": "Marathi",
     "ms": "Malay",
+    "ne": "Nepali",
     "nl": "Dutch",
     "no": "Norwegian",
+    "pa": "Punjabi",
     "pl": "Polish",
     "pt": "Portuguese",
     "ro": "Romanian",

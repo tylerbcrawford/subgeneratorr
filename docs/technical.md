@@ -196,14 +196,14 @@ docker exec -it plex rm -rf "/config/Library/Application Support/Plex Media Serv
 
 ## Language Support
 
-Subgeneratorr supports 50+ languages with regional variants, multilingual processing, and automatic language detection.
+Subgeneratorr supports 55+ languages with regional variants, multilingual processing, and automatic language detection.
 
 **Quick reference:**
 - Set `LANGUAGE=en` (or any supported code) in `.env`
 - Regional variants: `en-GB`, `pt-BR`, `es-419`, etc.
 - Multilingual: `LANGUAGE=multi` (10 languages simultaneously)
 - Auto-detect: `DETECT_LANGUAGE=1` (35 languages, batch mode only)
-- Translate finished subtitles into 49 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
+- Translate finished subtitles into 54 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
 
 For the complete language matrix, regional variant guide, keyterm examples per language, translation details, and multilingual troubleshooting, see **[Language Support Guide](languages.md)**.
 
@@ -713,7 +713,7 @@ Translate a video's existing `.srt` into one or more target languages, writing l
 }
 ```
 
-- `video_path` (required), `targets` (required) — list of language codes from the [49 translation targets](languages.md#llm-powered-translation).
+- `video_path` (required), `targets` (required) — list of language codes from the [54 translation targets](languages.md#llm-powered-translation).
 - `provider` — `anthropic` · `openai` · `google` · `ollama` (default `anthropic`).
 - `model` — model id for cloud providers, or a free-text model name for Ollama.
 - `ollama_host` — Ollama endpoint; falls back to the `OLLAMA_HOST` env var.

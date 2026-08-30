@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Five new Nova-3 transcription languages** — Afrikaans (`af`), Armenian (`hy`),
+  Georgian (`ka`), Nepali (`ne`), and Punjabi (`pa`), following Deepgram's August 2026
+  Nova-3 expansion (batch and streaming). Each gets a language-tagged sidecar
+  (`.afr.srt`, `.arm.srt`, `.geo.srt`, `.nep.srt`, `.pan.srt`), audio-stream matching,
+  and a web-UI dropdown entry. All five are also available as LLM translation targets,
+  bringing translation coverage from 49 to 54 languages.
+
 ## [3.0.0] - 2026-07-14
 
 ### Added

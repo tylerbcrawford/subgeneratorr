@@ -42,6 +42,7 @@ DIARIZE_MODEL = "v2"
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
 # Regional variants are normalized to their base language for filename purposes.
 _SUBTITLE_LANG_MAP = {
+    "af": "afr",
     "ar": "ara",
     "be": "bel",
     "bg": "bul",
@@ -63,9 +64,11 @@ _SUBTITLE_LANG_MAP = {
     "hi": "hin",
     "hr": "hrv",
     "hu": "hun",
+    "hy": "arm",
     "id": "ind",
     "it": "ita",
     "ja": "jpn",
+    "ka": "geo",
     "kn": "kan",
     "ko": "kor",
     "lt": "lit",
@@ -73,8 +76,10 @@ _SUBTITLE_LANG_MAP = {
     "mk": "mac",
     "mr": "mar",
     "ms": "may",
+    "ne": "nep",
     "nl": "dut",
     "no": "nor",
+    "pa": "pan",
     "pl": "pol",
     "pt": "por",
     "ro": "rum",
@@ -97,6 +102,7 @@ _SUBTITLE_LANG_MAP = {
 # ISO 639-1/BCP-47 request codes → stream tags to match during ffprobe selection.
 # Includes both /B and /T variants where they differ.
 _STREAM_LANG_MAP = {
+    "af": {"af", "afr"},
     "ar": {"ar", "ara"},
     "be": {"be", "bel"},
     "bg": {"bg", "bul"},
@@ -118,9 +124,11 @@ _STREAM_LANG_MAP = {
     "hi": {"hi", "hin"},
     "hr": {"hr", "hrv"},
     "hu": {"hu", "hun"},
+    "hy": {"hy", "arm", "hye"},
     "id": {"id", "ind"},
     "it": {"it", "ita"},
     "ja": {"ja", "jpn"},
+    "ka": {"ka", "geo", "kat"},
     "kn": {"kn", "kan"},
     "ko": {"ko", "kor"},
     "lt": {"lt", "lit"},
@@ -128,8 +136,10 @@ _STREAM_LANG_MAP = {
     "mk": {"mk", "mac", "mkd"},
     "mr": {"mr", "mar"},
     "ms": {"ms", "may", "msa"},
+    "ne": {"ne", "nep"},
     "nl": {"nl", "dut", "nld"},
     "no": {"no", "nor"},
+    "pa": {"pa", "pan"},
     "pl": {"pl", "pol"},
     "pt": {"pt", "por"},
     "ro": {"ro", "rum", "ron"},

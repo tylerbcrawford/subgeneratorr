@@ -1,6 +1,6 @@
 # Language Support Guide
 
-**Complete guide to 50+ supported languages with regional variants**
+**Complete guide to 55+ supported languages with regional variants**
 
 ---
 
@@ -9,7 +9,7 @@
 Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rather than forcing all languages through an English-optimized model, Nova-3 adapts to the linguistic structure of each language: from tonal Vietnamese to agglutinative Hungarian, from syllable-timed Japanese to stress-timed English.
 
 **Key Capabilities:**
-- **40+ individual languages** with regional dialect support
+- **45+ individual languages** with regional dialect support
 - **Universal keyterm prompting** across all languages (500 tokens)
 - **Multilingual model** processing 10 languages simultaneously
 - **Automatic language detection** for 35 languages (batch mode)
@@ -137,7 +137,15 @@ Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rat
   - Frequent English code-switching (Hinglish)
   - SOV word order
 
+- **pa**: Punjabi *(added Aug 2026)* - Gurmukhi script, tonal distinctions
+- **ne**: Nepali *(added Aug 2026)* - Devanagari script, agglutinative verb chains
+
 **Challenges Solved**: Hinglish recognition, inflection handling, code-switching boundaries
+
+#### Caucasus & Africa *(added Aug 2026)*
+- **hy**: Armenian - Unique Armenian script, complex consonant clusters
+- **ka**: Georgian - Mkhedruli script, consonant harmonic clusters
+- **af**: Afrikaans - Germanic roots with simplified inflection, Dutch-adjacent vocabulary
 
 #### Southeast Asia
 - **vi**: Vietnamese
@@ -185,7 +193,7 @@ Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rat
 
 ## Universal Keyterm Prompting
 
-**Available for ALL 40+ Languages**
+**Available for ALL 45+ Languages**
 
 ### What Are Keyterms?
 
@@ -271,9 +279,9 @@ Translation is a post-processing step that runs on a subtitle Subgeneratorr alre
 
 One transcription can produce many language outputs. Existing sidecars are skipped unless you choose to overwrite.
 
-### Supported Target Languages (49)
+### Supported Target Languages (54)
 
-Arabic (ar), Belarusian (be), Bengali (bn), Bosnian (bs), Bulgarian (bg), Catalan (ca), Chinese (zh), Croatian (hr), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), German (de), Greek (el), Gujarati (gu), Hebrew (he), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Kannada (kn), Korean (ko), Latvian (lv), Lithuanian (lt), Macedonian (mk), Malay (ms), Marathi (mr), Norwegian (no), Persian (fa), Polish (pl), Portuguese (pt), Romanian (ro), Russian (ru), Serbian (sr), Slovak (sk), Slovenian (sl), Spanish (es), Swedish (sv), Tagalog (tl), Tamil (ta), Telugu (te), Thai (th), Turkish (tr), Ukrainian (uk), Urdu (ur), Vietnamese (vi).
+Afrikaans (af), Arabic (ar), Armenian (hy), Belarusian (be), Bengali (bn), Bosnian (bs), Bulgarian (bg), Catalan (ca), Chinese (zh), Croatian (hr), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), Georgian (ka), German (de), Greek (el), Gujarati (gu), Hebrew (he), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Kannada (kn), Korean (ko), Latvian (lv), Lithuanian (lt), Macedonian (mk), Malay (ms), Marathi (mr), Nepali (ne), Norwegian (no), Persian (fa), Polish (pl), Portuguese (pt), Punjabi (pa), Romanian (ro), Russian (ru), Serbian (sr), Slovak (sk), Slovenian (sl), Spanish (es), Swedish (sv), Tagalog (tl), Tamil (ta), Telugu (te), Thai (th), Turkish (tr), Ukrainian (uk), Urdu (ur), Vietnamese (vi).
 
 The source language is whatever Nova-3 transcribed; English is the implicit source and is not offered as a target.
 
@@ -544,4 +552,4 @@ Deepgram continues expanding Nova-3 language support with focus on:
 
 ## Summary
 
-Nova-3's 40+ language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection — plus LLM translation of finished subtitles into 49 more languages — makes Subgeneratorr a flexible subtitle solution for international media libraries.
+Nova-3's 45+ language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection — plus LLM translation of finished subtitles into 54 more languages — makes Subgeneratorr a flexible subtitle solution for international media libraries.
