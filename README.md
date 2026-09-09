@@ -21,7 +21,7 @@ Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](htt
 
 Since v3, transcription is a per-job switch right on the main screen:
 
-| | ☁️ **Cloud** — Deepgram Nova-3 | 🏠 **Local** — Whisper *(new in v3, beta)* |
+| | ☁️ **Cloud** — Deepgram Nova-3 | 🏠 **Local** — Whisper *(since v3)* |
 |---|---|---|
 | **Accuracy** | Best in class; keyterms boost proper nouns up to ~90% | ~89% word-level agreement with Nova-3 (`small` model) |
 | **Speed** | ~1% of runtime | Near-real-time on a modest CPU (0.3× measured on an N100) |

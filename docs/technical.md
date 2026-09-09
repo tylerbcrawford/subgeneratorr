@@ -7,6 +7,7 @@ This document contains detailed technical information about Subgeneratorr's arch
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
+- [ASR Engines (Cloud and Local)](#asr-engines-cloud-and-local)
 - [File Structure](#file-structure)
 - [Subtitle File Naming](#subtitle-file-naming)
 - [Directory Structure](#directory-structure)
@@ -37,6 +38,8 @@ The CLI tool is a standalone Python application that:
 - `cli/config.py` - Configuration management
 - `cli/transcript_generator.py` - Transcript generation with speaker mapping
 - `core/transcribe.py` - Shared transcription logic
+- `core/asr_engine.py` - Pluggable ASR engine interface (Deepgram Nova-3 cloud, faster-whisper local)
+- `core/srt_writer.py` - Native SRT writer with readability-focused cue segmentation
 
 ### Web UI Architecture
 
@@ -46,7 +49,7 @@ The Web UI adds asynchronous processing capabilities:
 - **Flask API** (`web/app.py`) - REST endpoints for job submission and monitoring
 - **Celery Workers** (`web/tasks.py`) - Background task processing
 - **Redis** - Message broker and result backend
-- **Shared Core** (`core/transcribe.py`) - Same transcription logic as CLI
+- **Shared Core** (`core/transcribe.py`, `core/asr_engine.py`) - Same transcription logic and engine registry as CLI
 
 **Workflow:**
 1. User submits batch via Web UI
@@ -54,6 +57,68 @@ The Web UI adds asynchronous processing capabilities:
 3. Workers process files in parallel (configurable concurrency)
 4. Progress updates sent via Server-Sent Events (SSE)
 5. Results returned to the UI
+
+---
+
+## ASR Engines (Cloud and Local)
+
+Since v3.0.0, transcription goes through a pluggable engine interface in `core/asr_engine.py`. Two engines ship today:
+
+| Engine | `name` | Runs where | Ships in |
+|--------|--------|------------|----------|
+| `DeepgramEngine` | `deepgram` | Deepgram cloud (Nova-3) | every image (default) |
+| `WhisperEngine` | `whisper` | your CPU via [faster-whisper](https://github.com/SYSTRAN/faster-whisper), int8 | `-local` images only |
+
+### Engine interface
+
+Every engine subclasses `ASREngine` and implements three things:
+
+- **`capabilities()`** — the set of feature flags the engine supports. The vocabulary is `keyterm`, `audio_intelligence`, `redaction`, `diarization`, `smart_format`, `multichannel`, `utterances`, `profanity_filter`, `find_replace`, `language_detect`. Deepgram supports all ten; Whisper supports `keyterm`, `find_replace`, and `language_detect`.
+- **`is_available()`** — whether the engine can actually run in the current image. Deepgram is available only when `DEEPGRAM_API_KEY` is set; Whisper only when `faster_whisper` is importable. This is checked at submit time so a job that can't run fails at the API boundary, not mid-worker.
+- **`transcribe(buf, opts, progress_callback)`** — takes an audio buffer and an engine-agnostic `TranscribeOptions` and returns a `NormalizedResult` (segments with word-level timestamps plus a detected language). Engines ignore options they can't use.
+
+Both engines normalize to the same `NormalizedResult` shape, so everything downstream — the SRT writer, transcripts, translation, speaker maps — is engine-agnostic. `get_engine(name)` resolves a name through the `ENGINES` registry; adding a third engine means one new subclass and one registry entry.
+
+### Capability gating
+
+`GET /api/capabilities` serializes the registry (see [API Endpoints](#api-endpoints)). The Web UI fetches it on load and:
+
+- preselects the engine from the server's `ASR_ENGINE` and disables any engine whose `available` is `false` (with an engine-specific tooltip);
+- hides every option whose capability the selected engine lacks, so the local engine never shows audio intelligence, redaction, or diarization controls;
+- drops Deepgram-only options restored from saved preferences before submitting a whisper job.
+
+The single source of truth is the engine's `capabilities()` set — there is no separate list in the frontend.
+
+### Whisper engine details
+
+- **Model loading.** One model is cached per worker process; selecting a different size evicts the previous one first, because `small` + `medium` + `large-v3` together (≈5 GB) would exceed the worker's 4 GB memory limit.
+- **Options mapping.** Keyterms become faster-whisper `hotwords` (capped by `cap_keyterms`; best-effort, weaker than Nova-3 keyterm prompting). `LANGUAGE=multi` and auto-detect both map to Whisper's language auto-detection. Regional variants such as `pt-BR` normalize to their base code because Whisper rejects them.
+- **Anti-hallucination.** `vad_filter=True` and `condition_on_previous_text=False` are fixed, which stops the model from repeating itself across long silences in movie and TV audio.
+- **Progress.** Each finished segment reports `(segment_end, total_duration)` through the progress callback, which the worker forwards to the UI as a realtime multiplier.
+- **Timeouts.** Batch timeouts are engine-aware: local jobs get a 4-hour-per-file budget instead of the cloud engine's 10 minutes.
+
+### Native SRT writer
+
+`core/srt_writer.py` turns a `NormalizedResult` into subtitle cues without depending on Deepgram's captions library:
+
+| Rule | Value |
+|------|-------|
+| Max characters per line | 42 |
+| Max lines per cue | 2 |
+| Max cue duration | 7 s |
+| Min cue duration | 1 s |
+| Split on silence gap | ≥ 1 s |
+
+Cues prefer to break at sentence ends (`.`, `?`, `!`, `…`) and at silence gaps; segments without word timestamps are split proportionally. Cloud output goes through the same writer, which is why v3 stopped embedding `[speaker N]` tags in cues by default (`SPEAKER_LABELS=1` or the "Speaker labels in subtitles" toggle restores them).
+
+### Image build targets
+
+`web/Dockerfile` and `cli/Dockerfile` are multi-stage with two final targets:
+
+- **`default`** — lean image, Deepgram only.
+- **`local`** — installs `faster-whisper>=1.0,<2` and bakes the `small` model into `/models` at build time, so the container transcribes offline from first boot. Sets `WHISPER_MODEL=small`, `WHISPER_MODEL_DIR=/models`, `WHISPER_COMPUTE_TYPE=int8`.
+
+Published images: `ghcr.io/tylerbcrawford/subgeneratorr-{web,worker,cli}` (default) and the same names with a `-local` suffix. `examples/docker-compose.local.example.yml` builds the `local` target for web, worker, and CLI and mounts a model cache volume so larger models download once.
 
 ---
 
@@ -70,7 +135,13 @@ subgeneratorr/
 │   └── requirements.txt          # CLI dependencies
 ├── core/                         # Shared core functionality
 │   ├── __init__.py
-│   └── transcribe.py            # Reusable transcription functions
+│   ├── asr_engine.py            # Pluggable ASR engines (Deepgram, faster-whisper)
+│   ├── srt_writer.py            # Native SRT writer (cue segmentation)
+│   ├── transcribe.py            # Reusable transcription functions
+│   ├── translate.py             # LLM subtitle translation
+│   ├── llm_providers.py         # Claude / GPT / Gemini / Ollama adapters
+│   ├── keyterm_search.py        # AI keyterm generation
+│   └── media_metadata.py        # ffprobe helpers
 ├── web/                          # Web UI (optional)
 │   ├── app.py                   # Flask API server
 │   ├── tasks.py                 # Celery background workers
@@ -88,10 +159,11 @@ subgeneratorr/
 │   ├── languages.md             # Language support guide
 │   └── roadmap.md               # Project roadmap
 ├── examples/                     # Example configurations
-│   ├── docker-compose.example.yml  # Full docker-compose template
+│   ├── docker-compose.example.yml  # Cloud (Deepgram) compose template
+│   ├── docker-compose.local.example.yml  # Fully-local (Whisper) compose template
+│   ├── docker-compose.hostnet.override.yml  # Linux host-network override
 │   └── video-list-example.txt   # Example file list
-├── tests/                        # Test scripts
-│   └── test_single_video.py     # Single video test script
+├── tests/                        # pytest suite (`make test`, no Docker or keys needed)
 ├── deepgram-logs/               # Processing logs (gitignored)
 ├── .env.example                 # Environment template
 ├── .github/                     # Issue/PR templates + CI workflows
@@ -239,12 +311,23 @@ See `examples/video-list-example.txt` for a complete example.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEEPGRAM_API_KEY` | (required) | Your Deepgram API key |
+| `DEEPGRAM_API_KEY` | (required for cloud) | Your Deepgram API key; optional when `ASR_ENGINE=whisper` |
 | `MEDIA_PATH` | `/media` | Path to scan for videos (inside container) |
 | `FILE_LIST_PATH` | - | Path to text file with specific media files to process |
 | `LOG_PATH` | `/logs` | Directory for processing logs |
 | `BATCH_SIZE` | `0` | Max videos per run (0 = unlimited with FILE_LIST_PATH, otherwise defaults to 10) |
 | `LANGUAGE` | `en` | Language code (e.g., `en`, `es`, `fr`) |
+
+#### ASR Engine (v3)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASR_ENGINE` | `deepgram` | `deepgram` (cloud) or `whisper` (local; requires a `-local` image). Preselects the engine in the Web UI |
+| `WHISPER_MODEL` | `small` | `tiny`, `base`, `small`, `medium`, or `large-v3` |
+| `WHISPER_MODEL_DIR` | `/models` | Model cache directory (a named volume in the local compose) |
+| `WHISPER_COMPUTE_TYPE` | `int8` | CTranslate2 compute type; `int8` is the CPU sweet spot |
+| `WHISPER_CPU_THREADS` | `0` | CPU threads for inference (`0` = auto) |
+| `SPEAKER_LABELS` | `0` | Set to `1` to embed `[speaker N]` tags in subtitle cues (cloud engine; off by default since v3) |
 
 #### Feature Toggles
 
@@ -362,6 +445,23 @@ Get default model and language settings, including LLM API key availability.
   "anthropic_api_key_configured": true,
   "openai_api_key_configured": false,
   "google_api_key_configured": true
+}
+```
+
+**GET `/api/capabilities`**
+
+Per-engine capability sets used by the UI for option gating, plus the server's default engine and the local model picker choices. See [ASR Engines](#asr-engines-cloud-and-local).
+
+**Response:**
+```json
+{
+  "engines": {
+    "deepgram": {"available": true, "capabilities": ["audio_intelligence", "diarization", "find_replace", "keyterm", "language_detect", "multichannel", "profanity_filter", "redaction", "smart_format", "utterances"]},
+    "whisper": {"available": false, "capabilities": ["find_replace", "keyterm", "language_detect"]}
+  },
+  "default_engine": "deepgram",
+  "whisper_models": ["tiny", "base", "small", "medium", "large-v3"],
+  "default_whisper_model": "small"
 }
 ```
 

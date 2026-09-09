@@ -9,9 +9,6 @@ Future enhancements under consideration. Community contributions welcome — ope
 ### Single-Container Option
 Consolidate Redis, Flask, and Celery into a single Docker container for simpler deployment. Reduce `docker-compose.yml` to one service for users who don't need horizontal scaling.
 
-### Local Engine (Whisper + Ollama) — in progress, targeting v3.0.0
-Optional fully-local mode: swap Deepgram Nova-3 for a local Whisper engine and use Ollama for keyterm generation and translation, so nothing leaves your machine and there is no per-minute cost. The Ollama (LLM) half shipped with translation in v2.4.0; the local Whisper ASR engine (pluggable engine interface, capability-gated UI, opt-in `-local` image with a baked default model) is built on the `feat/local-engine` branch and ships as v3.0.0. GPU support and local diarization remain deferred as future tiers.
-
 ### Bazarr Auto-Fallback
 Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature (shipped in v2.1.0) provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.
 
@@ -33,9 +30,19 @@ Audit and align features between CLI and Web UI. LLM keyterm generation is inten
 
 ---
 
+## Completed (V3.0 – V3.1)
+
+- Local transcription engine: pluggable `ASREngine` interface, faster-whisper (CPU, int8) behind opt-in `-local` images with the `small` model baked in, capability-gated Web UI via `/api/capabilities`, native SRT writer with readability-focused cue segmentation
+- Fully offline pipeline: Local Whisper + Ollama for keyterms and translation, no API key required
+- Five new Nova-3 languages (Afrikaans, Armenian, Georgian, Nepali, Punjabi); translation targets grown to 54
+- GHCR release pipeline gated on the full test and lint suite
+
+### Deferred from the local engine
+GPU acceleration and local speaker diarization remain future tiers.
+
 ## Completed (V2.4)
 
-- LLM-powered subtitle translation: translate a generated SRT into 33 target languages with Claude, GPT, Gemini, or a local Ollama model, preserving timing and writing language-tagged sidecars (one transcription, many languages)
+- LLM-powered subtitle translation: translate a generated SRT into 49 target languages (54 as of v3.1) with Claude, GPT, Gemini, or a local Ollama model, preserving timing and writing language-tagged sidecars (one transcription, many languages)
 - Ollama as a fourth LLM provider for keyterm generation and translation, enabling free fully-offline translation through a local OpenAI-compatible endpoint
 
 ## Completed (V2.1)

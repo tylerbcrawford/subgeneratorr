@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Docs: technical reference now covers the v3 engine architecture** — new
+  "ASR Engines (Cloud and Local)" section in `docs/technical.md` documenting the
+  `ASREngine` interface, capability gating via `/api/capabilities`, the whisper
+  engine's option mapping and anti-hallucination settings, the native SRT writer's
+  cue rules, and the `default`/`local` image build targets. Added the `ASR_ENGINE`,
+  `WHISPER_*`, and `SPEAKER_LABELS` variables to the environment reference and the
+  `/api/capabilities` endpoint to the API section.
+- Roadmap moved the local engine from "planned" to "completed"; `SECURITY.md`
+  supported versions updated to 3.x; README no longer labels the local engine as beta.
+- CLI integration-test planning docs moved from `tests/` to `docs/testing/` so the
+  `tests/` directory is just the pytest suite plus a short README.
 - **Docs: refreshed all README screenshots and the demo GIF to the v3.1 UI** —
   the old captures predated the Cloud/Local engine switch and the collapsible
   Keyterms/Transcription Settings/Translate sections. Added a new Translate-panel

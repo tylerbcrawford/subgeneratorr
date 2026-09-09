@@ -30,5 +30,5 @@ If you find a case where an API key is inadvertently exposed, please report it i
 
 | Version | Supported |
 |---------|-----------|
-| 2.x     | Yes       |
-| < 2.0   | No        |
+| 3.x     | Yes       |
+| < 3.0   | No        |
