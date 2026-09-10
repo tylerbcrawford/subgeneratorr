@@ -2,6 +2,8 @@
 
 **Subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle translation into 54 languages.**
 
+> **Built with Claude Code.** I set the requirements and the architecture, made the design decisions, and run it in production on my media server, with real users. The agent wrote most of the code under my direction.
+
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
