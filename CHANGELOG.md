@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Planned as v3.2.0 (`pyproject.toml` is already bumped).
+## [3.2.0] - 2026-10-17
 
 ### Added
 - **Four new Nova-3 transcription languages**: Assamese (`as`), Kazakh (`kk`),
@@ -284,7 +284,9 @@ Initial public release.
 - **Path traversal protection**: Input validation on file paths to prevent directory escape
 - **Error path hardening**: Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.1.0...v3.2.0
+[3.1.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.4.1...v3.0.0
 [2.4.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v2.2.0...v2.3.0
