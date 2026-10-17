@@ -139,7 +139,7 @@ subgeneratorr/
 │   ├── srt_writer.py            # Native SRT writer (cue segmentation)
 │   ├── transcribe.py            # Reusable transcription functions
 │   ├── translate.py             # LLM subtitle translation
-│   ├── llm_providers.py         # Claude / GPT / Gemini / Ollama adapters
+│   ├── llm_providers.py         # Model catalog (MODEL_SPECS) + Claude / GPT / Gemini / Ollama adapters
 │   ├── keyterm_search.py        # AI keyterm generation
 │   └── media_metadata.py        # ffprobe helpers
 ├── web/                          # Web UI (optional)
@@ -268,14 +268,14 @@ docker exec -it plex rm -rf "/config/Library/Application Support/Plex Media Serv
 
 ## Language Support
 
-Subgeneratorr supports 55+ languages with regional variants, multilingual processing, and automatic language detection.
+Subgeneratorr supports 59 transcription languages (92 language codes including regional variants), multilingual processing, and automatic language detection.
 
 **Quick reference:**
 - Set `LANGUAGE=en` (or any supported code) in `.env`
 - Regional variants: `en-GB`, `pt-BR`, `es-419`, etc.
 - Multilingual: `LANGUAGE=multi` (10 languages simultaneously)
 - Auto-detect: `DETECT_LANGUAGE=1` (35 languages, batch mode only)
-- Translate finished subtitles into 54 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
+- Translate finished subtitles into 58 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
 
 For the complete language matrix, regional variant guide, keyterm examples per language, translation details, and multilingual troubleshooting, see **[Language Support Guide](languages.md)**.
 
@@ -312,6 +312,7 @@ See `examples/video-list-example.txt` for a complete example.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DEEPGRAM_API_KEY` | (required for cloud) | Your Deepgram API key; optional when `ASR_ENGINE=whisper` |
+| `DEEPGRAM_TIMEOUT` | `900` | Seconds to wait for one Deepgram request (upload + transcription). deepgram-sdk 7.x defaults to 60 s, too short for feature-length audio |
 | `MEDIA_PATH` | `/media` | Path to scan for videos (inside container) |
 | `FILE_LIST_PATH` | - | Path to text file with specific media files to process |
 | `LOG_PATH` | `/logs` | Directory for processing logs |
@@ -370,8 +371,9 @@ See `examples/video-list-example.txt` for a complete example.
 |----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | - | Anthropic API key for AI keyterm generation and subtitle translation (optional) |
 | `OPENAI_API_KEY` | - | OpenAI API key for AI keyterm generation and subtitle translation (optional) |
-| `GEMINI_API_KEY` | - | Google Gemini API key for AI keyterm generation and subtitle translation (optional, free tier available) |
+| `GEMINI_API_KEY` | - | Google Gemini API key for AI keyterm generation and subtitle translation (optional; both Gemini models have a free tier) |
 | `OLLAMA_HOST` | - | Local Ollama server (OpenAI-compatible endpoint) for free, offline subtitle translation, e.g. `http://localhost:11434` (optional) |
+| `OLLAMA_TIMEOUT` | `600` | Seconds to wait for one Ollama completion. Requests are not retried, because a timed-out local generation would only repeat the same CPU work. Raise this for large models on slow hardware |
 
 ---
 
@@ -770,26 +772,42 @@ The two-phase approach means Phase 1 (sidecar detection) is instant: pure in-mem
 
 **POST `/api/keyterms/generate`**
 
-Generate keyterms using AI.
+Generate keyterms with an LLM from the show/movie name inferred from the file path. Runs as a background task; the result is also saved to the show's keyterms CSV.
 
 **Request:**
 ```json
 {
-  "video_path": "/media/tv/Show/episode.mkv",
+  "video_path": "/media/tv/Show/Season 01/Show - S01E01.mkv",
   "provider": "anthropic",
-  "model": "claude-sonnet-4-6",
-  "existing_keyterms": ["Existing", "Terms"],
-  "merge": true
+  "model": "claude-sonnet-5-5",
+  "preserve_existing": false,
+  "estimate_only": false
 }
 ```
+
+- `provider` — `anthropic` · `openai` · `google` (default `anthropic`).
+- `model` — a model id from the [model table](#ai-powered-generation); defaults to the provider's best-quality model. Retired ids (`claude-sonnet-4-6`, `gpt-4.1`, `gemini-2.5-flash`, …) are accepted and mapped to their replacements.
+- `preserve_existing` — merge with the show's existing keyterms instead of replacing them.
+- `estimate_only` — return `{estimated_tokens, estimated_cost, model}` instead of queueing.
 
 **Response:**
 ```json
 {
+  "task_id": "abc123",
+  "status": "pending"
+}
+```
+
+**GET `/api/keyterms/generate/status/<task_id>`** — returns `state` (`PENDING`, `PROGRESS`, `SUCCESS`, `FAILURE`). On success:
+```json
+{
+  "state": "SUCCESS",
   "keyterms": ["Character Name", "Location", "Technical Term"],
-  "count": 25,
-  "cost": 0.05,
-  "model_used": "claude-sonnet-4-6"
+  "keyterm_count": 25,
+  "token_count": 1450,
+  "actual_cost": 0.0012,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5-5"
 }
 ```
 
@@ -805,7 +823,7 @@ Translate a video's existing `.srt` into one or more target languages, writing l
   "video_path": "/media/tv/Show/episode.mkv",
   "targets": ["es", "fr"],
   "provider": "anthropic",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-sonnet-5-5",
   "overwrite": false,
   "ollama_host": "http://localhost:11434",
   "source_srt": "/media/tv/Show/episode.eng.srt",
@@ -813,9 +831,9 @@ Translate a video's existing `.srt` into one or more target languages, writing l
 }
 ```
 
-- `video_path` (required), `targets` (required) — list of language codes from the [54 translation targets](languages.md#llm-powered-translation).
+- `video_path` (required), `targets` (required) — list of language codes from the [58 translation targets](languages.md#llm-powered-translation).
 - `provider` — `anthropic` · `openai` · `google` · `ollama` (default `anthropic`).
-- `model` — model id for cloud providers, or a free-text model name for Ollama.
+- `model` — model id for cloud providers (defaults to the provider's best-quality model; retired ids are mapped to their replacements), or a free-text model name for Ollama (required).
 - `ollama_host` — Ollama endpoint; falls back to the `OLLAMA_HOST` env var.
 - `source_srt` — explicit source subtitle; defaults to the auto-located sidecar.
 - `overwrite` — re-translate even if the target sidecar already exists (default `false`).
@@ -919,9 +937,11 @@ For an overview of keyterms (what they are, how to create them, AI generation), 
 
 **What are keyterms?** Keyterms are custom vocabulary hints passed directly to the Deepgram Nova-3 API at transcription time. They are not a post-processing step; they influence the model's recognition probabilities during decoding. This is also referred to as keyword boosting or vocabulary prompting in the speech-to-text literature.
 
-**API Parameter:**
+**API Parameter** (deepgram-sdk 7.x; see the [Nova-3 Configuration Reference](#nova-3-configuration-reference)):
 ```python
-opts = PrerecordedOptions(model="nova-3", keyterm=["Walter White", "Jesse Pinkman", "Heisenberg"])
+client.listen.v1.media.transcribe_file(
+    request=audio_bytes, model="nova-3", keyterm=["Walter White", "Jesse Pinkman", "Heisenberg"]
+)
 ```
 
 **Token Estimation:**
@@ -957,36 +977,56 @@ DEA
 
 ### AI-Powered Generation
 
-The Web UI supports AI-powered keyterm generation using Anthropic Claude, OpenAI GPT, or Google Gemini.
+The Web UI supports AI-powered keyterm generation using Anthropic Claude, OpenAI GPT, or Google Gemini. The same models also translate subtitles. Translation can additionally use a local Ollama model (free-text model name); keyterm generation is cloud-only.
 
-**Supported Models:**
+**Supported Models** (prices as of October 2026; the source of truth is `MODEL_SPECS` in `core/llm_providers.py`):
 
 | Provider | Model | API Model ID | Input $/1M | Output $/1M | Notes |
 |----------|-------|-------------|-----------|------------|-------|
-| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | $3.00 | $15.00 | Best quality |
-| Anthropic | Claude Haiku 4.5 | `claude-haiku-4-5` | $1.00 | $5.00 | Fast & cheap |
-| OpenAI | GPT-4.1 | `gpt-4.1` | $2.00 | $8.00 | Non-reasoning, 1M context |
-| OpenAI | GPT-4.1 Mini | `gpt-4.1-mini` | $0.40 | $1.60 | Cheapest OpenAI |
-| Google | Gemini 2.5 Flash | `gemini-2.5-flash` | Free* | Free* | *Free tier: 10 RPM, 250/day |
+| Anthropic | Claude Sonnet 5.5 | `claude-sonnet-5-5` | $2.00 | $10.00 | Best quality (provider default) |
+| Anthropic | Claude Haiku 5.5 | `claude-haiku-5-5` | $0.10 | $0.50 | Fast & cheap |
+| OpenAI | GPT-6.1 Sol | `gpt-6.1-sol` | $2.00 | $10.00 | Best quality (provider default) |
+| OpenAI | GPT-6 Luna | `gpt-6-luna` | $0.10 | $0.50 | Fast & cheap |
+| Google | Gemini 3.8 Flash | `gemini-3.8-flash` | $1.50 | $7.50 | Best quality (provider default); free tier available |
+| Google | Gemini 3.5 Flash-Lite | `gemini-3.5-flash-lite` | $0.30 | $2.50 | Fast & cheap; free tier available |
 
-**Model Benchmarks (February 2026):**
+Gemini prices are paid-tier list prices. On the free tier (rate-limited per key), calls cost nothing, but the UI still shows the paid estimate. Retired ids are accepted and mapped to replacements: `claude-sonnet-4`/`claude-sonnet-4-6` → Sonnet 5.5, `claude-haiku-4-5` → Haiku 5.5, `gpt-4.1` → Sol, `gpt-4.1-mini` → Luna, `gemini-2.5-flash` → Flash-Lite.
 
-Tested with Community S01E01 (TV) and Almost Famous (movie):
+**Model Benchmarks (October 2026):**
 
-| Model | Avg Keyterms | Avg Time | Avg Cost/Call | Quality Notes |
-|-------|-------------|----------|---------------|---------------|
-| Claude Sonnet 4.6 | 42 | 4.2s | $0.0064 | Most contextually rich: catches in-show jargon, full character names, cultural references |
-| Claude Haiku 4.5 | 41 | 2.3s | $0.0022 | Excellent quantity, fast. Good depth for the price |
-| GPT-4.1 | 41 | 4.7s | $0.0033 | Solid all-rounder. Half the cost of Sonnet, comparable quality |
-| GPT-4.1 Mini | 34 | 2.4s | $0.0006 | Cheapest paid option. Slightly fewer keyterms, may miss deeper references |
-| Gemini 2.5 Flash | 45 | 5.4s | $0.0007 | Best free option. Competitive quality with paid models |
+Measured end-to-end through the Web API on a 3-minute Community S01E01 clip (70 cues), with each model at its pinned reasoning setting. Keyterm times include Celery queueing.
+
+| Model | Keyterms | Time | Cost/Call | Translation (70 cues) | Time | Cost |
+|-------|---------|------|-----------|------------------------|------|------|
+| Claude Sonnet 5.5 | 43 | 7.1s | $0.0059 | → es, 97% of cues changed | 15s | $0.0278 |
+| Claude Haiku 5.5 | 36 | 2.0s | $0.0003 | → fr, 99% | 12s | $0.0014 |
+| GPT-6.1 Sol | 50 | 12.2s | $0.0050 | → pt, 99% | 27s | $0.0162 |
+| GPT-6 Luna | 47 | 3.1s | $0.0002 | → ja, 97% | 15s | $0.0009 |
+| Gemini 3.8 Flash | 42 | 21.3s | $0.0028 | → de, 97% | 106s | $0.0148 |
+| Gemini 3.5 Flash-Lite | 32 | 1.0s | $0.0006 | → it, 97% | 6s | $0.0048 |
+| Ollama `qwen2.5:3b` (M2, Metal) | — | — | free | → nl, 77% | 91s | free |
+
+All six cloud models returned the main cast with full names (Jeff Winger, Britta Perry, Abed Nadir, Troy Barnes, …) plus show-specific terms such as Greendale, Dean Pelton, and Señor Chang. Every translation kept cue count and timing identical. The unchanged cues are names and interjections that stay the same in the target language.
 
 **Recommendations:**
-- **Free/default:** Gemini 2.5 Flash (free tier, high quality, no API key cost)
-- **Best value (paid):** Claude Haiku 4.5 (fast, cheap, excellent keyterm quality)
-- **Premium quality:** Claude Sonnet 4.6 (when you want the deepest, most contextual keyterms)
+- **Free:** Gemini 3.5 Flash-Lite on the free tier. It is the fastest model and has a solid keyterm list.
+- **Best value (paid):** GPT-6 Luna or Claude Haiku 5.5. Each costs a fraction of a cent per call, with near-premium keyterm lists and clean translations.
+- **Premium quality:** Claude Sonnet 5.5 or GPT-6.1 Sol, for the richest keyterms and the most natural translations.
+- **Offline:** Ollama with a 7B+ model (e.g. `qwen2.5:7b`) on a GPU or Apple Silicon. 3B models finish but produce noticeably rougher translations. On a low-power CPU, generation can fall below 1 token/s; set `OLLAMA_TIMEOUT` or use a faster host.
+- Gemini 3.8 Flash's lowest accepted thinking level still reasons, so it is the slowest cloud option, especially for translation.
 
-> **Why not GPT-5?** GPT-5 and GPT-5 Mini are *reasoning models* that spend thousands of internal "thinking" tokens before producing output. For a simple keyterm list, this means 60-190 second response times and $0.05-0.09/call, with no quality benefit over GPT-4.1's instant responses at a fraction of the cost.
+> **Reasoning controls.** Every model above thinks by default. Keyterm lists and subtitle translation gain nothing from long reasoning, which only adds latency and output-token cost. Each model is therefore pinned to the lowest setting its API accepts:
+>
+> | Model | Setting |
+> |---|---|
+> | Sonnet 5.5 | `thinking: between_tools`; the API rejects `disabled` |
+> | Haiku 5.5 | `thinking: disabled` |
+> | GPT-6.1 Sol | `reasoning_effort: low`; it has no `none` |
+> | GPT-6 Luna | `reasoning_effort: none` |
+> | Gemini 3.8 Flash | `thinking_level: low`; `minimal` is rejected |
+> | Gemini 3.5 Flash-Lite | `thinking_level: minimal` |
+>
+> Models that still reason at their floor get extra output-token headroom so reasoning can't consume the keyterm budget. Gemini thought tokens are billed as output and included in the reported cost. Settings live in `MODEL_SPECS[...].request_options`.
 
 **How It Works:**
 1. User selects video in Web UI
@@ -1112,64 +1152,42 @@ Processing statistics are saved to `deepgram-logs/` in JSON format:
 
 ## Nova-3 Configuration Reference
 
+The request every transcription sends (`core/transcribe.py` → `transcribe_file`, shared by the CLI and the web worker), using deepgram-sdk 7.x. Options are keyword arguments; list values are sent as repeated query parameters (`keyterm=A&keyterm=B`). Disabled features are omitted rather than sent as `false`.
+
 ```python
-opts = PrerecordedOptions(
-    model=model,  # "nova-3" (General) or "nova-3-medical" (Medical)
-    smart_format=True,
-    utterances=True,
-    punctuate=True,
-    paragraphs=True,
-    diarize=enable_diarization,
-    language=language,
-    profanity_filter=use_profanity_filter,  # Boolean: True or False
-)
+from deepgram import DeepgramClient
 
-# Add keyterms if provided (Nova-3 feature, supports all languages)
-if keyterms and model.startswith("nova-3"):
-    opts.keyterm = keyterms
+client = DeepgramClient(api_key=api_key, timeout=DEEPGRAM_TIMEOUT)  # default 900 s
 
-# Quality enhancement parameters
-if numerals:
-    opts.numerals = True
-if filler_words:
-    opts.filler_words = True
-if detect_language:
-    opts.detect_language = True
-if measurements:
-    opts.measurements = True
-if dictation:
-    opts.dictation = True
-if multichannel:
-    opts.multichannel = True
+opts = {
+    "model": model,  # "nova-3" (general) or "nova-3-medical"
+    "smart_format": True,
+    "utterances": True,
+    "punctuate": True,
+    "paragraphs": True,
+    "language": language,  # e.g. "en", "es-419", "multi"
+    "profanity_filter": profanity_filter != "off",  # boolean
+}
+if keyterms and "nova-3" in model:
+    opts["keyterm"] = keyterms  # list; ≤500 tokens total, 20–50 terms recommended
 
-# Content control
-if redact:  # List: ["pci", "pii", "numbers"]
-    opts.redact = redact
-if replace:  # List: ["wrong:right", ...]
-    opts.replace = replace
+# Optional features, sent only when enabled:
+#   numerals, filler_words, detect_language, measurements, dictation, multichannel
+#   redact=["pci", "pii", "numbers"], replace=["wrong:right", ...], utt_split=1.2
+#   Audio Intelligence (English only, saved to Transcripts/Intelligence/):
+#   sentiment, summarize="v2", topics, intents, detect_entities, search=[...]
+#   tag=["label"]
 
-# Utterance split threshold (seconds, default 0.8)
-if utt_split and utt_split != 0.8:
-    opts.utt_split = utt_split
+# Diarization: diarize_model ALONE enables Deepgram's v2 speaker model. Never
+# also send the legacy `diarize=true` — the pair is rejected with HTTP 400, and
+# `diarize=true` on its own is deprecated and routes to the older v1 model.
+if diarize:
+    opts["diarize_model"] = "v2"
 
-# Audio Intelligence (English only, results saved to Intelligence/ folder)
-if sentiment:
-    opts.sentiment = True
-if summarize:
-    opts.summarize = "v2"
-if topics:
-    opts.topics = True
-if intents:
-    opts.intents = True
-if detect_entities:
-    opts.detect_entities = True
-if search:  # List: ["term1", "term2"]
-    opts.search = search
-
-# Request tagging
-if tag:
-    opts.tag = [tag]
+response = client.listen.v1.media.transcribe_file(request=audio_bytes, **opts)
 ```
+
+The response is a typed `ListenV1Response` (pydantic). Code reads it by attribute (`response.results.channels[0].alternatives[0].words`); `response_to_dict()` produces the plain-JSON form used for `deepgram-captions` SRT generation and the saved `.deepgram.json`.
 
 ---
 

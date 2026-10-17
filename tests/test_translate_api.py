@@ -24,7 +24,6 @@ def _install_app_dependency_stubs():
     if "deepgram" not in sys.modules:
         deepgram = types.ModuleType("deepgram")
         deepgram.DeepgramClient = type("DeepgramClient", (), {})
-        deepgram.PrerecordedOptions = type("PrerecordedOptions", (), {})
         sys.modules["deepgram"] = deepgram
     if "deepgram_captions" not in sys.modules:
         deepgram_captions = types.ModuleType("deepgram_captions")
@@ -192,7 +191,7 @@ def test_translate_dispatches_task_and_returns_task_id(tmp_path):
                 "video_path": str(video),
                 "targets": ["es", "fr"],
                 "provider": "anthropic",
-                "model": "claude-sonnet-4-6",
+                "model": "claude-sonnet-5-5",
             },
         )
     body = resp.get_json()
@@ -238,7 +237,7 @@ def test_translate_estimate_cloud_scales_with_targets(tmp_path):
                 "video_path": str(video),
                 "targets": ["es", "fr", "de"],
                 "provider": "anthropic",
-                "model": "claude-sonnet-4-6",
+                "model": "claude-sonnet-5-5",
                 "estimate_only": True,
             },
         )

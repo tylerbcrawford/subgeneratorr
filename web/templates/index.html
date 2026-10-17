@@ -109,6 +109,7 @@
                                     <option value="ar-TD">Arabic (Chad)</option>
                                     <option value="ar-TN">Arabic (Tunisia)</option>
                                     <option value="hy">Armenian</option>
+                                    <option value="as">Assamese</option>
                                     <option value="be">Belarusian</option>
                                     <option value="bn">Bengali</option>
                                     <option value="bs">Bosnian</option>
@@ -127,7 +128,6 @@
                                     <option value="en-CA">English (Canada)</option>
                                     <option value="en-GB">English (UK)</option>
                                     <option value="en-IN">English (India)</option>
-                                    <option value="en-IE">English (Ireland)</option>
                                     <option value="en-NZ">English (New Zealand)</option>
                                     <option value="en-US">English (US)</option>
                                     <option value="et">Estonian</option>
@@ -147,6 +147,7 @@
                                     <option value="it">Italian</option>
                                     <option value="ja">Japanese</option>
                                     <option value="kn">Kannada</option>
+                                    <option value="kk">Kazakh</option>
                                     <option value="ko">Korean</option>
                                     <option value="ko-KR">Korean (Korea)</option>
                                     <option value="lv">Latvian</option>
@@ -154,8 +155,10 @@
                                     <option value="mk">Macedonian</option>
                                     <option value="ms">Malay</option>
                                     <option value="mr">Marathi</option>
+                                    <option value="mn">Mongolian</option>
                                     <option value="ne">Nepali</option>
                                     <option value="no">Norwegian</option>
+                                    <option value="ps">Pashto</option>
                                     <option value="pl">Polish</option>
                                     <option value="pt">Portuguese</option>
                                     <option value="pt-BR">Portuguese (Brazil)</option>
@@ -234,7 +237,7 @@
                                         Generate Keyterms
                                     </button>
                                     <span class="ai-model-label">
-                                        via <span id="aiModelDisplay">Claude Sonnet 4.6</span>
+                                        via <span id="aiModelDisplay">Claude Sonnet 5.5</span>
                                         <button class="ai-config-toggle" id="aiConfigToggleBtn" aria-label="AI settings" aria-expanded="false" aria-controls="aiConfigPanel" type="button">⚙</button>
                                     </span>
                                 </div>
@@ -256,8 +259,8 @@
                                     <div class="form-group">
                                         <label for="llmModel">Model</label>
                                         <select id="llmModel" aria-label="LLM model">
-                                            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
-                                            <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
+                                            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (Best Quality)</option>
+                                            <option value="claude-haiku-5-5">Claude Haiku 5.5 (Faster, Cheaper)</option>
                                         </select>
                                     </div>
                                     <div id="keytermCostEstimate" class="ai-cost-estimate"></div>
@@ -502,7 +505,7 @@
                             <div class="ai-action-row">
                                 <button id="translateBtn" class="btn-secondary" type="button">Translate</button>
                                 <span class="ai-model-label">
-                                    via <span id="translateModelDisplay">Claude Sonnet 4.6</span>
+                                    via <span id="translateModelDisplay">Claude Sonnet 5.5</span>
                                     <button class="ai-config-toggle" id="translateConfigToggleBtn" aria-label="Translation AI settings" aria-expanded="false" aria-controls="translateConfigPanel" type="button">⚙</button>
                                 </span>
                             </div>
@@ -551,7 +554,9 @@
     <!-- Screen Reader Announcer -->
     <div aria-live="polite" aria-atomic="true" class="sr-only" id="status-announcer"></div>
 
-    <script src="/static/app.js?v=25"></script>
-    <script src="/static/translate.js?v=4"></script>
+    <!-- Cloud LLM roster from core/llm_providers.MODEL_SPECS (single source of truth). -->
+    <script>window.LLM_MODELS = {{ llm_models | tojson }};</script>
+    <script src="/static/app.js?v=26"></script>
+    <script src="/static/translate.js?v=5"></script>
 </body>
 </html>

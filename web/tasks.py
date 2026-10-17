@@ -502,8 +502,9 @@ def generate_keyterms_task(
 
     Args:
         video_path: Path to video file
-        provider: LLM provider ("anthropic" or "openai")
-        model: Model identifier (e.g., "claude-sonnet-4", "gpt-4")
+        provider: LLM provider ("anthropic", "openai", or "google")
+        model: Model id from core.llm_providers.MODEL_SPECS (e.g. "claude-sonnet-5-5");
+            retired ids are mapped to their replacements
         preserve_existing: If True, merge with existing; if False, overwrite
 
     Returns:
@@ -545,13 +546,13 @@ def generate_keyterms_task(
         self.update_state(state="PROGRESS", meta={"stage": "generating", "progress": 30})
 
         # Import here to avoid import errors if dependencies not installed
-        from core.keyterm_search import KeytermSearcher, LLMModel, LLMProvider
+        from core.keyterm_search import KeytermSearcher, LLMProvider
+        from core.llm_providers import resolve_model
 
-        # Convert string provider/model to enums using bracket notation (access by NAME)
         try:
-            provider_enum = LLMProvider[provider.upper()]
-            model_enum = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
-        except KeyError:
+            provider_enum = LLMProvider(provider)
+            model_enum = resolve_model(model)
+        except ValueError:
             raise ValueError(f"Invalid provider or model: {provider}, {model}")
 
         # Generate keyterms
@@ -574,7 +575,7 @@ def generate_keyterms_task(
             "token_count": result["token_count"],
             "actual_cost": result["estimated_cost"],
             "provider": provider,
-            "model": model,
+            "model": result["model"],  # resolved id (retired aliases map to their replacement)
             "keyterm_count": len(result["keyterms"]),
         }
 
@@ -660,16 +661,16 @@ def translate_subtitles_task(
             if not api_key:
                 raise ValueError(f"API key not configured for {provider}")
 
-        from core.llm_providers import LLMModel, LLMProvider
+        from core.llm_providers import LLMProvider, resolve_model
         from core.translate import SubtitleTranslator
 
-        provider_enum = LLMProvider[provider.upper()]
+        provider_enum = LLMProvider(provider)
         if provider == "ollama":
             model_arg = model  # free-text model name; no enum/pricing
         else:
             try:
-                model_arg = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
-            except KeyError:
+                model_arg = resolve_model(model)
+            except ValueError:
                 raise ValueError(f"Invalid model: {model}")
 
         # Reuse the show's keyterms (if any) as a translation glossary so proper

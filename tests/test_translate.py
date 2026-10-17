@@ -26,7 +26,6 @@ def _install_core_dependency_stubs():
     if "deepgram" not in sys.modules:
         deepgram = types.ModuleType("deepgram")
         deepgram.DeepgramClient = type("DeepgramClient", (), {})
-        deepgram.PrerecordedOptions = type("PrerecordedOptions", (), {})
         sys.modules["deepgram"] = deepgram
     if "deepgram_captions" not in sys.modules:
         deepgram_captions = types.ModuleType("deepgram_captions")
@@ -80,7 +79,7 @@ def _recording_translator(fn, in_tok=10, out_tok=20, mismatch_when=None):
     return translator
 
 
-def _new_translator(provider=LLMProvider.OPENAI, model=LLMModel.GPT_4_1, **kwargs):
+def _new_translator(provider=LLMProvider.OPENAI, model=LLMModel.GPT_6_LUNA, **kwargs):
     return SubtitleTranslator(provider, model, "key", **kwargs)
 
 
@@ -180,9 +179,9 @@ def test_ollama_translation_cost_is_zero():
 def test_cloud_translation_cost_is_nonzero():
     cues = _make_cues(["a"])
     fake = _recording_translator(lambda t: t, in_tok=1_000_000, out_tok=1_000_000)
-    tr = _new_translator(model=LLMModel.GPT_4_1, text_translator=fake)
+    tr = _new_translator(model=LLMModel.GPT_6_LUNA, text_translator=fake)
     result = tr.translate_cues(cues, "es")
-    assert result.cost == pytest.approx(10.00)
+    assert result.cost == pytest.approx(0.60)  # GPT-6 Luna: $0.10 in + $0.50 out per 1M
 
 
 # --- File I/O: tagged sidecar + skip-existing -------------------------------
@@ -257,7 +256,7 @@ def test_default_translator_calls_llm_with_json_and_parses():
 
     assert [c.content for c in result.cues] == ["Hola", "Mundo"]
     assert result.input_tokens == 11 and result.output_tokens == 22
-    assert captured["model"] == "gpt-4.1"  # LLMModel.value passed through to call_llm
+    assert captured["model"] == "gpt-6-luna"  # LLMModel.value passed through to call_llm
     assert "Spanish" in captured["prompt"]
 
 

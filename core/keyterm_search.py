@@ -3,13 +3,13 @@
 LLM-powered keyterm generation for Deepgram transcription accuracy.
 
 This module provides intelligent keyterm generation using Large Language Models
-(Anthropic Claude or OpenAI GPT) to analyze show/movie metadata and generate
+(Anthropic Claude, OpenAI GPT, or Google Gemini) to analyze show/movie metadata and generate
 contextually relevant keyterms that improve transcription accuracy up to 90%.
 """
 
 from typing import Any, Dict, List, Optional
 
-from core.llm_providers import LLMModel, LLMProvider, calculate_cost, call_llm
+from core.llm_providers import MODEL_SPECS, LLMModel, LLMProvider, calculate_cost, call_llm
 from core.media_metadata import MediaMetadata, format_metadata_for_prompt
 
 # LLMProvider / LLMModel are imported above and re-exported here for backward
@@ -166,8 +166,8 @@ class KeytermSearcher:
         Initialize KeytermSearcher with LLM configuration.
 
         Args:
-            provider: LLM provider (Anthropic or OpenAI)
-            model: Specific model to use
+            provider: LLM provider (Anthropic, OpenAI, or Google)
+            model: Specific model to use (must belong to ``provider``)
             api_key: API key for the provider
 
         Raises:
@@ -178,16 +178,10 @@ class KeytermSearcher:
         self.api_key = api_key
         self._client = None
 
-        # Validate provider/model combination
-        if provider == LLMProvider.ANTHROPIC:
-            if model not in [LLMModel.CLAUDE_SONNET_4_6, LLMModel.CLAUDE_HAIKU_4_5]:
-                raise ValueError(f"Model {model} not valid for provider {provider}")
-        elif provider == LLMProvider.OPENAI:
-            if model not in [LLMModel.GPT_4_1, LLMModel.GPT_4_1_MINI]:
-                raise ValueError(f"Model {model} not valid for provider {provider}")
-        elif provider == LLMProvider.GOOGLE:
-            if model not in [LLMModel.GEMINI_2_5_FLASH]:
-                raise ValueError(f"Model {model} not valid for provider {provider}")
+        # Validate provider/model combination against the model catalog
+        spec = MODEL_SPECS.get(model)
+        if spec is None or spec.provider != provider:
+            raise ValueError(f"Model {model} not valid for provider {provider}")
 
     def generate_from_metadata(
         self,
@@ -217,11 +211,10 @@ class KeytermSearcher:
         # Build prompt
         prompt = self._build_prompt(metadata, existing_keyterms, preserve_existing)
 
-        # Call the LLM via the shared provider layer. Token budgets and system
-        # prompt are preserved exactly per provider: Anthropic sends no system
-        # prompt and caps at 500; OpenAI uses the keyterm system prompt at 500;
-        # Google needs the larger 2048 budget to leave room past thinking tokens.
-        max_tokens = 2048 if self.provider == LLMProvider.GOOGLE else 500
+        # Call the LLM via the shared provider layer. The 500-token answer budget
+        # matches Deepgram's 500-token keyterm limit; call_llm adds each model's
+        # thinking headroom on top. Anthropic historically sends no system prompt.
+        max_tokens = 500
         system_prompt = None if self.provider == LLMProvider.ANTHROPIC else KEYTERM_SYSTEM_PROMPT
         response_text, input_tokens, output_tokens = call_llm(
             self.provider,

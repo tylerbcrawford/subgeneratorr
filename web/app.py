@@ -35,6 +35,7 @@ from core.asr_engine import (
     engine_capabilities,
     whisper_available,
 )
+from core.llm_providers import model_catalog
 from core.transcribe import (
     NEUTRAL_SUBTITLE_LANG,
     check_subtitles,
@@ -164,7 +165,7 @@ def _build_terminal_results(children_info):
 def index():
     """Serve the web UI (optional)."""
     _require_auth()
-    return render_template("index.html")
+    return render_template("index.html", llm_models=model_catalog())
 
 
 @app.get("/healthz")
@@ -212,8 +213,9 @@ def api_capabilities():
     Per-engine capability sets for UI option gating (single source of truth).
 
     Returns:
-        JSON with each engine's capability list, the default engine, and the
-        whisper model choices for the local engine's model picker.
+        JSON with each engine's capability list, the default engine, the
+        whisper model choices for the local engine's model picker, and the
+        cloud LLM roster (``llm_models``) for the keyterm/translate pickers.
     """
     _require_auth()
     return jsonify(
@@ -222,6 +224,7 @@ def api_capabilities():
             "default_engine": default_engine(),
             "whisper_models": list(ALLOWED_WHISPER_MODELS),
             "default_whisper_model": os.environ.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL),
+            "llm_models": model_catalog(),
         }
     )
 
@@ -1104,12 +1107,13 @@ def api_keyterms_download():
 @app.post("/api/keyterms/generate")
 def api_keyterms_generate():
     """
-    Generate keyterms using LLM (Anthropic Claude or OpenAI GPT).
+    Generate keyterms using LLM (Anthropic Claude, OpenAI GPT, or Google Gemini).
 
     Request Body (JSON):
         video_path: Path to video file (required)
-        provider: LLM provider - "anthropic" or "openai" (default: "anthropic")
-        model: Model name - see LLMModel enum (default: "claude-sonnet-4")
+        provider: LLM provider - "anthropic", "openai", or "google" (default: "anthropic")
+        model: Model id from core.llm_providers.MODEL_SPECS (default: the
+            provider's best-quality model); retired ids map to their replacements
         preserve_existing: Merge with existing keyterms (default: false)
         estimate_only: Only return cost estimate (default: false)
 
@@ -1124,7 +1128,7 @@ def api_keyterms_generate():
     body = request.get_json(force=True) or {}
     video_path = body.get("video_path")
     provider = body.get("provider", "anthropic")
-    model = body.get("model", "claude-sonnet-4")
+    model = body.get("model") or _default_model_id(provider)
     preserve_existing = body.get("preserve_existing", False)
     estimate_only = body.get("estimate_only", False)
 
@@ -1183,16 +1187,14 @@ def api_keyterms_generate():
     # If estimate only, return cost estimate
     if estimate_only:
         try:
-            from core.keyterm_search import KeytermSearcher, LLMModel, LLMProvider
+            from core.keyterm_search import KeytermSearcher, LLMProvider
+            from core.llm_providers import resolve_model
 
             app.logger.debug(f"Estimating cost for: '{metadata.name}'")
             app.logger.debug(f"Provider: {provider}, Model: {model}")
 
-            # Use bracket notation to access enum by NAME, not by VALUE
-            provider_enum = LLMProvider[provider.upper()]
-            model_enum_name = model.upper().replace("-", "_").replace(".", "_")
-            app.logger.debug(f"Looking up enum: LLMModel.{model_enum_name}")
-            model_enum = LLMModel[model_enum_name]
+            provider_enum = LLMProvider(provider)
+            model_enum = resolve_model(model)
 
             app.logger.debug("Initializing KeytermSearcher...")
             searcher = KeytermSearcher(provider_enum, model_enum, api_key)
@@ -1202,8 +1204,8 @@ def api_keyterms_generate():
 
             app.logger.debug(f"Cost estimation successful: {estimate}")
             return jsonify(estimate)
-        except KeyError as e:
-            app.logger.error(f"KeyError in cost estimation: {str(e)}")
+        except ValueError as e:
+            app.logger.error(f"Invalid provider/model in cost estimation: {str(e)}")
             return jsonify({"error": f"Invalid provider or model: {provider}, {model}"}), 400
         except Exception as e:
             app.logger.error(f"Exception in cost estimation: {type(e).__name__}: {str(e)}")
@@ -1277,6 +1279,16 @@ def api_keyterms_generate_status(task_id):
         return jsonify({"state": "FAILURE", "error": f"Task state unreadable: {str(e)}"})
 
 
+def _default_model_id(provider: str) -> str:
+    """Best-quality model id for a cloud provider; "" for Ollama/unknown providers."""
+    from core.llm_providers import LLMProvider, default_model
+
+    try:
+        return default_model(LLMProvider(provider)).value
+    except (ValueError, StopIteration):
+        return ""
+
+
 # Provider -> environment variable holding its API key (cloud providers only;
 # Ollama is local and needs a host, not a key).
 _LLM_ENV_KEYS = {
@@ -1308,7 +1320,7 @@ def _find_source_srt(video_path: Path):
 
 def _estimate_translation(src_srt: Path, targets, provider, model):
     """Rough translation cost estimate: ~1 token/4 chars in, ~1:1 out, per target."""
-    from core.llm_providers import LLMModel, calculate_cost
+    from core.llm_providers import calculate_cost, resolve_model
 
     try:
         text = src_srt.read_text(encoding="utf-8", errors="ignore")
@@ -1321,8 +1333,8 @@ def _estimate_translation(src_srt: Path, targets, provider, model):
         per_target = 0.0
     else:
         try:
-            model_enum = LLMModel[model.upper().replace("-", "_").replace(".", "_")]
-        except KeyError:
+            model_enum = resolve_model(model)
+        except ValueError:
             model_enum = None
         per_target = calculate_cost(model_enum, input_tokens, output_tokens)
 
@@ -1359,7 +1371,7 @@ def api_translate():
     video_path = body.get("video_path")
     targets = body.get("targets") or []
     provider = body.get("provider", "anthropic")
-    model = body.get("model", "claude-sonnet-4-6")
+    model = body.get("model") or _default_model_id(provider)
     overwrite = body.get("overwrite", False)
     ollama_host = body.get("ollama_host") or os.environ.get("OLLAMA_HOST")
     source_srt = body.get("source_srt")
@@ -1400,6 +1412,8 @@ def api_translate():
 
     # Resolve credentials / host.
     if provider == "ollama":
+        if not model:
+            return jsonify({"error": "Ollama model name required (e.g. llama3.1)"}), 400
         if not ollama_host:
             return jsonify(
                 {"error": "Ollama host not configured — set OLLAMA_HOST or pass ollama_host"}

@@ -12,7 +12,8 @@
     // sorted by display name. The backend validates these too.
     const TRANSLATE_LANGUAGES = [
         { code: 'af', name: 'Afrikaans' }, { code: 'ar', name: 'Arabic' },
-        { code: 'hy', name: 'Armenian' }, { code: 'be', name: 'Belarusian' },
+        { code: 'hy', name: 'Armenian' }, { code: 'as', name: 'Assamese' },
+        { code: 'be', name: 'Belarusian' },
         { code: 'bn', name: 'Bengali' }, { code: 'bs', name: 'Bosnian' },
         { code: 'bg', name: 'Bulgarian' }, { code: 'ca', name: 'Catalan' },
         { code: 'zh', name: 'Chinese' }, { code: 'hr', name: 'Croatian' },
@@ -25,11 +26,14 @@
         { code: 'hi', name: 'Hindi' }, { code: 'hu', name: 'Hungarian' },
         { code: 'id', name: 'Indonesian' }, { code: 'it', name: 'Italian' },
         { code: 'ja', name: 'Japanese' }, { code: 'kn', name: 'Kannada' },
+        { code: 'kk', name: 'Kazakh' },
         { code: 'ko', name: 'Korean' }, { code: 'lv', name: 'Latvian' },
         { code: 'lt', name: 'Lithuanian' }, { code: 'mk', name: 'Macedonian' },
         { code: 'ms', name: 'Malay' }, { code: 'mr', name: 'Marathi' },
+        { code: 'mn', name: 'Mongolian' },
         { code: 'ne', name: 'Nepali' },
-        { code: 'no', name: 'Norwegian' }, { code: 'fa', name: 'Persian' },
+        { code: 'no', name: 'Norwegian' }, { code: 'ps', name: 'Pashto' },
+        { code: 'fa', name: 'Persian' },
         { code: 'pl', name: 'Polish' }, { code: 'pt', name: 'Portuguese' },
         { code: 'pa', name: 'Punjabi' },
         { code: 'ro', name: 'Romanian' }, { code: 'ru', name: 'Russian' },
@@ -42,27 +46,17 @@
         { code: 'vi', name: 'Vietnamese' },
     ];
 
-    const MODELS_BY_PROVIDER = {
-        anthropic: [
-            { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (Best Quality)' },
-            { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (Faster, Cheaper)' },
-        ],
-        openai: [
-            { value: 'gpt-4.1', label: 'GPT-4.1 (Best Quality)' },
-            { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini (Faster, Cheaper)' },
-        ],
-        google: [
-            { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-        ],
-    };
+    // Cloud model roster from core/llm_providers.MODEL_SPECS, injected by
+    // index.html as window.LLM_MODELS ({provider: [{id, label, hint}]}).
+    function modelsFor(provider) {
+        return (window.LLM_MODELS && window.LLM_MODELS[provider]) || [];
+    }
 
-    const MODEL_DISPLAY = {
-        'claude-sonnet-4-6': 'Claude Sonnet 4.6',
-        'claude-haiku-4-5': 'Claude Haiku 4.5',
-        'gpt-4.1': 'GPT-4.1',
-        'gpt-4.1-mini': 'GPT-4.1 Mini',
-        'gemini-2.5-flash': 'Gemini 2.5 Flash',
-    };
+    function modelLabel(modelId) {
+        const all = Object.values(window.LLM_MODELS || {}).flat();
+        const match = all.find(function (m) { return m.id === modelId; });
+        return match ? match.label : modelId;
+    }
 
     let providerStatus = {}; // {anthropic: bool, openai: bool, google: bool, ollama: bool}
 
@@ -152,7 +146,7 @@
             model = ($('translateOllamaModel') || {}).value || 'llama3.1';
             ollamaHost = ($('translateOllamaHost') || {}).value || null;
         } else {
-            model = ($('translateModel') || {}).value || MODELS_BY_PROVIDER[provider][0].value;
+            model = ($('translateModel') || {}).value || (modelsFor(provider)[0] || {}).id;
         }
         return { provider: provider, model: model, ollamaHost: ollamaHost };
     }
@@ -171,8 +165,8 @@
         if (ollamaHostGroup) ollamaHostGroup.classList.toggle('hidden', !isOllama);
 
         if (!isOllama && modelSelect) {
-            modelSelect.innerHTML = (MODELS_BY_PROVIDER[provider] || []).map(function (m) {
-                return '<option value="' + m.value + '">' + esc(m.label) + '</option>';
+            modelSelect.innerHTML = modelsFor(provider).map(function (m) {
+                return '<option value="' + esc(m.id) + '">' + esc(m.label) + ' (' + esc(m.hint) + ')</option>';
             }).join('');
         }
 
@@ -188,7 +182,7 @@
         if (pm.provider === 'ollama') {
             display.textContent = 'Ollama (' + (pm.model || 'local') + ')';
         } else {
-            display.textContent = MODEL_DISPLAY[pm.model] || pm.model;
+            display.textContent = modelLabel(pm.model);
         }
     }
 

@@ -15,11 +15,7 @@ def _install_task_dependency_stubs():
         class DeepgramClient:
             pass
 
-        class PrerecordedOptions:
-            pass
-
         deepgram.DeepgramClient = DeepgramClient
-        deepgram.PrerecordedOptions = PrerecordedOptions
         sys.modules["deepgram"] = deepgram
 
     if "deepgram_captions" not in sys.modules:

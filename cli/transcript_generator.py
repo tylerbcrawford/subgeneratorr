@@ -138,7 +138,11 @@ class TranscriptGenerator:
             current_start_time = None
 
             for word_obj in words:
-                word = word_obj.word if hasattr(word_obj, "word") else word_obj.get("word")
+                # Prefer the cased, punctuated form (smart_format) over the raw token
+                if hasattr(word_obj, "word"):
+                    word = getattr(word_obj, "punctuated_word", None) or word_obj.word
+                else:
+                    word = word_obj.get("punctuated_word") or word_obj.get("word")
                 start = word_obj.start if hasattr(word_obj, "start") else word_obj.get("start")
                 speaker = (
                     word_obj.speaker if hasattr(word_obj, "speaker") else word_obj.get("speaker")
@@ -197,9 +201,10 @@ class TranscriptGenerator:
             output_path: Path to save JSON file
         """
         try:
+            # deepgram-sdk 7.x responses are pydantic models; dicts pass through.
             response_data = (
-                deepgram_response.to_dict()
-                if hasattr(deepgram_response, "to_dict")
+                deepgram_response.model_dump(mode="json", by_alias=True, exclude_none=True)
+                if hasattr(deepgram_response, "model_dump")
                 else deepgram_response
             )
             with open(output_path, "w", encoding="utf-8") as f:

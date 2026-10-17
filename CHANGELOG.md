@@ -7,7 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Planned as v3.2.0 (`pyproject.toml` is already bumped).
+
+### Added
+- **Four new Nova-3 transcription languages**: Assamese (`as`), Kazakh (`kk`),
+  Mongolian (`mn`), and Pashto (`ps`). Each has a language-tagged sidecar
+  (`.asm.srt`, `.kaz.srt`, `.mon.srt`, `.pus.srt`), audio-stream matching, and a
+  web-UI dropdown entry. All four are also LLM translation targets, bringing
+  translation coverage from 54 to 58 languages.
+- `DEEPGRAM_TIMEOUT` sets the per-request upload timeout (default 900 s).
+  deepgram-sdk 7.x defaults to 60 s, which fails on feature-length audio.
+- `/api/capabilities` now returns `llm_models`, the provider → model catalog.
+- `OLLAMA_TIMEOUT` sets the per-request Ollama timeout (default 600 s).
+
 ### Changed
+- **LLM models refreshed** for keyterm generation and translation:
+  - Claude Sonnet 5.5 / Haiku 5.5
+  - GPT-6.1 Sol / GPT-6 Luna
+  - Gemini 3.8 Flash / 3.5 Flash-Lite
+
+  The catalog (labels, prices, per-model request options) lives in one place,
+  `core/llm_providers.py`. The Web UI reads it, so the dropdowns, cost estimates,
+  and backend can no longer drift apart. Each model is pinned to its lowest
+  thinking/reasoning setting, keeping keyterm and translation calls fast and cheap.
+  Retired model ids (`claude-sonnet-4-6`, `gpt-4.1`, `gemini-2.5-flash`, …) are still
+  accepted and map to their replacements, so saved settings and API clients keep
+  working.
+- **Deepgram SDK 7.x** (`deepgram-sdk==7.*`) and **deepgram-captions 2.x**.
+  Responses are normalized with `core.transcribe.response_to_dict`.
+- Dependency majors: flask 3.1, celery 5.6, redis-py 6.4, gunicorn 26, gevent 26, anthropic 1.x,
+  openai 3.x, google-genai 2.x.
+
+### Fixed
+- **CLI used Deepgram's legacy v1 diarizer**: the CLI now shares the Web
+  transcription path and its v2 `diarize_model`.
+- Keyterm generation without an explicit model defaulted to `claude-sonnet-4`,
+  an id the backend rejected. It now uses the provider's default model.
+  Unknown model ids now return HTTP 400 instead of failing inside the worker.
+- **Speaker transcripts were lowercase with no punctuation**: they used Deepgram's raw
+  `word` tokens instead of `punctuated_word` (Web and CLI). They now match the SRT's
+  casing and punctuation.
+- **Ollama on slow hardware burned ~30 minutes per translation window**: the
+  OpenAI SDK silently retried timed-out local generations twice. Ollama requests
+  are no longer retried, and a timeout reports an actionable error
+  ("try a smaller model or raise OLLAMA_TIMEOUT").
+- **Removed English (Ireland) `en-IE`** from the language list. Deepgram rejects it
+  with HTTP 400.
+- Claude responses that begin with a thinking block, refusals, and truncated
+  (max-token) responses are now handled for every provider instead of returning
+  empty keyterms or a crash.
+- A keyterm parameter test swallowed every exception and could never fail.
+  It now asserts the real request shape.
+- Docs claimed Ollama could generate keyterms; it is a translation-only provider.
+- Keyterm-generation API docs described a synchronous response. The endpoint
+  returns a `task_id` to poll.
+
+### Changed (docs)
 - **Docs: technical reference now covers the v3 engine architecture** — new
   "ASR Engines (Cloud and Local)" section in `docs/technical.md` documenting the
   `ASREngine` interface, capability gating via `/api/capabilities`, the whisper

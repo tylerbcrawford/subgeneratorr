@@ -41,6 +41,7 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
@@ -54,6 +55,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline translation (e.g. http://host.docker.internal:11434)
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       DISABLE_AUTH: ${DISABLE_AUTH:-true}  # Default: auth disabled for local use. Set to false + configure a reverse proxy for remote/production access
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media  # read-write: web writes keyterms to Transcripts/Keyterms/
@@ -97,6 +99,7 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
@@ -108,6 +111,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline translation (e.g. http://host.docker.internal:11434)
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       CELERYD_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
@@ -141,6 +145,7 @@ services:
       PGID: ${PGID:-1000}
       TZ: ${TZ:-UTC}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       MEDIA_PATH: /media
       BATCH_SIZE: ${BATCH_SIZE:-10}
       LOG_PATH: /logs

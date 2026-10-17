@@ -50,6 +50,7 @@ TRANSLATE_SYSTEM_PROMPT = (
 _LANGUAGE_NAMES = {
     "af": "Afrikaans",
     "ar": "Arabic",
+    "as": "Assamese",
     "be": "Belarusian",
     "bg": "Bulgarian",
     "bn": "Bengali",
@@ -75,11 +76,13 @@ _LANGUAGE_NAMES = {
     "it": "Italian",
     "ja": "Japanese",
     "ka": "Georgian",
+    "kk": "Kazakh",
     "kn": "Kannada",
     "ko": "Korean",
     "lt": "Lithuanian",
     "lv": "Latvian",
     "mk": "Macedonian",
+    "mn": "Mongolian",
     "mr": "Marathi",
     "ms": "Malay",
     "ne": "Nepali",
@@ -87,6 +90,7 @@ _LANGUAGE_NAMES = {
     "no": "Norwegian",
     "pa": "Punjabi",
     "pl": "Polish",
+    "ps": "Pashto",
     "pt": "Portuguese",
     "ro": "Romanian",
     "ru": "Russian",
@@ -321,8 +325,8 @@ def _chunk(seq, size):
 
 
 def _max_tokens_for(texts: List[str]) -> int:
-    """Heuristic response budget: scales with cue count, floored for Google's
-    thinking budget, capped to avoid runaway costs. Tuned during live smoke."""
+    """Heuristic response budget: scales with cue count, floored for models with
+    thinking headroom (call_llm adds more per model), capped to avoid runaway costs."""
     return min(8192, max(2048, 512 + len(texts) * 120))
 
 

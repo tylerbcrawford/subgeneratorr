@@ -23,7 +23,6 @@ def _install_app_dependency_stubs():
     if "deepgram" not in sys.modules:
         deepgram = types.ModuleType("deepgram")
         deepgram.DeepgramClient = type("DeepgramClient", (), {})
-        deepgram.PrerecordedOptions = type("PrerecordedOptions", (), {})
         sys.modules["deepgram"] = deepgram
     if "deepgram_captions" not in sys.modules:
         deepgram_captions = types.ModuleType("deepgram_captions")

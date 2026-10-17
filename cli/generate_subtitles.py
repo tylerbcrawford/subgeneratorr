@@ -61,7 +61,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
 from config import Config
-from deepgram import DeepgramClient, PrerecordedOptions
 from deepgram_captions import DeepgramConverter, srt
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -79,7 +78,9 @@ from core.transcribe import (
     is_media,
     load_keyterms_from_csv,
     resolve_synced_marker_path,
+    response_to_dict,
     strip_speaker_labels,
+    transcribe_file,
     write_raw_json,
 )
 
@@ -96,9 +97,7 @@ class SubtitleGenerator:
     def __init__(self):
         Config.validate()
         self.engine = Config.ASR_ENGINE
-        self.client = (
-            DeepgramClient(api_key=Config.DEEPGRAM_API_KEY) if self.engine == "deepgram" else None
-        )
+        self.api_key = Config.DEEPGRAM_API_KEY if self.engine == "deepgram" else None
         self.stats = {
             "processed": 0,
             "skipped": 0,
@@ -190,39 +189,20 @@ class SubtitleGenerator:
             with open(audio_path, "rb") as f:
                 buffer_data = f.read()
 
-            # Convert profanity_filter to boolean for API compatibility
-            use_profanity_filter = Config.PROFANITY_FILTER != "off"
-
-            options = PrerecordedOptions(
-                model=Config.MODEL,
-                smart_format=True,
-                utterances=True,
-                punctuate=True,
-                paragraphs=True,
+            # Shared with the web UI: diarization uses diarize_model=v2 (the CLI
+            # used to send the legacy `diarize` flag, which routes to the v1 diarizer).
+            response = transcribe_file(
+                buffer_data,
+                self.api_key,
+                Config.MODEL,
+                Config.LANGUAGE,
+                profanity_filter=Config.PROFANITY_FILTER,
                 diarize=enable_diarization,
-                language=Config.LANGUAGE,
-                profanity_filter=use_profanity_filter,
-            )
-
-            # Add keyterms if provided (Nova-3 feature)
-            if keyterms and Config.MODEL == "nova-3":
-                options.keyterm = keyterms
-
-            # Add Nova-3 quality enhancement parameters
-            if numerals:
-                options.numerals = True
-
-            if filler_words:
-                options.filler_words = True
-
-            if detect_language:
-                options.detect_language = True
-
-            if measurements:
-                options.measurements = True
-
-            response = self.client.listen.rest.v("1").transcribe_file(
-                {"buffer": buffer_data}, options
+                keyterms=keyterms,
+                numerals=numerals,
+                filler_words=filler_words,
+                detect_language=detect_language,
+                measurements=measurements,
             )
             return response
         except Exception as e:
@@ -257,11 +237,7 @@ class SubtitleGenerator:
             if Config.SAVE_RAW_JSON:
                 debug_file = f"{Config.LOG_PATH}/deepgram_response_debug.json"
                 try:
-                    response_data = (
-                        deepgram_response.to_dict()
-                        if hasattr(deepgram_response, "to_dict")
-                        else str(deepgram_response)
-                    )
+                    response_data = response_to_dict(deepgram_response)
                     with open(debug_file, "w") as f:
                         json.dump(response_data, f, indent=2)
                     self.log(f"  🐛 Debug: Response saved to {debug_file}")
@@ -306,7 +282,7 @@ class SubtitleGenerator:
 
             self.log(f"  🎤 Detected {len(words)} words in transcription")
 
-            transcription = DeepgramConverter(deepgram_response)
+            transcription = DeepgramConverter(response_to_dict(deepgram_response))
             srt_content = srt(transcription)
             if not Config.SPEAKER_LABELS:
                 srt_content = strip_speaker_labels(srt_content)

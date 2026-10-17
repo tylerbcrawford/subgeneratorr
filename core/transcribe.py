@@ -9,13 +9,14 @@ that can be used by both the CLI tool and the Web UI.
 import csv
 import json
 import logging
+import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import List, Optional
 
-from deepgram import DeepgramClient, PrerecordedOptions
+from deepgram import DeepgramClient
 from deepgram_captions import DeepgramConverter, srt
 
 logger = logging.getLogger(__name__)
@@ -34,16 +35,21 @@ NEUTRAL_SUBTITLE_LANG = "und"
 
 # Deepgram's improved speaker diarization model (batch / pre-recorded only, 2026-05-13).
 # diarize_model is self-contained: it both enables diarization and selects the model, and
-# Deepgram returns HTTP 400 if the legacy `diarize` boolean is also present in the request.
-# So when diarizing we send ONLY this (via the SDK addons escape hatch, since deepgram-sdk
-# 3.x does not model diarize_model on PrerecordedOptions) and omit `diarize` from the options.
+# Deepgram returns HTTP 400 if the legacy `diarize` boolean is also present in the request
+# (`diarize=true` alone is deprecated and always routes to v1). Pinned rather than "latest"
+# so a diarizer upgrade never changes output silently.
 DIARIZE_MODEL = "v2"
+
+# deepgram-sdk 7.x defaults every request to a 60 s timeout, which a feature-length upload
+# plus transcription can exceed. Override with DEEPGRAM_TIMEOUT (seconds).
+DEEPGRAM_TIMEOUT = float(os.environ.get("DEEPGRAM_TIMEOUT", "900"))
 
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
 # Regional variants are normalized to their base language for filename purposes.
 _SUBTITLE_LANG_MAP = {
     "af": "afr",
     "ar": "ara",
+    "as": "asm",
     "be": "bel",
     "bg": "bul",
     "bn": "ben",
@@ -69,11 +75,13 @@ _SUBTITLE_LANG_MAP = {
     "it": "ita",
     "ja": "jpn",
     "ka": "geo",
+    "kk": "kaz",
     "kn": "kan",
     "ko": "kor",
     "lt": "lit",
     "lv": "lav",
     "mk": "mac",
+    "mn": "mon",
     "mr": "mar",
     "ms": "may",
     "ne": "nep",
@@ -81,6 +89,7 @@ _SUBTITLE_LANG_MAP = {
     "no": "nor",
     "pa": "pan",
     "pl": "pol",
+    "ps": "pus",
     "pt": "por",
     "ro": "rum",
     "ru": "rus",
@@ -104,6 +113,7 @@ _SUBTITLE_LANG_MAP = {
 _STREAM_LANG_MAP = {
     "af": {"af", "afr"},
     "ar": {"ar", "ara"},
+    "as": {"as", "asm"},
     "be": {"be", "bel"},
     "bg": {"bg", "bul"},
     "bn": {"bn", "ben"},
@@ -129,11 +139,13 @@ _STREAM_LANG_MAP = {
     "it": {"it", "ita"},
     "ja": {"ja", "jpn"},
     "ka": {"ka", "geo", "kat"},
+    "kk": {"kk", "kaz"},
     "kn": {"kn", "kan"},
     "ko": {"ko", "kor"},
     "lt": {"lt", "lit"},
     "lv": {"lv", "lav"},
     "mk": {"mk", "mac", "mkd"},
+    "mn": {"mn", "mon"},
     "mr": {"mr", "mar"},
     "ms": {"ms", "may", "msa"},
     "ne": {"ne", "nep"},
@@ -141,6 +153,7 @@ _STREAM_LANG_MAP = {
     "no": {"no", "nor"},
     "pa": {"pa", "pan"},
     "pl": {"pl", "pol"},
+    "ps": {"ps", "pus"},
     "pt": {"pt", "por"},
     "ro": {"ro", "rum", "ron"},
     "ru": {"ru", "rus"},
@@ -715,79 +728,84 @@ def transcribe_file(
         tag: Request label tag
 
     Returns:
-        Deepgram response object
+        Deepgram response model (deepgram-sdk 7.x ``ListenV1Response``); use
+        ``response_to_dict()`` for a plain-JSON view
 
     Raises:
         Exception: If transcription fails
     """
-    client = DeepgramClient(api_key=api_key)
+    client = DeepgramClient(api_key=api_key, timeout=DEEPGRAM_TIMEOUT)
 
-    # Convert profanity_filter to boolean for API compatibility
-    use_profanity_filter = profanity_filter != "off"
+    # deepgram-sdk 7.x takes options as keyword arguments; list values (keyterm,
+    # redact, replace, search, tag) are sent as repeated query parameters.
+    opts = {
+        "model": model,
+        "smart_format": True,
+        "utterances": utterances,
+        "punctuate": True,
+        "paragraphs": paragraphs,
+        "language": language,
+        # Deepgram's profanity_filter is boolean; any non-"off" value enables masking
+        "profanity_filter": profanity_filter != "off",
+    }
 
-    opts = PrerecordedOptions(
-        model=model,
-        smart_format=True,
-        utterances=utterances,
-        punctuate=True,
-        paragraphs=paragraphs,
-        language=language,
-        profanity_filter=use_profanity_filter,
-    )
-
-    # Add keyterms if provided (Nova-3 feature, supports all languages)
+    # Keyterm prompting is a Nova-3 feature (all Nova-3 languages)
     if keyterms and "nova-3" in model:
-        opts.keyterm = keyterms
+        opts["keyterm"] = keyterms
 
-    # Quality enhancement parameters
-    if numerals:
-        opts.numerals = True
-    if filler_words:
-        opts.filler_words = True
-    if detect_language:
-        opts.detect_language = True
-    if measurements:
-        opts.measurements = True
-    if dictation:
-        opts.dictation = True
-    if multichannel:
-        opts.multichannel = True
+    # Optional features: only sent when enabled, to keep request URLs minimal
+    flags = {
+        "numerals": numerals,
+        "filler_words": filler_words,
+        "detect_language": detect_language,
+        "measurements": measurements,
+        "dictation": dictation,
+        "multichannel": multichannel,
+        # Audio Intelligence
+        "sentiment": sentiment,
+        "topics": topics,
+        "intents": intents,
+        "detect_entities": detect_entities,
+    }
+    opts.update({name: True for name, enabled in flags.items() if enabled})
 
-    # Redaction
     if redact:
-        opts.redact = redact
-
-    # Find & replace
+        opts["redact"] = redact
     if replace:
-        opts.replace = replace
-
-    # Utterance split threshold
+        opts["replace"] = replace
     if utt_split is not None:
-        opts.utt_split = utt_split
-
-    # Audio Intelligence features
-    if sentiment:
-        opts.sentiment = True
+        opts["utt_split"] = utt_split
     if summarize:
-        opts.summarize = "v2"
-    if topics:
-        opts.topics = True
-    if intents:
-        opts.intents = True
-    if detect_entities:
-        opts.detect_entities = True
+        opts["summarize"] = "v2"
     if search:
-        opts.search = search
-
-    # Operational
+        opts["search"] = search
     if tag:
-        opts.tag = [tag]
+        opts["tag"] = [tag]
 
-    # Diarization: send diarize_model=v2 (Deepgram's v2 speaker model) as a query addon.
-    # It is mutually exclusive with the legacy `diarize` boolean, which is why `diarize` is
-    # deliberately NOT set on `opts` above -- see DIARIZE_MODEL.
-    addons = {"diarize_model": DIARIZE_MODEL} if diarize else None
-    return client.listen.rest.v("1").transcribe_file({"buffer": buf}, opts, addons=addons)
+    # Diarization: send ONLY diarize_model (never the legacy `diarize` boolean) —
+    # see DIARIZE_MODEL.
+    if diarize:
+        opts["diarize_model"] = DIARIZE_MODEL
+
+    return client.listen.v1.media.transcribe_file(request=buf, **opts)
+
+
+def response_to_dict(resp) -> dict:
+    """
+    Plain-JSON dict of a Deepgram response.
+
+    Accepts a deepgram-sdk 7.x response model or an already-decoded dict.
+    ``exclude_none`` keeps the shape identical to Deepgram's raw JSON (e.g. no
+    ``speaker: null`` on undiarized words, which deepgram-captions would read
+    as diarization data).
+    """
+    if isinstance(resp, dict):
+        return resp
+    if hasattr(resp, "model_dump"):
+        return resp.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if hasattr(resp, "to_dict"):
+        return resp.to_dict()
+    raise TypeError(f"Unsupported Deepgram response type: {type(resp).__name__}")
 
 
 # deepgram-captions injects a "[speaker N]" line into cue text at every
@@ -845,7 +863,7 @@ def write_srt(resp: dict, dest: Path, lang: Optional[str] = None, speaker_labels
             f"Skipping SRT generation for: {dest.name}"
         )
 
-    srt_content = srt(DeepgramConverter(resp))
+    srt_content = srt(DeepgramConverter(response_to_dict(resp)))
     if not speaker_labels:
         srt_content = strip_speaker_labels(srt_content)
     dest.write_text(srt_content, encoding="utf-8")
@@ -1107,6 +1125,11 @@ def find_speaker_map(video_path: Path) -> Optional[Path]:
         return None
 
 
+def _display_word(word) -> str:
+    """Prefer Deepgram's cased, punctuated form (smart_format) over the raw token."""
+    return getattr(word, "punctuated_word", None) or word.word
+
+
 def write_transcript(resp: dict, dest: Path, speaker_map_path: Optional[Path] = None):
     """
     Generate and write transcript text file from Deepgram response.
@@ -1166,9 +1189,9 @@ def write_transcript(resp: dict, dest: Path, speaker_map_path: Optional[Path] = 
 
                     # Start new speaker
                     current_speaker = speaker_id
-                    current_text = [word.word]
+                    current_text = [_display_word(word)]
                 else:
-                    current_text.append(word.word)
+                    current_text.append(_display_word(word))
 
             # Save last speaker's text
             if current_text:
@@ -1207,8 +1230,7 @@ def write_raw_json(resp: dict, video_path: Path):
     json_path = json_folder / f"{video_path.stem}.deepgram.json"
 
     try:
-        # Convert response to dict if it has to_dict method
-        response_data = resp.to_dict() if hasattr(resp, "to_dict") else resp
+        response_data = response_to_dict(resp)
         json_path.write_text(json.dumps(response_data, indent=2), encoding="utf-8")
     except Exception as e:
         raise Exception(f"Failed to write raw JSON: {e}")
@@ -1258,7 +1280,7 @@ def write_intelligence_summary(resp, video_path: Path):
     output_path = intelligence_folder / f"{video_path.stem}.intelligence.json"
 
     # Convert response to dict for easier extraction
-    data = resp.to_dict() if hasattr(resp, "to_dict") else resp
+    data = response_to_dict(resp)
 
     summary = {}
     results = data.get("results", {})

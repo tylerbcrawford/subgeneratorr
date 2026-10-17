@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subgeneratorr"
-version = "3.1.0"
+version = "3.2.0"
 description = "Generate and translate SRT subtitles — Deepgram Nova-3 or fully-local Whisper transcription plus LLM translation"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 dependencies = [
-    "deepgram-sdk==3.*",
-    "deepgram-captions==1.*",
+    "deepgram-sdk==7.*",
+    "deepgram-captions==2.*",
 ]
 
 # The repo uses a flat sibling-directory layout (core/, cli/, web/), so disable

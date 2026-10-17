@@ -3,8 +3,8 @@
 #
 # Runs transcription on your own hardware via faster-whisper (CPU, int8) —
 # no Deepgram account or API key needed. Pair with an Ollama server
-# (OLLAMA_HOST) for local keyterm generation and subtitle translation, and
-# nothing leaves your machine.
+# (OLLAMA_HOST) for local subtitle translation (keyterms can be entered
+# manually), and nothing leaves your machine.
 #
 # Quick start:
 #   1. Copy this file: cp examples/docker-compose.local.example.yml docker-compose.yml
@@ -58,6 +58,7 @@ services:
       ASR_ENGINE: ${ASR_ENGINE:-whisper}
       WHISPER_MODEL: ${WHISPER_MODEL:-small}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only needed to also use the cloud engine
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
@@ -66,7 +67,8 @@ services:
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
       BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
       BAZARR_API_KEY: ${BAZARR_API_KEY:-}
-      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline keyterms + translation
+      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline translation
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       DISABLE_AUTH: ${DISABLE_AUTH:-true}
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
@@ -116,6 +118,7 @@ services:
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
       WHISPER_CPU_THREADS: ${WHISPER_CPU_THREADS:-0}  # 0 = auto
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only needed to also use the cloud engine
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
@@ -123,6 +126,7 @@ services:
       BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
       BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       CELERYD_CONCURRENCY: 1
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
@@ -162,6 +166,7 @@ services:
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
       WHISPER_CPU_THREADS: ${WHISPER_CPU_THREADS:-0}  # 0 = auto
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only for ASR_ENGINE=deepgram
+      DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
       MEDIA_PATH: /media
       BATCH_SIZE: ${BATCH_SIZE:-10}
       LOG_PATH: /logs

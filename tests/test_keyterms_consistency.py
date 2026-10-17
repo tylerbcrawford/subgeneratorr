@@ -29,11 +29,7 @@ def _install_core_dependency_stubs():
         class DeepgramClient:
             pass
 
-        class PrerecordedOptions:
-            pass
-
         deepgram.DeepgramClient = DeepgramClient
-        deepgram.PrerecordedOptions = PrerecordedOptions
         sys.modules["deepgram"] = deepgram
 
     if "deepgram_captions" not in sys.modules:
@@ -288,22 +284,16 @@ Charlie Chan
         with patch("core.transcribe.DeepgramClient") as mock_client:
             mock_instance = MagicMock()
             mock_client.return_value = mock_instance
+            media = mock_instance.listen.v1.media
 
-            # Mock the API call chain
-            mock_response = MagicMock()
-            mock_instance.listen.rest.v.return_value.transcribe_file.return_value = mock_response
+            transcribe_file(
+                b"fake audio data", "fake_api_key", "nova-3", "en", keyterms=test_keyterms
+            )
 
-            # Call transcribe_file
-            try:
-                audio_data = b"fake audio data"
-                transcribe_file(audio_data, "fake_api_key", "nova-3", "en", keyterms=test_keyterms)
-
-                # Verify the call was made
-                assert mock_instance.listen.rest.v.called
-                print(f"✅ Keyterms passed to API: {test_keyterms}")
-
-            except Exception as e:
-                print(f"⚠️  API call test skipped (mock issue): {e}")
+            # Keyterms reach the SDK as a list (sent as repeated keyterm= params)
+            assert media.transcribe_file.called
+            assert media.transcribe_file.call_args.kwargs["keyterm"] == test_keyterms
+            print(f"✅ Keyterms passed to API: {test_keyterms}")
 
         print("✅ PASS: API parameter format verified")
 

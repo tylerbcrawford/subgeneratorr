@@ -30,10 +30,16 @@ Audit and align features between CLI and Web UI. LLM keyterm generation is inten
 
 ---
 
+## Completed (V3.2)
+
+- LLM catalog refreshed to current models (Claude Sonnet 5.5 / Haiku 5.5, GPT-6.1 Sol / GPT-6 Luna, Gemini 3.8 Flash / 3.5 Flash-Lite), served to the UI from a single backend catalog; retired model ids are mapped to their replacements
+- Deepgram SDK v7 with v2 speaker diarization (Web and CLI), explicit upload timeout, and deepgram-captions 2.x
+- Four new Nova-3 languages (Assamese, Kazakh, Mongolian, Pashto); translation targets grown to 58
+
 ## Completed (V3.0 – V3.1)
 
 - Local transcription engine: pluggable `ASREngine` interface, faster-whisper (CPU, int8) behind opt-in `-local` images with the `small` model baked in, capability-gated Web UI via `/api/capabilities`, native SRT writer with readability-focused cue segmentation
-- Fully offline pipeline: Local Whisper + Ollama for keyterms and translation, no API key required
+- Fully offline pipeline: Local Whisper + Ollama translation (with manual keyterms), no API key required
 - Five new Nova-3 languages (Afrikaans, Armenian, Georgian, Nepali, Punjabi); translation targets grown to 54
 - GHCR release pipeline gated on the full test and lint suite
 
@@ -43,7 +49,7 @@ GPU acceleration and local speaker diarization remain future tiers.
 ## Completed (V2.4)
 
 - LLM-powered subtitle translation: translate a generated SRT into 49 target languages (54 as of v3.1) with Claude, GPT, Gemini, or a local Ollama model, preserving timing and writing language-tagged sidecars (one transcription, many languages)
-- Ollama as a fourth LLM provider for keyterm generation and translation, enabling free fully-offline translation through a local OpenAI-compatible endpoint
+- Ollama as a fourth LLM provider for translation, enabling free fully-offline translation through a local OpenAI-compatible endpoint
 
 ## Completed (V2.1)
 

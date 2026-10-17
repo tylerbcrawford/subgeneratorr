@@ -213,21 +213,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const provider = e.target.value;
             const modelSelect = document.getElementById('llmModel');
             
-            if (provider === 'anthropic') {
-                modelSelect.innerHTML = `
-                    <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (Best Quality)</option>
-                    <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, Cheaper)</option>
-                `;
-            } else if (provider === 'openai') {
-                modelSelect.innerHTML = `
-                    <option value="gpt-4.1">GPT-4.1 (Best Quality)</option>
-                    <option value="gpt-4.1-mini">GPT-4.1 Mini (Faster, Cheaper)</option>
-                `;
-            } else if (provider === 'google') {
-                modelSelect.innerHTML = `
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Free Tier)</option>
-                `;
-            }
+            modelSelect.innerHTML = llmModelsFor(provider).map(m =>
+                `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)} (${escapeHtml(m.hint)})</option>`
+            ).join('');
             
             // Trigger change event to update API key status check and cost estimate
             modelSelect.dispatchEvent(new Event('change'));
@@ -1692,6 +1680,12 @@ function toggleAiConfig() {
     if (btn) btn.setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
 }
 
+// Cloud LLM roster injected by index.html from core/llm_providers.MODEL_SPECS —
+// the backend is the single source of truth for model ids, labels, and order.
+function llmModelsFor(provider) {
+    return (window.LLM_MODELS && window.LLM_MODELS[provider]) || [];
+}
+
 function updateAiModelDisplay() {
     const modelSelect = document.getElementById('llmModel');
     const display = document.getElementById('aiModelDisplay');
@@ -1874,7 +1868,7 @@ function displayEstimates(data) {
 
 async function estimateLLMCostForBatch(files) {
     const provider = document.getElementById('llmProvider')?.value || 'anthropic';
-    const model = document.getElementById('llmModel')?.value || 'claude-sonnet-4-6';
+    const model = document.getElementById('llmModel')?.value || llmModelsFor(provider)[0]?.id;
 
     try {
         // For >10 files, estimate just the first file and extrapolate

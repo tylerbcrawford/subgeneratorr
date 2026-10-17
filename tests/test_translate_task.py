@@ -23,7 +23,6 @@ def _install_task_dependency_stubs():
     if "deepgram" not in sys.modules:
         deepgram = types.ModuleType("deepgram")
         deepgram.DeepgramClient = type("DeepgramClient", (), {})
-        deepgram.PrerecordedOptions = type("PrerecordedOptions", (), {})
         sys.modules["deepgram"] = deepgram
     if "deepgram_captions" not in sys.modules:
         deepgram_captions = types.ModuleType("deepgram_captions")
@@ -135,7 +134,7 @@ def test_translate_task_translates_each_target_and_summarizes(monkeypatch, tmp_p
         str(src),
         ["es", "fr"],
         "anthropic",
-        "claude-sonnet-4-6",
+        "claude-sonnet-5-5",
     )
 
     assert result["target_count"] == 2
@@ -173,7 +172,7 @@ def test_translate_task_passes_keyterms_as_glossary(monkeypatch, tmp_path):
     video, src = _make_media(tmp_path)
 
     tasks_module.translate_subtitles_task(
-        FakeTaskContext(), str(video), str(src), ["fr"], "openai", "gpt-4.1"
+        FakeTaskContext(), str(video), str(src), ["fr"], "openai", "gpt-6-luna"
     )
 
     assert record["calls"][0]["keyterms"] == ["Heisenberg", "Pollos"]
@@ -185,5 +184,5 @@ def test_translate_task_missing_api_key_raises_runtimeerror(monkeypatch, tmp_pat
 
     with pytest.raises(RuntimeError):
         tasks_module.translate_subtitles_task(
-            FakeTaskContext(), str(video), str(src), ["es"], "anthropic", "claude-sonnet-4-6"
+            FakeTaskContext(), str(video), str(src), ["es"], "anthropic", "claude-sonnet-5-5"
         )

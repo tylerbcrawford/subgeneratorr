@@ -8,16 +8,26 @@ talk to Anthropic, OpenAI, Google, or a local Ollama server. Centralising the
 provider plumbing here keeps the ``(text, input_tokens, output_tokens)``
 contract, cost math, and human-readable error mapping in one place.
 
+``MODEL_SPECS`` is the single source of truth for the cloud model roster: API
+ids, display labels, pricing, and each model's request quirks. The web UI
+renders its model pickers from ``model_catalog()``, so adding or retiring a
+model is a one-file change.
+
 Ollama is exposed as a fourth provider via OpenAI's wire-compatible
 ``/v1`` endpoint, so local users get free, offline inference. Because its model
-name is free-text (e.g. ``llama3.1``) and carries no ``MODEL_PRICING`` entry,
+name is free-text (e.g. ``llama3.1``) and carries no ``MODEL_SPECS`` entry,
 ``calculate_cost()`` naturally returns ``0.0`` for it — no special-casing.
 """
 
+import os
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+# Seconds to wait for one Ollama completion. Local generation on a slow CPU can
+# legitimately take minutes; raise this rather than letting requests time out.
+OLLAMA_TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
 
 
 class LLMProvider(Enum):
@@ -32,27 +42,162 @@ class LLMProvider(Enum):
 class LLMModel(Enum):
     """Supported LLM models with their API identifiers (cloud providers only)."""
 
-    # Anthropic models (Claude 4.6 series)
-    CLAUDE_SONNET_4_6 = "claude-sonnet-4-6"
-    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
+    # Anthropic models (Claude 5.5 series)
+    CLAUDE_SONNET_5_5 = "claude-sonnet-5-5"
+    CLAUDE_HAIKU_5_5 = "claude-haiku-5-5"
 
-    # OpenAI models (GPT-4.1 series - non-reasoning, low latency)
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
+    # OpenAI models (GPT-6 series — reasoning models, run with reasoning minimized)
+    GPT_6_1_SOL = "gpt-6.1-sol"
+    GPT_6_LUNA = "gpt-6-luna"
 
-    # Google models (Gemini 2.5 series)
-    GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    # Google models (Gemini 3.x series)
+    GEMINI_3_8_FLASH = "gemini-3.8-flash"
+    GEMINI_3_5_FLASH_LITE = "gemini-3.5-flash-lite"
 
 
-# Model pricing (per 1M tokens). Ollama models are intentionally absent so the
-# cost lookup misses and falls through to $0.00.
-MODEL_PRICING = {
-    LLMModel.CLAUDE_SONNET_4_6: {"input": 3.00, "output": 15.00},
-    LLMModel.CLAUDE_HAIKU_4_5: {"input": 1.00, "output": 5.00},
-    LLMModel.GPT_4_1: {"input": 2.00, "output": 8.00},
-    LLMModel.GPT_4_1_MINI: {"input": 0.40, "output": 1.60},
-    LLMModel.GEMINI_2_5_FLASH: {"input": 0.30, "output": 2.50},
+class LLMError(Exception):
+    """A provider call failed; the message is safe to show in the UI."""
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """Everything the app needs to know about one cloud model.
+
+    ``request_options`` holds provider-specific knobs merged into the request:
+    Anthropic ``thinking``, OpenAI ``reasoning_effort``, Google
+    ``thinking_level``. Every current model thinks by default; these tasks
+    (keyterm lists, cue-by-cue translation) don't benefit, and thinking tokens
+    would eat the response budget, so each model is pinned to its lowest
+    accepted setting. ``thinking_headroom`` is added to ``max_tokens`` for
+    models whose floor still reasons a little.
+    """
+
+    provider: LLMProvider
+    label: str
+    hint: str
+    input_price: float  # USD per 1M input tokens
+    output_price: float  # USD per 1M output tokens (thinking tokens bill as output)
+    request_options: Dict[str, Any] = field(default_factory=dict)
+    thinking_headroom: int = 0
+
+
+# Ordered best-quality first: the first model listed for a provider is its default.
+MODEL_SPECS: Dict[LLMModel, ModelSpec] = {
+    # "disabled" is a 400 on Sonnet 5.5; between_tools is its thinking-off mode.
+    LLMModel.CLAUDE_SONNET_5_5: ModelSpec(
+        LLMProvider.ANTHROPIC,
+        "Claude Sonnet 5.5",
+        "Best Quality",
+        2.00,
+        10.00,
+        {"thinking": {"type": "between_tools"}},
+    ),
+    # Haiku 5.5 bills $0.50/$2.50 above a 100K-token prompt; our prompts are far smaller.
+    LLMModel.CLAUDE_HAIKU_5_5: ModelSpec(
+        LLMProvider.ANTHROPIC,
+        "Claude Haiku 5.5",
+        "Faster, Cheaper",
+        0.10,
+        0.50,
+        {"thinking": {"type": "disabled"}},
+    ),
+    # Sol rejects reasoning_effort "none"; "low" is its floor.
+    LLMModel.GPT_6_1_SOL: ModelSpec(
+        LLMProvider.OPENAI,
+        "GPT-6.1 Sol",
+        "Best Quality",
+        2.00,
+        10.00,
+        {"reasoning_effort": "low"},
+        thinking_headroom=1024,
+    ),
+    LLMModel.GPT_6_LUNA: ModelSpec(
+        LLMProvider.OPENAI,
+        "GPT-6 Luna",
+        "Faster, Cheaper",
+        0.10,
+        0.50,
+        {"reasoning_effort": "none"},
+    ),
+    # Priced at the list rate effective 2027-01-01 ($0.75/$3.75 promo until then)
+    # so estimates err high rather than going stale. 3.8 Flash rejects "minimal".
+    LLMModel.GEMINI_3_8_FLASH: ModelSpec(
+        LLMProvider.GOOGLE,
+        "Gemini 3.8 Flash",
+        "Best Quality · Free Tier",
+        1.50,
+        7.50,
+        {"thinking_level": "low"},
+        thinking_headroom=1536,
+    ),
+    LLMModel.GEMINI_3_5_FLASH_LITE: ModelSpec(
+        LLMProvider.GOOGLE,
+        "Gemini 3.5 Flash-Lite",
+        "Faster, Cheaper · Free Tier",
+        0.30,
+        2.50,
+        {"thinking_level": "minimal"},
+        thinking_headroom=512,
+    ),
 }
+
+# Retired model ids still accepted from older clients, saved settings, and
+# scripts that call the REST API directly — each maps to its replacement.
+LEGACY_MODEL_ALIASES: Dict[str, LLMModel] = {
+    "claude-sonnet-4": LLMModel.CLAUDE_SONNET_5_5,
+    "claude-sonnet-4-6": LLMModel.CLAUDE_SONNET_5_5,
+    "claude-haiku-4-5": LLMModel.CLAUDE_HAIKU_5_5,
+    "gpt-4.1": LLMModel.GPT_6_1_SOL,
+    "gpt-4.1-mini": LLMModel.GPT_6_LUNA,
+    "gemini-2.5-flash": LLMModel.GEMINI_3_5_FLASH_LITE,
+}
+
+# Model pricing (per 1M tokens), derived from MODEL_SPECS. Ollama models are
+# intentionally absent so the cost lookup misses and falls through to $0.00.
+MODEL_PRICING = {
+    model: {"input": spec.input_price, "output": spec.output_price}
+    for model, spec in MODEL_SPECS.items()
+}
+
+
+def resolve_model(model_id: str) -> LLMModel:
+    """Map an API model id (current or retired alias) to its ``LLMModel``.
+
+    Raises:
+        ValueError: The id is neither a supported model nor a known alias.
+    """
+    try:
+        return LLMModel(model_id)
+    except ValueError:
+        pass
+    if model_id in LEGACY_MODEL_ALIASES:
+        return LEGACY_MODEL_ALIASES[model_id]
+    raise ValueError(f"Unsupported model: {model_id}")
+
+
+def default_model(provider: LLMProvider) -> LLMModel:
+    """The provider's best-quality model (first listed in MODEL_SPECS)."""
+    return next(m for m, s in MODEL_SPECS.items() if s.provider == provider)
+
+
+def model_catalog() -> Dict[str, List[Dict[str, str]]]:
+    """Cloud model roster for the UI: ``{provider: [{id, label, hint}, ...]}``."""
+    catalog: Dict[str, List[Dict[str, str]]] = {}
+    for model, spec in MODEL_SPECS.items():
+        catalog.setdefault(spec.provider.value, []).append(
+            {"id": model.value, "label": spec.label, "hint": spec.hint}
+        )
+    return catalog
+
+
+def _spec_for(model: Any) -> Optional[ModelSpec]:
+    """Spec for an ``LLMModel`` or API id string; None for Ollama/unknown ids."""
+    if isinstance(model, LLMModel):
+        return MODEL_SPECS.get(model)
+    try:
+        return MODEL_SPECS.get(resolve_model(model))
+    except (ValueError, TypeError):
+        return None
 
 
 def calculate_cost(model: Any, input_tokens: int, output_tokens: int) -> float:
@@ -60,15 +205,15 @@ def calculate_cost(model: Any, input_tokens: int, output_tokens: int) -> float:
     Calculate USD cost from separate input/output token counts.
 
     ``model`` may be an ``LLMModel`` (cloud) or a free-text string (Ollama).
-    Anything without a ``MODEL_PRICING`` entry — including every Ollama model —
+    Anything without a ``MODEL_SPECS`` entry — including every Ollama model —
     returns ``0.0``.
     """
-    pricing = MODEL_PRICING.get(model)
-    if not pricing:
+    spec = MODEL_SPECS.get(model) if isinstance(model, LLMModel) else None
+    if not spec:
         return 0.0
 
-    input_cost = (input_tokens / 1_000_000) * pricing["input"]
-    output_cost = (output_tokens / 1_000_000) * pricing["output"]
+    input_cost = (input_tokens / 1_000_000) * spec.input_price
+    output_cost = (output_tokens / 1_000_000) * spec.output_price
     return input_cost + output_cost
 
 
@@ -81,7 +226,6 @@ def call_llm(
     max_tokens: int,
     system_prompt: Optional[str] = None,
     base_url: Optional[str] = None,
-    thinking_budget: int = 1024,
     client: Any = None,
 ) -> Tuple[str, int, int]:
     """
@@ -93,37 +237,71 @@ def call_llm(
         model: The provider's model identifier (API string, not the enum).
         api_key: Provider API key (ignored by Ollama; a placeholder is used).
         prompt: The user prompt.
-        max_tokens: Response token budget.
+        max_tokens: Response token budget (the model's thinking headroom is
+            added on top, so callers size it for the visible answer only).
         system_prompt: Optional system instruction. Omitted entirely when None
             (this preserves KeytermSearcher's Anthropic call, which sends none).
         base_url: Override the endpoint (used to point Ollama at its server).
-        thinking_budget: Google-only cap on "thinking" tokens.
         client: Pre-built SDK client (dependency injection for tests / reuse).
 
     Raises:
         ValueError: Unknown provider.
-        Exception: Provider API failure, mapped to a human-readable message.
+        LLMError: Provider API failure, refusal, or empty/truncated response,
+            mapped to a human-readable message.
     """
+    spec = _spec_for(model) if provider != LLMProvider.OLLAMA else None
+    options = dict(spec.request_options) if spec else {}
+    budget = max_tokens + (spec.thinking_headroom if spec else 0)
+
     if provider == LLMProvider.ANTHROPIC:
-        return _call_anthropic(model, api_key, prompt, max_tokens, system_prompt, client)
+        return _call_anthropic(model, api_key, prompt, budget, system_prompt, options, client)
     if provider in (LLMProvider.OPENAI, LLMProvider.OLLAMA):
         return _call_openai_compatible(
-            provider, model, api_key, prompt, max_tokens, system_prompt, base_url, client
+            provider, model, api_key, prompt, budget, system_prompt, base_url, options, client
         )
     if provider == LLMProvider.GOOGLE:
-        return _call_google(
-            model, api_key, prompt, max_tokens, system_prompt, thinking_budget, client
-        )
+        return _call_google(model, api_key, prompt, budget, system_prompt, options, client)
     raise ValueError(f"Unsupported provider: {provider}")
 
 
-def _call_anthropic(model, api_key, prompt, max_tokens, system_prompt, client):
+def _map_api_error(label: str, e: Exception) -> LLMError:
+    """Translate an SDK exception into a short, user-facing ``LLMError``."""
+    error_str = str(e)
+    lowered = error_str.lower()
+    # anthropic/openai expose status_code; google-genai exposes code.
+    status = getattr(e, "status_code", None) or getattr(e, "code", None)
+    if status == 429 or "rate_limit" in lowered or "429" in error_str:
+        if label == "Gemini" or "resource_exhausted" in lowered:
+            return LLMError(
+                "Gemini API quota exceeded — try a different model or check your billing plan"
+            )
+        return LLMError(f"{label} API rate limit exceeded — wait a moment and try again")
+    if "resource_exhausted" in lowered:
+        return LLMError(
+            "Gemini API quota exceeded — try a different model or check your billing plan"
+        )
+    if "insufficient_quota" in lowered:
+        return LLMError(f"{label} API quota exceeded — check your billing plan")
+    if (
+        status == 401
+        or "401" in error_str
+        or "authentication" in lowered
+        or "unauthenticated" in lowered
+    ):
+        return LLMError(f"{label} API key is invalid or expired")
+    if status == 403 or "403" in error_str or "permission_denied" in lowered:
+        return LLMError(f"{label} API key lacks permission for this model")
+    brief = error_str.split("\n")[0][:200]
+    return LLMError(f"{label} API error: {brief}")
+
+
+def _call_anthropic(model, api_key, prompt, max_tokens, system_prompt, options, client):
     if client is None:
         try:
             import anthropic
         except ImportError:
             raise ImportError(
-                "anthropic package not installed. Install with: pip install anthropic>=0.30.0"
+                "anthropic package not installed. Install with: pip install 'anthropic>=1,<2'"
             )
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -131,29 +309,32 @@ def _call_anthropic(model, api_key, prompt, max_tokens, system_prompt, client):
         "model": model,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
+        **options,
     }
     if system_prompt:
         kwargs["system"] = system_prompt
 
     try:
         message = client.messages.create(**kwargs)
-        if not message.content:
-            raise Exception("Anthropic API returned empty response — no content blocks")
-        response_text = message.content[0].text
-        return response_text, message.usage.input_tokens, message.usage.output_tokens
     except Exception as e:
-        error_str = str(e)
-        if "rate_limit" in error_str.lower() or "429" in error_str:
-            raise Exception("Anthropic API rate limit exceeded — wait a moment and try again")
-        elif "401" in error_str or "authentication" in error_str.lower():
-            raise Exception("Anthropic API key is invalid or expired")
-        else:
-            brief = error_str.split("\n")[0][:200]
-            raise Exception(f"Anthropic API error: {brief}")
+        raise _map_api_error("Anthropic", e)
+
+    stop_reason = getattr(message, "stop_reason", None)
+    if stop_reason == "refusal":
+        raise LLMError("Anthropic declined this request (content policy) — try another provider")
+    # Responses can open with thinking blocks; only text blocks carry the answer.
+    text = "".join(
+        block.text for block in message.content if getattr(block, "type", "text") == "text"
+    )
+    if not text:
+        if stop_reason == "max_tokens":
+            raise LLMError("Anthropic response hit the token limit before producing any text")
+        raise LLMError("Anthropic API returned an empty response")
+    return text, message.usage.input_tokens, message.usage.output_tokens
 
 
 def _call_openai_compatible(
-    provider, model, api_key, prompt, max_tokens, system_prompt, base_url, client
+    provider, model, api_key, prompt, max_tokens, system_prompt, base_url, options, client
 ):
     """OpenAI and Ollama share the OpenAI Chat Completions wire format."""
     is_ollama = provider == LLMProvider.OLLAMA
@@ -164,13 +345,17 @@ def _call_openai_compatible(
             import openai
         except ImportError:
             raise ImportError(
-                "openai package not installed. Install with: pip install openai>=1.35.0"
+                "openai package not installed. Install with: pip install 'openai>=3,<4'"
             )
         if is_ollama:
             # Ollama ignores the key, but the OpenAI client requires a non-empty one.
+            # No SDK retries: a timed-out local generation is CPU-bound, so a
+            # retry repeats the same work (the SDK default would triple it).
             client = openai.OpenAI(
                 api_key=api_key or "ollama",
                 base_url=base_url or DEFAULT_OLLAMA_BASE_URL,
+                timeout=OLLAMA_TIMEOUT,
+                max_retries=0,
             )
         else:
             client = openai.OpenAI(api_key=api_key)
@@ -180,73 +365,83 @@ def _call_openai_compatible(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
+    # OpenAI reasoning models reject max_tokens outright; max_completion_tokens
+    # works on every current model. Ollama's compatibility layer reads max_tokens.
+    token_param = "max_tokens" if is_ollama else "max_completion_tokens"
+
     try:
         response = client.chat.completions.create(
             model=model,
-            max_tokens=max_tokens,
             messages=messages,
+            **{token_param: max_tokens},
+            **options,
         )
-        if not response.choices:
-            raise Exception(f"{label} API returned empty response — no choices")
-        response_text = response.choices[0].message.content
-        return response_text, response.usage.prompt_tokens, response.usage.completion_tokens
     except Exception as e:
-        error_str = str(e)
+        error_str = str(e).lower()
+        if is_ollama and ("timeout" in type(e).__name__.lower() or "timed out" in error_str):
+            raise LLMError(
+                f"Ollama did not finish within {OLLAMA_TIMEOUT:.0f}s — the model is too slow "
+                "on this hardware; try a smaller model or raise OLLAMA_TIMEOUT"
+            )
         if is_ollama and (
-            "connection" in error_str.lower()
-            or "refused" in error_str.lower()
-            or "failed to establish" in error_str.lower()
+            "connection" in error_str
+            or "refused" in error_str
+            or "failed to establish" in error_str
         ):
-            raise Exception(
+            raise LLMError(
                 "Could not reach the Ollama server — check OLLAMA_HOST and that Ollama is running"
             )
-        if "rate_limit" in error_str.lower() or "429" in error_str:
-            raise Exception(f"{label} API rate limit exceeded — wait a moment and try again")
-        elif "401" in error_str or "authentication" in error_str.lower():
-            raise Exception(f"{label} API key is invalid or expired")
-        elif "insufficient_quota" in error_str.lower():
-            raise Exception(f"{label} API quota exceeded — check your billing plan")
-        else:
-            brief = error_str.split("\n")[0][:200]
-            raise Exception(f"{label} API error: {brief}")
+        raise _map_api_error(label, e)
+
+    if not response.choices:
+        raise LLMError(f"{label} API returned an empty response — no choices")
+    choice = response.choices[0]
+    text = choice.message.content
+    if not text:
+        if getattr(choice.message, "refusal", None):
+            raise LLMError(f"{label} declined this request (content policy) — try another provider")
+        if getattr(choice, "finish_reason", None) == "length":
+            raise LLMError(f"{label} response hit the token limit before producing any text")
+        raise LLMError(f"{label} API returned an empty response")
+    return text, response.usage.prompt_tokens, response.usage.completion_tokens
 
 
-def _call_google(model, api_key, prompt, max_tokens, system_prompt, thinking_budget, client):
+def _call_google(model, api_key, prompt, max_tokens, system_prompt, options, client):
     if client is None:
         try:
             from google import genai
         except ImportError:
             raise ImportError(
-                "google-genai package not installed. Install with: pip install google-genai>=1.0.0"
+                "google-genai package not installed. Install with: pip install 'google-genai>=2,<3'"
             )
         client = genai.Client(api_key=api_key)
 
-    # Cap thinking tokens so they don't consume the output budget. Gemini 2.5
-    # models spend "thinking" tokens against max_output_tokens; without this cap
-    # thinking can swallow the entire budget, leaving nothing for the response.
-    config = {
-        "max_output_tokens": max_tokens,
-        "thinking_config": {"thinking_budget": thinking_budget},
-    }
+    # Gemini 3.x thinks by default and bills thinking against max_output_tokens;
+    # thinking_level pins it to the model's floor (see MODEL_SPECS).
+    config = {"max_output_tokens": max_tokens}
+    if "thinking_level" in options:
+        config["thinking_config"] = {"thinking_level": options["thinking_level"]}
     if system_prompt:
         config["system_instruction"] = system_prompt
 
     try:
         response = client.models.generate_content(model=model, contents=prompt, config=config)
-        response_text = response.text
-        input_tokens = response.usage_metadata.prompt_token_count
-        output_tokens = response.usage_metadata.candidates_token_count
-        return response_text, input_tokens, output_tokens
     except Exception as e:
-        error_str = str(e)
-        if "RESOURCE_EXHAUSTED" in error_str:
-            raise Exception(
-                "Gemini API quota exceeded — try a different model or check your billing plan"
-            )
-        elif "401" in error_str or "UNAUTHENTICATED" in error_str:
-            raise Exception("Gemini API key is invalid or expired")
-        elif "403" in error_str or "PERMISSION_DENIED" in error_str:
-            raise Exception("Gemini API key lacks permission for this model")
-        else:
-            brief = error_str.split("\n")[0][:200]
-            raise Exception(f"Gemini API error: {brief}")
+        raise _map_api_error("Gemini", e)
+
+    usage = response.usage_metadata
+    input_tokens = usage.prompt_token_count or 0
+    # Thinking tokens are billed as output but reported separately.
+    output_tokens = (usage.candidates_token_count or 0) + (
+        getattr(usage, "thoughts_token_count", None) or 0
+    )
+    text = response.text
+    if not text:
+        candidates = getattr(response, "candidates", None) or []
+        reason = str(getattr(candidates[0], "finish_reason", "") if candidates else "")
+        if "MAX_TOKENS" in reason:
+            raise LLMError("Gemini response hit the token limit before producing any text")
+        if "SAFETY" in reason or "PROHIBITED" in reason or "BLOCK" in reason:
+            raise LLMError("Gemini declined this request (content policy) — try another provider")
+        raise LLMError("Gemini API returned an empty response")
+    return text, input_tokens, output_tokens
