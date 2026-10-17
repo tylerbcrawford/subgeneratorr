@@ -40,6 +40,27 @@ NEUTRAL_SUBTITLE_LANG = "und"
 # so a diarizer upgrade never changes output silently.
 DIARIZE_MODEL = "v2"
 
+# Deepgram Nova-3 pre-recorded, pay-as-you-go, USD per audio minute
+# (deepgram.com/pricing, checked 2026-10-17). Keyterm prompting and redaction are
+# billed as per-minute add-ons; diarization and smart formatting are included.
+NOVA3_PRICE_MONOLINGUAL = 0.0043
+NOVA3_PRICE_MULTILINGUAL = 0.0052  # language="multi" (code-switching)
+NOVA3_ADDON_KEYTERM = 0.0013
+NOVA3_ADDON_REDACTION = 0.0020
+
+
+def deepgram_rate_per_minute(
+    language: Optional[str] = None, keyterms: bool = False, redact: bool = False
+) -> float:
+    """Estimated Deepgram cost per audio minute for one request's options."""
+    rate = NOVA3_PRICE_MULTILINGUAL if language == "multi" else NOVA3_PRICE_MONOLINGUAL
+    if keyterms:
+        rate += NOVA3_ADDON_KEYTERM
+    if redact:
+        rate += NOVA3_ADDON_REDACTION
+    return round(rate, 4)
+
+
 # deepgram-sdk 7.x defaults every request to a 60 s timeout, which a feature-length upload
 # plus transcription can exceed. Override with DEEPGRAM_TIMEOUT (seconds).
 DEEPGRAM_TIMEOUT = float(os.environ.get("DEEPGRAM_TIMEOUT", "900"))

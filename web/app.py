@@ -39,6 +39,7 @@ from core.llm_providers import model_catalog
 from core.transcribe import (
     NEUTRAL_SUBTITLE_LANG,
     check_subtitles,
+    deepgram_rate_per_minute,
     get_keyterms_folder,
     get_video_duration,
     is_media,
@@ -165,7 +166,17 @@ def _build_terminal_results(children_info):
 def index():
     """Serve the web UI (optional)."""
     _require_auth()
-    return render_template("index.html", llm_models=model_catalog())
+    from core import transcribe as core_transcribe
+
+    deepgram_pricing = {
+        "monolingual": core_transcribe.NOVA3_PRICE_MONOLINGUAL,
+        "multilingual": core_transcribe.NOVA3_PRICE_MULTILINGUAL,
+        "keyterm": core_transcribe.NOVA3_ADDON_KEYTERM,
+        "redaction": core_transcribe.NOVA3_ADDON_REDACTION,
+    }
+    return render_template(
+        "index.html", llm_models=model_catalog(), deepgram_pricing=deepgram_pricing
+    )
 
 
 @app.get("/healthz")
@@ -444,10 +455,14 @@ def api_estimate():
 
     Request Body (JSON):
         files: List of video file paths
+        engine: "deepgram" (default) or "whisper"
+        language: Transcription language; "multi" bills at the multilingual rate
+        keyterms: true when keyterm prompting is on (per-minute add-on)
+        redact: true when redaction is on (per-minute add-on)
 
     Returns:
         JSON with duration metadata and cost estimates
-        - Nova-3 pricing: $0.0057 per minute of audio
+        - Nova-3 pricing: core.transcribe.deepgram_rate_per_minute (published rates)
         - Estimated processing time: ~0.1x real-time (rough estimate)
     """
     _require_auth()
@@ -459,9 +474,6 @@ def api_estimate():
             400, description=f"Unknown engine {engine!r}; expected one of {sorted(VALID_ENGINES)}"
         )
 
-    # Updated Nova-3 pricing to match actual API charges
-    # Previous estimate was ~25% low (e.g., estimated $0.71 vs actual $0.94)
-    NOVA3_PRICE_PER_MINUTE = 0.0057
     PROCESSING_TIME_MULTIPLIER = (
         0.0109  # Based on real data: ~1.09% of video length (25 jobs, 23.3 hours analyzed)
     )
@@ -472,7 +484,9 @@ def api_estimate():
         price_per_minute = 0.0
         time_multiplier = WHISPER_TIME_MULTIPLIER
     else:
-        price_per_minute = NOVA3_PRICE_PER_MINUTE
+        price_per_minute = deepgram_rate_per_minute(
+            body.get("language"), bool(body.get("keyterms")), bool(body.get("redact"))
+        )
         time_multiplier = PROCESSING_TIME_MULTIPLIER
 
     total_duration = 0.0

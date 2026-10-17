@@ -23,7 +23,30 @@ let serverDefaults = {
 // Chunked batch processing
 const CHUNK_SIZE = 25;
 const AVG_DURATION = 2700; // Average media file duration in seconds (~45 min)
-const DEEPGRAM_RATE = 0.0057; // $/minute for Nova-3
+// Deepgram Nova-3 $/minute, injected by index.html from core/transcribe.py
+// (published pay-as-you-go rates; keyterms and redaction are per-minute add-ons).
+const DEEPGRAM_PRICING = window.DEEPGRAM_PRICING ||
+    { monolingual: 0.0043, multilingual: 0.0052, keyterm: 0.0013, redaction: 0.002 };
+
+// /api/estimate body: engine plus the options that change the Deepgram rate.
+function estimateRequestBody(files) {
+    return {
+        files,
+        engine: getSelectedEngine(),
+        language: document.getElementById('language')?.value,
+        keyterms: Boolean(document.getElementById('keyTerms')?.value.trim()),
+        redact: Boolean(document.getElementById('redact')?.checked),
+    };
+}
+
+// Per-minute Deepgram rate for the options currently selected in the form.
+function deepgramRate() {
+    const language = document.getElementById('language')?.value;
+    let rate = language === 'multi' ? DEEPGRAM_PRICING.multilingual : DEEPGRAM_PRICING.monolingual;
+    if (document.getElementById('keyTerms')?.value.trim()) rate += DEEPGRAM_PRICING.keyterm;
+    if (document.getElementById('redact')?.checked) rate += DEEPGRAM_PRICING.redaction;
+    return rate;
+}
 let chunkState = { queue: [], baseBody: null };
 let currentChunkIndex = 0;
 let chunkResults = [];       // Accumulated results across chunks
@@ -295,6 +318,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if ((!activeChunk || !activeChunk.activeBatchId) && activeScan && activeScan.taskId) {
         reconnectLibraryScan(activeScan.taskId);
     }
+
+    // Language and redaction change the Deepgram per-minute rate
+    ['language', 'redact'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', calculateEstimatesAuto);
+    });
 
     // Update cost estimate when keyterms change
     const keytermsField = document.getElementById('keyTerms');
@@ -1383,7 +1411,7 @@ function applyEngineGating() {
     if (caption) {
         caption.textContent = isLocal
             ? 'Whisper on this server · $0 · nothing leaves your machine'
-            : 'Deepgram Nova‑3 API · ~$0.0057/min';
+            : `Deepgram Nova‑3 API · from $${DEEPGRAM_PRICING.monolingual}/min`;
     }
 
     // Re-apply checkbox-driven sub-option visibility for controls the gating
@@ -1802,7 +1830,7 @@ function calculateEstimatesAuto() {
 
     // For large selections, show instant rough estimate immediately
     if (selectedFiles.length > CHUNK_SIZE) {
-        const rate = getSelectedEngine() === 'whisper' ? 0 : DEEPGRAM_RATE;
+        const rate = getSelectedEngine() === 'whisper' ? 0 : deepgramRate();
         const roughCost = (selectedFiles.length * AVG_DURATION / 60) * rate;
         const roughDuration = selectedFiles.length * AVG_DURATION;
         const fileText = selectedFiles.length === 1 ? 'file' : 'files';
@@ -1820,7 +1848,7 @@ async function _calculateEstimatesDebounced() {
         const response = await fetch('/api/estimate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: selectedFiles, engine: getSelectedEngine() })
+            body: JSON.stringify(estimateRequestBody(selectedFiles))
         });
 
         if (!response.ok) {
@@ -2223,7 +2251,7 @@ async function fetchChunkEstimate(overlay, chunks, allFiles) {
         const response = await fetch('/api/estimate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: chunks[0] })
+            body: JSON.stringify(estimateRequestBody(chunks[0]))
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2252,7 +2280,7 @@ async function fetchChunkEstimate(overlay, chunks, allFiles) {
         if (startBtn) startBtn.disabled = false;
     } catch (e) {
         console.error('Estimate for confirmation failed:', e);
-        const roughCost = (allFiles.length * AVG_DURATION / 60) * DEEPGRAM_RATE;
+        const roughCost = (allFiles.length * AVG_DURATION / 60) * (getSelectedEngine() === 'whisper' ? 0 : deepgramRate());
         const confirmEl = overlay.querySelector('#confirmEstimate');
         if (confirmEl) {
             confirmEl.innerHTML = `<div><strong>Estimated:</strong> ~$${roughCost.toFixed(2)} (rough estimate)</div>`;

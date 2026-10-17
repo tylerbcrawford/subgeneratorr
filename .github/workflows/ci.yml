@@ -10,8 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install -r requirements-dev.txt
@@ -21,18 +21,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - run: pip install 'ruff==0.16.5'  # exact pin, same as requirements-dev.txt — unpinned ruff broke CI when markdown formatting landed
+      - run: pip install 'ruff==0.17.1'  # exact pin, same as requirements-dev.txt — unpinned ruff broke CI when markdown formatting landed
       - run: ruff check .
       - run: ruff format --check .
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - run: docker build -f cli/Dockerfile -t sg-cli-smoke .
       - run: docker build -f web/Dockerfile -t sg-web-smoke .

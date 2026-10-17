@@ -268,7 +268,7 @@ docker exec -it plex rm -rf "/config/Library/Application Support/Plex Media Serv
 
 ## Language Support
 
-Subgeneratorr supports 59 transcription languages (92 language codes including regional variants), multilingual processing, and automatic language detection.
+Subgeneratorr supports 59 transcription languages (91 language codes including regional variants), multilingual processing, and automatic language detection.
 
 **Quick reference:**
 - Set `LANGUAGE=en` (or any supported code) in `.env`

@@ -37,6 +37,7 @@ Planned as v3.2.0 (`pyproject.toml` is already bumped).
   Responses are normalized with `core.transcribe.response_to_dict`.
 - Dependency majors: flask 3.1, celery 5.6, redis-py 6.4, gunicorn 26, gevent 26, anthropic 1.x,
   openai 3.x, google-genai 2.x.
+- CI: actions/checkout v7, actions/setup-python v7, ruff 0.17.1.
 
 ### Fixed
 - **CLI used Deepgram's legacy v1 diarizer**: the CLI now shares the Web
@@ -51,8 +52,13 @@ Planned as v3.2.0 (`pyproject.toml` is already bumped).
   OpenAI SDK silently retried timed-out local generations twice. Ollama requests
   are no longer retried, and a timeout reports an actionable error
   ("try a smaller model or raise OLLAMA_TIMEOUT").
-- **Removed English (Ireland) `en-IE`** from the language list. Deepgram rejects it
-  with HTTP 400.
+- **Deepgram cost estimates used a flat $0.0057/min**: they now follow Deepgram's
+  published rates and the options chosen: $0.0043/min base, $0.0052/min for `multi`,
+  +$0.0013/min with keyterms, +$0.0020/min with redaction (`deepgram_rate_per_minute`,
+  shared by Web and CLI). Local-Whisper batches no longer show a Deepgram price in the
+  chunk-confirmation dialog.
+- **Removed English (Ireland) `en-IE` and English (Canada) `en-CA`** from the
+  language list. Deepgram rejects both with HTTP 400 (verified with live probes).
 - Claude responses that begin with a thinking block, refusals, and truncated
   (max-token) responses are now handled for every provider instead of returning
   empty keyterms or a crash.

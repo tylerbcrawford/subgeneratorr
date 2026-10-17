@@ -27,7 +27,7 @@ Since v3, transcription is a per-job switch right on the main screen:
 |---|---|---|
 | **Accuracy** | Best in class; keyterms boost proper nouns up to ~90% | ~89% word-level agreement with Nova-3 (`small` model) |
 | **Speed** | ~1% of runtime | Near-real-time on a modest CPU (0.3× measured on an N100) |
-| **Cost** | ~$0.0057/min, [$200 free credits](https://console.deepgram.com/) (~585 hrs) | **$0, forever** |
+| **Cost** | $0.0043/min (+$0.0013 with keyterms), [$200 free credits](https://console.deepgram.com/) (~600–775 hrs) | **$0, forever** |
 | **Privacy** | Audio goes to Deepgram's API | **Nothing leaves your machine** |
 | **Setup** | API key | No account, no key; larger image with the model baked in |
 | **Extras** | Diarization, redaction, audio intelligence | Core transcription (cloud-only options hide automatically) |
@@ -40,13 +40,13 @@ Every AI step after transcription is provider-agnostic too: keyterm generation r
 
 ## Features
 
-- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 59 transcription languages (92 language codes counting regional variants; General + Medical models), including Deepgram's 2026 additions: Afrikaans, Armenian, Georgian, Nepali, Punjabi, and, new in v3.2, Assamese, Kazakh, Mongolian, and Pashto
+- 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 59 transcription languages (91 language codes counting regional variants; General + Medical models), including Deepgram's 2026 additions: Afrikaans, Armenian, Georgian, Nepali, Punjabi, and, new in v3.2, Assamese, Kazakh, Mongolian, and Pashto
 - 🏠 **Local engine (v3)** — opt-in `-local` images transcribe on your own hardware via faster-whisper: CPU-only, offline, $0, default model baked in
 - 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
 - 🌐 **Subtitle translation into 58 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
 - 🗣️ **Speaker diarization** — labeled, character-named transcripts
-- 🌍 **Multilingual transcription** — auto-detect, `multi` code-switching, and regional variants across 92 Nova-3 language codes
+- 🌍 **Multilingual transcription** — auto-detect, `multi` code-switching, and regional variants across 91 Nova-3 language codes
 - 🛡️ **Content control** — redaction (PCI/PII), profanity filtering, find & replace, dictation
 - 🧠 **Audio intelligence** — sentiment, summarization, topic/intent/entity detection (English)
 - 🐳 **Docker-based** — Web UI and CLI, batch processing with parallel workers and real-time progress
@@ -94,7 +94,7 @@ Every AI step after transcription is provider-agnostic too: keyterm generation r
 
 **Pick your flavor:**
 
-- ☁️ **Cloud (default)** — Deepgram Nova-3: best accuracy, processes in ~1% of runtime, ~$0.0057/min with [$200 free credits](https://console.deepgram.com/). Needs an API key.
+- ☁️ **Cloud (default)** — Deepgram Nova-3: best accuracy, processes in ~1% of runtime, from $0.0043/min with [$200 free credits](https://console.deepgram.com/). Needs an API key.
 - 🏠 **Fully local** — faster-whisper on your CPU: $0, offline, no account or key needed, near-real-time processing (larger image). Both engines stay selectable per job.
 
 **Requirements:** Docker + Docker Compose · media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, …) · a [Deepgram API key](https://console.deepgram.com/) for the cloud flavor only
@@ -181,23 +181,23 @@ Two values are required; everything else has sensible defaults.
 
 ## Pricing
 
-Nova-3 costs ~**$0.0057/min** of audio:
+Nova-3 pre-recorded audio is billed per minute at Deepgram's [pay-as-you-go rates](https://deepgram.com/pricing): **$0.0043/min** (or $0.0052/min for `multi` code-switching). Keyterm prompting adds $0.0013/min and redaction adds $0.0020/min. Diarization and smart formatting are included. The Web UI's estimate follows the options you pick.
 
-| Content | Cost |
-|---------|------|
-| 10-min episode | ~$0.06 |
-| 45-min episode | ~$0.26 |
-| 90-min movie | ~$0.51 |
-| 100 × 10-min episodes | ~$5.70 |
+| Content | Base | With keyterms |
+|---------|------|---------------|
+| 10-min episode | ~$0.04 | ~$0.06 |
+| 45-min episode | ~$0.19 | ~$0.25 |
+| 90-min movie | ~$0.39 | ~$0.50 |
+| 100 × 10-min episodes | ~$4.30 | ~$5.60 |
 
-New Deepgram accounts get **$200 in free credits** — roughly 35,000 minutes (~585 hours).
+New Deepgram accounts get **$200 in free credits**, roughly 35,000–46,000 minutes (~600–775 hours) depending on options.
 
 ---
 
 ## Documentation
 
 - **[Technical docs](docs/technical.md)** — architecture, API endpoints, advanced config, speaker maps, AI model benchmarks
-- **[Language support](docs/languages.md)** — the full Nova-3 transcription matrix (59 languages, 92 codes) and the 58 translation targets
+- **[Language support](docs/languages.md)** — the full Nova-3 transcription matrix (59 languages, 91 codes) and the 58 translation targets
 - **[Roadmap](docs/roadmap.md)** — planned features
 
 <details>
@@ -207,7 +207,7 @@ New Deepgram accounts get **$200 in free credits** — roughly 35,000 minutes (~
 Bazarr finds *existing* community subtitles; Subgeneratorr *generates* them from audio for whatever Bazarr can't find. Run Bazarr first, then Subgeneratorr on the gaps.
 
 **Cloud or local — which engine should I pick?**
-Cloud (Nova-3) for the best accuracy and speed at ~$0.0057/min; Local (Whisper) for $0, offline, fully private transcription at near-real-time speed. It's a per-job switch, so you can use both — see the [comparison table](#cloud-or-local--you-choose).
+Cloud (Nova-3) for the best accuracy and speed from $0.0043/min; Local (Whisper) for $0, offline, fully private transcription at near-real-time speed. It's a per-job switch, so you can use both — see the [comparison table](#cloud-or-local--you-choose).
 
 **What is keyterm prompting?**
 A list of show-specific terms (character names, places, made-up words) that Nova-3 prioritizes during transcription — up to ~90% better accuracy on those terms.
@@ -222,7 +222,7 @@ Yes — one-click generation via Claude, GPT, or Gemini infers the title from th
 Yes — after transcription, an LLM translates the cue text into any of 58 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
 
 **What languages are supported?**
-Nova-3 transcribes 59 languages (92 codes counting regional variants), with auto-detect and a `multi` code-switching mode. Translation then covers 58 target languages. See the [language guide](docs/languages.md).
+Nova-3 transcribes 59 languages (91 codes counting regional variants), with auto-detect and a `multi` code-switching mode. Translation then covers 58 target languages. See the [language guide](docs/languages.md).
 
 </details>
 

@@ -373,7 +373,7 @@ docker compose run --rm \
 **Function:** Model selection  
 **Expected Results:**
 - Nova-3 model used
-- Cost per minute = $0.0057/min
+- Cost per minute = $0.0043/min base (+$0.0013 keyterms, +$0.0020 redaction; see `core.transcribe.deepgram_rate_per_minute`)
 - Model logged in statistics
 
 #### Test 10.3: Profanity Filter

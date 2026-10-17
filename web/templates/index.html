@@ -79,7 +79,7 @@
                                     <span class="engine-segment-sub">Whisper</span>
                                 </label>
                             </div>
-                            <p class="engine-caption" id="engineCaption">Deepgram Nova&#8209;3 API &middot; ~$0.0057/min</p>
+                            <p class="engine-caption" id="engineCaption">Deepgram Nova&#8209;3 API &middot; from $0.0043/min</p>
                         </div>
                         <div class="action-bar-controls">
                             <button id="submitBtn" class="btn-primary" disabled type="button">Transcribe</button>
@@ -125,7 +125,6 @@
                                     <option value="nl">Dutch</option>
                                     <option value="nl-BE">Dutch (Belgium)</option>
                                     <option value="en-AU">English (Australia)</option>
-                                    <option value="en-CA">English (Canada)</option>
                                     <option value="en-GB">English (UK)</option>
                                     <option value="en-IN">English (India)</option>
                                     <option value="en-NZ">English (New Zealand)</option>
@@ -556,7 +555,8 @@
 
     <!-- Cloud LLM roster from core/llm_providers.MODEL_SPECS (single source of truth). -->
     <script>window.LLM_MODELS = {{ llm_models | tojson }};</script>
-    <script src="/static/app.js?v=26"></script>
+    <script>window.DEEPGRAM_PRICING = {{ deepgram_pricing | tojson }};</script>
+    <script src="/static/app.js?v=27"></script>
     <script src="/static/translate.js?v=5"></script>
 </body>
 </html>

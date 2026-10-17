@@ -43,10 +43,6 @@ class Config:
     DETECT_LANGUAGE = os.environ.get("DETECT_LANGUAGE", "0") == "1"
     MEASUREMENTS = os.environ.get("MEASUREMENTS", "0") == "1"
 
-    # Cost per minute (USD) for Nova-3
-    # Updated to match actual API charges (previous estimate was ~25% low)
-    COST_PER_MINUTE = 0.0057
-
     @classmethod
     def validate(cls) -> bool:
         """

@@ -1,6 +1,6 @@
 # Language Support Guide
 
-**Complete guide to 59 transcription languages (92 language codes) with regional variants**
+**Complete guide to 59 transcription languages (91 language codes) with regional variants**
 
 ---
 
@@ -9,7 +9,7 @@
 Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rather than forcing all languages through an English-optimized model, Nova-3 adapts to the linguistic structure of each language: from tonal Vietnamese to agglutinative Hungarian, from syllable-timed Japanese to stress-timed English.
 
 **Key Capabilities:**
-- **59 individual languages (92 codes)** with regional dialect support
+- **59 individual languages (91 codes)** with regional dialect support
 - **Universal keyterm prompting** across all languages (500 tokens)
 - **Multilingual model** processing 10 languages simultaneously
 - **Automatic language detection** for 35 languages (batch mode)

@@ -239,12 +239,21 @@ def test_estimate_whisper_is_free():
     assert body["engine"] == "whisper"
 
 
-def test_estimate_deepgram_keeps_pricing():
+def test_estimate_deepgram_prices_from_options():
+    # Published Nova-3 pay-as-you-go rates: base by language, add-ons per minute.
+    cases = [
+        ({}, 0.0043),
+        ({"language": "multi"}, 0.0052),
+        ({"keyterms": True}, 0.0056),
+        ({"redact": True}, 0.0063),
+        ({"language": "multi", "keyterms": True, "redact": True}, 0.0085),
+    ]
     with app.test_client() as client:
-        resp = client.post("/api/estimate", json={"files": []})
-    body = resp.get_json()
-    assert body["price_per_minute"] == 0.0057
-    assert body["engine"] == "deepgram"
+        for opts, rate in cases:
+            resp = client.post("/api/estimate", json={"files": [], **opts})
+            body = resp.get_json()
+            assert body["price_per_minute"] == rate, opts
+            assert body["engine"] == "deepgram"
 
 
 def test_estimate_rejects_unknown_engine():

@@ -67,9 +67,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.asr_engine import TranscribeOptions, WhisperEngine
 from core.srt_writer import build_srt, write_normalized_transcript
 from core.transcribe import (
-    extract_audio as core_extract_audio,
-)
-from core.transcribe import (
+    deepgram_rate_per_minute,
     find_speaker_map,
     get_audio_selection_language,
     get_json_folder,
@@ -82,6 +80,9 @@ from core.transcribe import (
     strip_speaker_labels,
     transcribe_file,
     write_raw_json,
+)
+from core.transcribe import (
+    extract_audio as core_extract_audio,
 )
 
 
@@ -98,6 +99,13 @@ class SubtitleGenerator:
         Config.validate()
         self.engine = Config.ASR_ENGINE
         self.api_key = Config.DEEPGRAM_API_KEY if self.engine == "deepgram" else None
+        # Batch totals are estimates: keyterms auto-load per file when a CSV exists,
+        # so price the keyterm add-on in (upper bound). Local Whisper is free.
+        self.cost_per_minute = (
+            0.0
+            if self.engine == "whisper"
+            else deepgram_rate_per_minute(Config.LANGUAGE, keyterms=True)
+        )
         self.stats = {
             "processed": 0,
             "skipped": 0,
@@ -335,7 +343,7 @@ class SubtitleGenerator:
             if self.engine == "whisper":
                 self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: $0.00 (local)")
             else:
-                cost = duration * Config.COST_PER_MINUTE
+                cost = duration * deepgram_rate_per_minute(Config.LANGUAGE, bool(keyterms))
                 self.log(f"  ⏱️  Duration: {duration:.1f} min | Cost: ${cost:.2f}")
 
             self.log("  📢 Extracting audio...")
@@ -621,7 +629,7 @@ class SubtitleGenerator:
 
     def save_stats(self):
         self.stats["end_time"] = datetime.now().isoformat()
-        self.stats["estimated_cost"] = self.stats["total_minutes"] * Config.COST_PER_MINUTE
+        self.stats["estimated_cost"] = self.stats["total_minutes"] * self.cost_per_minute
         self.stats["model"] = Config.MODEL
         self.stats["language"] = Config.LANGUAGE
 
@@ -643,7 +651,7 @@ class SubtitleGenerator:
         self.log(f"❌ Failed:         {self.stats['failed']} files")
         self.log(f"⏱️  Total Duration: {self.stats['total_minutes']:.1f} minutes")
 
-        cost = self.stats["total_minutes"] * Config.COST_PER_MINUTE
+        cost = self.stats["total_minutes"] * self.cost_per_minute
         self.log(f"💰 Estimated Cost: ${cost:.2f}")
         self.log("=" * 70)
 
@@ -693,7 +701,7 @@ class SubtitleGenerator:
             self.process_video(video_path)
 
             if idx % 5 == 0:
-                cost_so_far = self.stats["total_minutes"] * Config.COST_PER_MINUTE
+                cost_so_far = self.stats["total_minutes"] * self.cost_per_minute
                 self.log(f"\n🔄 Checkpoint: {idx}/{total} | Cost: ${cost_so_far:.2f}")
 
         self.print_summary()
