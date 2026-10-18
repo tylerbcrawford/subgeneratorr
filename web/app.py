@@ -17,6 +17,7 @@ from datetime import date
 from pathlib import Path
 
 import redis as redis_lib
+import requests
 from flask import Flask, Response, abort, jsonify, render_template, request, send_file
 from tasks import (
     celery_app,
@@ -35,7 +36,15 @@ from core.asr_engine import (
     engine_capabilities,
     whisper_available,
 )
-from core.llm_providers import model_catalog
+from core.languages import TRANSCRIPTION_CODES, TRANSLATION_CODES, catalog_payload
+from core.llm_providers import model_catalog, ollama_api_root
+from core.model_languages import translation_support
+from core.settings_store import (
+    SettingsError,
+    load_language_prefs,
+    save_language_prefs,
+    validate_language_list,
+)
 from core.transcribe import (
     NEUTRAL_SUBTITLE_LANG,
     check_subtitles,
@@ -238,6 +247,119 @@ def api_capabilities():
             "llm_models": model_catalog(),
         }
     )
+
+
+# --- Languages: catalog, per-model translation support, saved preferences ---
+
+
+@app.get("/api/languages")
+def api_languages():
+    """
+    Language catalog for the UI dropdowns plus the saved visibility prefs.
+
+    Returns:
+        JSON ``{languages: [{code, name, base, deepgram, whisper, translate,
+        special}], prefs: {transcription, translation}}`` where a null pref
+        means "show all".
+    """
+    _require_auth()
+    return jsonify({"languages": catalog_payload(), "prefs": load_language_prefs()})
+
+
+@app.get("/api/languages/translation-support")
+def api_translation_support():
+    """
+    Translation targets the selected LLM officially supports (advisory).
+
+    Query: provider, model. Returns ``{supported: [codes] | null, verified,
+    label, source}``; ``supported: null`` means every target.
+    """
+    _require_auth()
+    info = translation_support(request.args.get("provider", ""), request.args.get("model"))
+    return jsonify(info.to_json())
+
+
+@app.get("/api/settings/languages")
+def api_get_language_settings():
+    """Saved language visibility prefs (null list = all languages)."""
+    _require_auth()
+    return jsonify(load_language_prefs())
+
+
+@app.put("/api/settings/languages")
+def api_put_language_settings():
+    """
+    Save which languages appear in the transcription and translation lists.
+
+    Request Body (JSON): ``{transcription: [codes] | null, translation: [codes] | null}``;
+    omitted keys keep their saved value.
+    """
+    _require_auth()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    prefs = load_language_prefs()
+    allowed = {"transcription": TRANSCRIPTION_CODES, "translation": TRANSLATION_CODES}
+    try:
+        for kind, codes in allowed.items():
+            if kind in body:
+                prefs[kind] = validate_language_list(kind, body[kind], codes)
+        saved = save_language_prefs(prefs)
+    except SettingsError as e:
+        return jsonify({"error": str(e)}), 400
+    except OSError as e:
+        app.logger.error(f"Could not write settings file: {e}")
+        return jsonify({"error": f"Could not save settings ({e.strerror or e})"}), 500
+    return jsonify(saved)
+
+
+# --- Ollama: installed-model discovery ---
+
+_OLLAMA_HOST_RE = re.compile(r"^(https?://)?[A-Za-z0-9._\-\[\]:]+(/v1)?/?$")
+OLLAMA_LIST_TIMEOUT = 3
+
+
+@app.get("/api/ollama/models")
+def api_ollama_models():
+    """
+    List models installed on an Ollama server (proxied ``GET /api/tags``).
+
+    Query: host (optional, falls back to OLLAMA_HOST).
+
+    Returns:
+        JSON ``{host, models: [{name, family, parameter_size}]}``; 400 when no
+        or a malformed host is given, 502 when Ollama cannot be reached.
+    """
+    _require_auth()
+    host = (request.args.get("host") or os.environ.get("OLLAMA_HOST") or "").strip()
+    if not host:
+        return jsonify(
+            {"error": "Ollama host not configured — set OLLAMA_HOST or enter a host"}
+        ), 400
+    if not _OLLAMA_HOST_RE.match(host):
+        return jsonify({"error": "Ollama host must look like host:port or http://host:port"}), 400
+    root = ollama_api_root(host)
+    try:
+        resp = requests.get(f"{root}/api/tags", timeout=OLLAMA_LIST_TIMEOUT)
+        resp.raise_for_status()
+        raw = resp.json().get("models") or []
+    except (requests.RequestException, ValueError, AttributeError) as e:
+        app.logger.info(f"Ollama model list failed for {root}: {e}")
+        return jsonify({"error": f"Could not reach Ollama at {root}", "host": root}), 502
+    models = []
+    for m in raw:
+        if not isinstance(m, dict) or not m.get("name"):
+            continue
+        details = m.get("details") or {}
+        models.append(
+            {
+                "name": m["name"],
+                "family": details.get("family") or "",
+                "parameter_size": details.get("parameter_size") or "",
+            }
+        )
+    models.sort(key=lambda m: m["name"].lower())
+    return jsonify({"host": root, "models": models})
 
 
 @app.get("/api/browse")

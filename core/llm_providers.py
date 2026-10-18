@@ -30,6 +30,21 @@ DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 OLLAMA_TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
 
 
+def ollama_api_root(host: str) -> str:
+    """``ollama:11434`` / ``http://ollama:11434/v1/`` -> ``http://ollama:11434``."""
+    base = host.strip().rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = "http://" + base
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    return base
+
+
+def ollama_base_url(host: str) -> str:
+    """Coerce a user-supplied Ollama host into its OpenAI-compatible ``.../v1`` URL."""
+    return ollama_api_root(host) + "/v1"
+
+
 class LLMProvider(Enum):
     """Supported LLM providers."""
 

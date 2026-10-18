@@ -596,12 +596,9 @@ def _normalize_ollama_base_url(host: str) -> str:
     Accepts ``ollama:11434``, ``http://ollama:11434``, or a full ``.../v1`` and
     always returns ``http(s)://host:port/v1``.
     """
-    base = host.strip().rstrip("/")
-    if not base.startswith(("http://", "https://")):
-        base = "http://" + base
-    if not base.endswith("/v1"):
-        base = base + "/v1"
-    return base
+    from core.llm_providers import ollama_base_url
+
+    return ollama_base_url(host)
 
 
 # Provider -> environment variable holding its API key (cloud providers only).
