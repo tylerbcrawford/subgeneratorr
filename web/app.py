@@ -345,7 +345,7 @@ def api_ollama_models():
         return jsonify({"error": "Ollama host must look like host:port or http://host:port"}), 400
     root = ollama_api_root(host)
     try:
-        resp = requests.get(f"{root}/api/tags", timeout=OLLAMA_LIST_TIMEOUT)
+        resp = requests.get(f"{root}/api/tags", timeout=OLLAMA_LIST_TIMEOUT, allow_redirects=False)
         resp.raise_for_status()
         raw = resp.json().get("models") or []
     except (requests.RequestException, ValueError, AttributeError) as e:
@@ -1280,6 +1280,8 @@ def api_keyterms_generate():
     # Validate inputs
     if not video_path:
         return jsonify({"error": "video_path required"}), 400
+    if ollama_host is not None and not isinstance(ollama_host, str):
+        return jsonify({"error": "ollama_host must be a string"}), 400
     if provider == "ollama":
         if not model:
             return jsonify({"error": "Ollama model name required (e.g. qwen3:8b)"}), 400

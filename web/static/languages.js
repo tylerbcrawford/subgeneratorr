@@ -14,6 +14,7 @@
     'use strict';
 
     const CUSTOMIZE = '__customize__';
+    let rendering = false;
     const SEPARATOR = '──────────';
     const KINDS = ['transcription', 'translation'];
 
@@ -23,6 +24,9 @@
     let prefs = normalizePrefs(window.LANGUAGE_PREFS);
     const defaultLanguage = window.DEFAULT_LANGUAGE || 'en';
     let engine = 'deepgram';
+    // The language the user (or saved settings) asked for. Kept across engine
+    // switches so a code one engine lacks comes back when the other returns.
+    let preferred = null;
     const listeners = [];
 
     function normalizePrefs(raw) {
@@ -67,7 +71,11 @@
 
     function engineEntries(eng) {
         const key = eng === 'whisper' ? 'whisper' : 'deepgram';
-        return catalog.filter(function (l) { return l[key] && visible('transcription', l.code); });
+        const all = catalog.filter(function (l) { return l[key]; });
+        const shown = all.filter(function (l) { return visible('transcription', l.code); });
+        // Saved prefs may hold only the other engine's languages (or stale
+        // codes); show the full engine list rather than an empty dropdown.
+        return shown.length ? shown : all;
     }
 
     function pickValue(entries, wanted) {
@@ -80,14 +88,16 @@
     }
 
     /**
-     * Rebuild #language for an engine. With notify, a selection the new list
-     * cannot keep is announced and a change event fires for app.js listeners.
+     * Rebuild #language for an engine. A change event fires whenever the value
+     * moves so app.js availability gating stays current; with notify, a
+     * preferred language the new list cannot keep is also announced.
      */
     function renderTranscription(eng, opts) {
         if (eng) engine = eng;
         const select = $('language');
         if (!select || !catalog.length) return;
-        const wanted = select.value;
+        const current = select.value;
+        const wanted = preferred || current;
         const entries = engineEntries(engine);
         const top = entries.filter(function (l) { return l.code === defaultLanguage; });
         const specials = entries.filter(function (l) { return l.special; });
@@ -110,7 +120,14 @@
         if (opts && opts.notify && wanted && wanted !== CUSTOMIZE && value !== wanted) {
             const where = engine === 'whisper' ? 'the Local engine' : 'the Cloud engine';
             toast('info', name(wanted) + ' isn\'t available with ' + where + ' — switched to ' + name(value));
-            select.dispatchEvent(new Event('change'));
+        }
+        if (value !== current) {
+            rendering = true;
+            try {
+                select.dispatchEvent(new Event('change'));
+            } finally {
+                rendering = false;
+            }
         }
     }
 
@@ -118,6 +135,7 @@
     function selectTranscription(code) {
         const select = $('language');
         if (!select) return;
+        if (code) preferred = code;
         select.value = pickValue(engineEntries(engine), code);
     }
 
@@ -317,6 +335,8 @@
                 return;
             }
             previous = select.value;
+            // A fallback chosen by renderTranscription is not the user's choice
+            if (!rendering) preferred = select.value;
         });
     }
 
