@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/ollama/models`, Ollama for `/api/keyterms/generate`, and the `providers` and
   `llm_models` fields of `/api/config` and `/api/capabilities`.
 - Language counts updated throughout (99 Whisper languages, 98 translation targets).
+- README screenshots and the demo GIF retaken on the v3.3 UI (current pricing and
+  models, Ollama model picker in the Translate panel), plus a new screenshot of the
+  Customize languages panel.
 
 ## [3.3.0] - 2026-10-18
 

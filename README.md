@@ -12,7 +12,7 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-subgeneratorr--web-blue?logo=github)](https://github.com/tylerbcrawford/subgeneratorr/pkgs/container/subgeneratorr-web)
 
 <p align="center">
-  <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, transcribe with Deepgram Nova-3, and translate into more languages">
+  <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, transcribe with Deepgram Nova-3, translate with a local Ollama model, and customize the language lists">
 </p>
 
 Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 58 more languages with the original timing preserved.
@@ -69,7 +69,7 @@ Every AI step after transcription is provider-agnostic too: keyterm generation a
 
 <p align="center">
   <img src="docs/screenshots/keyterm-generation.png" width="780" alt="AI keyterm generation populated with character names and locations, with cost and token readout"><br>
-  <sub>One-click AI keyterms — here it read the filename and pulled 22 terms from <em>Tears of Steel</em> on its own, for $0.004.</sub>
+  <sub>One-click AI keyterms — here GPT-6 Luna read the filename and returned 21 names, places, and terms for <em>Tears of Steel</em> on its own, for well under a cent.</sub>
 </p>
 
 <p align="center">
@@ -83,8 +83,13 @@ Every AI step after transcription is provider-agnostic too: keyterm generation a
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/translate-panel.png" width="780" alt="Translate panel with target language chips (Spanish, French, Japanese, Punjabi, Georgian) and a live cost estimate"><br>
-  <sub>Turn one subtitle into many — pick target languages (98 available) and an LLM provider; timing is preserved.</sub>
+  <img src="docs/screenshots/translate-panel.png" width="780" alt="Translate panel set to a local Ollama model picked from the installed models, with Spanish, French, German, Italian, and Portuguese chips, a note that Llama 3 officially supports 7 of the 98 targets, and a free cost line"><br>
+  <sub>Turn one subtitle into many — pick target languages (98 available) and an LLM provider; timing is preserved. With Ollama, pick from the models installed on your server; languages the model doesn't support are greyed out.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/customize-languages.png" width="780" alt="Customize languages dialog with Transcription and Translation tabs, search, All/None, a 128 of 133 languages shown count, and Cloud/Local badges on each language"><br>
+  <sub>Trim the dropdowns to the languages you actually use — saved on the server, with Cloud / Local badges showing which engine supports each one.</sub>
 </p>
 
 <sub>Demo library uses Creative Commons / public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.</sub>
