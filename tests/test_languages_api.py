@@ -144,7 +144,7 @@ class _FakeResp:
 def _patch_get(monkeypatch, result):
     calls = []
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, **kwargs):
         calls.append((url, timeout))
         if isinstance(result, Exception):
             raise result
