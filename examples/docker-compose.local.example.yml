@@ -63,12 +63,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
+      SETTINGS_PATH: ${SETTINGS_PATH:-/logs/subgeneratorr-settings.json}  # saved Customize-languages choices
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
       BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
       BAZARR_API_KEY: ${BAZARR_API_KEY:-}
-      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline translation
+      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline keyterms and translation
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
+      OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       DISABLE_AUTH: ${DISABLE_AUTH:-true}
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
@@ -127,6 +129,7 @@ services:
       BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
+      OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       CELERYD_CONCURRENCY: 1
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media

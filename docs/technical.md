@@ -50,6 +50,8 @@ The Web UI adds asynchronous processing capabilities:
 - **Celery Workers** (`web/tasks.py`) - Background task processing
 - **Redis** - Message broker and result backend
 - **Shared Core** (`core/transcribe.py`, `core/asr_engine.py`) - Same transcription logic and engine registry as CLI
+- **Language catalog** (`core/languages.py`, `core/model_languages.py`) - One list of every language with per-engine and translation flags, plus the per-model translation support table. The Web UI renders its dropdowns from it instead of hardcoded lists
+- **Settings store** (`core/settings_store.py`) - Saves the Customize languages choices as JSON at `SETTINGS_PATH`
 
 **Workflow:**
 1. User submits batch via Web UI
@@ -141,6 +143,9 @@ subgeneratorr/
 │   ├── translate.py             # LLM subtitle translation
 │   ├── llm_providers.py         # Model catalog (MODEL_SPECS) + Claude / GPT / Gemini / Ollama adapters
 │   ├── keyterm_search.py        # AI keyterm generation
+│   ├── languages.py             # Language catalog (Nova-3, Whisper, translation flags)
+│   ├── model_languages.py       # Per-model translation language support table
+│   ├── settings_store.py        # Saved language-list choices (JSON at SETTINGS_PATH)
 │   └── media_metadata.py        # ffprobe helpers
 ├── web/                          # Web UI (optional)
 │   ├── app.py                   # Flask API server
@@ -148,6 +153,9 @@ subgeneratorr/
 │   ├── requirements.txt          # Web dependencies
 │   ├── static/                  # Frontend assets
 │   │   ├── app.js               # Main JavaScript application
+│   │   ├── languages.js         # Language dropdowns + Customize languages panel
+│   │   ├── ollama.js            # Installed-model picker for Ollama
+│   │   ├── translate.js         # Translate panel
 │   │   └── styles.css           # Stylesheet
 │   └── templates/               # HTML templates
 │       └── index.html           # Main UI template
@@ -268,14 +276,15 @@ docker exec -it plex rm -rf "/config/Library/Application Support/Plex Media Serv
 
 ## Language Support
 
-Subgeneratorr supports 59 transcription languages (91 language codes including regional variants), multilingual processing, and automatic language detection.
+The Cloud engine (Nova-3) transcribes 59 languages (91 language codes including regional variants) with multilingual processing and automatic language detection. The Local engine (Whisper) transcribes 99 languages, 40 of them Whisper-only. The Web UI's transcription dropdown follows the selected engine.
 
 **Quick reference:**
 - Set `LANGUAGE=en` (or any supported code) in `.env`
 - Regional variants: `en-GB`, `pt-BR`, `es-419`, etc.
 - Multilingual: `LANGUAGE=multi` (10 languages simultaneously)
 - Auto-detect: `DETECT_LANGUAGE=1` (35 languages, batch mode only)
-- Translate finished subtitles into 58 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation)
+- Translate finished subtitles into 98 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation). Targets the selected model doesn't support are greyed out in the Web UI
+- Trim either dropdown to the languages you use with **Customize languages…** — see [Customizing the language lists](languages.md#customizing-the-language-lists)
 
 For the complete language matrix, regional variant guide, keyterm examples per language, translation details, and multilingual troubleshooting, see **[Language Support Guide](languages.md)**.
 
@@ -359,6 +368,7 @@ See `examples/video-list-example.txt` for a complete example.
 | `LOG_ROOT` | `/logs` | Log directory path |
 | `DEFAULT_MODEL` | `nova-3` | Default transcription model |
 | `DEFAULT_LANGUAGE` | `en` | Default language |
+| `SETTINGS_PATH` | `/logs/subgeneratorr-settings.json` | Where the Customize languages choices are saved (JSON). The default sits on the logs volume, so it survives container recreation |
 | `DISABLE_AUTH` | `true` in example compose | Disable auth entirely for local-only deployments |
 | `ALLOWED_EMAILS` | - | Comma-separated list of allowed email addresses for OAuth |
 | `WORKER_CONCURRENCY` | `1` | Number of concurrent transcription jobs per worker |
@@ -372,8 +382,9 @@ See `examples/video-list-example.txt` for a complete example.
 | `ANTHROPIC_API_KEY` | - | Anthropic API key for AI keyterm generation and subtitle translation (optional) |
 | `OPENAI_API_KEY` | - | OpenAI API key for AI keyterm generation and subtitle translation (optional) |
 | `GEMINI_API_KEY` | - | Google Gemini API key for AI keyterm generation and subtitle translation (optional; both Gemini models have a free tier) |
-| `OLLAMA_HOST` | - | Local Ollama server (OpenAI-compatible endpoint) for free, offline subtitle translation, e.g. `http://localhost:11434` (optional) |
+| `OLLAMA_HOST` | - | Local Ollama server for free, offline keyterm generation and subtitle translation, e.g. `http://localhost:11434` (optional). The Web UI lists the models installed there; users can also type a host in the UI |
 | `OLLAMA_TIMEOUT` | `600` | Seconds to wait for one Ollama completion. Requests are not retried, because a timed-out local generation would only repeat the same CPU work. Raise this for large models on slow hardware |
+| `OLLAMA_THINKING_HEADROOM` | `8192` | Extra tokens added to every Ollama request so thinking models (qwen3, deepseek-r1, gpt-oss) can reason before answering instead of returning nothing. Non-thinking models stop early, so it costs them nothing |
 
 ---
 
@@ -446,13 +457,17 @@ Get default model and language settings, including LLM API key availability.
   "default_language": "en",
   "anthropic_api_key_configured": true,
   "openai_api_key_configured": false,
-  "google_api_key_configured": true
+  "google_api_key_configured": true,
+  "ollama_configured": true,
+  "providers": {"anthropic": true, "openai": false, "google": true, "ollama": true}
 }
 ```
 
+`ollama_configured` is true when `OLLAMA_HOST` is set (Ollama needs no key). The flat `*_configured` fields are kept for backward compatibility.
+
 **GET `/api/capabilities`**
 
-Per-engine capability sets used by the UI for option gating, plus the server's default engine and the local model picker choices. See [ASR Engines](#asr-engines-cloud-and-local).
+Per-engine capability sets used by the UI for option gating, plus the server's default engine, the local model picker choices, and the cloud LLM roster (`llm_models`) for the keyterm and translate pickers. See [ASR Engines](#asr-engines-cloud-and-local).
 
 **Response:**
 ```json
@@ -463,9 +478,81 @@ Per-engine capability sets used by the UI for option gating, plus the server's d
   },
   "default_engine": "deepgram",
   "whisper_models": ["tiny", "base", "small", "medium", "large-v3"],
-  "default_whisper_model": "small"
+  "default_whisper_model": "small",
+  "llm_models": ["… one entry per MODEL_SPECS model …"]
 }
 ```
+
+#### Languages and Settings
+
+**GET `/api/languages`**
+
+The language catalog the Web UI builds its dropdowns from, plus the saved visibility choices. `prefs` values are a list of codes, or `null` for "show all".
+
+**Response:**
+```json
+{
+  "languages": [
+    {"code": "auto", "name": "Auto-detect", "base": "auto", "deepgram": true, "whisper": true, "translate": false, "special": true},
+    {"code": "cy", "name": "Welsh", "base": "cy", "deepgram": false, "whisper": true, "translate": true, "special": false},
+    {"code": "pt-BR", "name": "Portuguese (Brazil)", "base": "pt", "deepgram": true, "whisper": false, "translate": false, "special": false}
+  ],
+  "prefs": {"transcription": null, "translation": ["es", "fr", "ja"]}
+}
+```
+
+- `deepgram` / `whisper` — selectable for transcription on the Cloud / Local engine.
+- `translate` — offered as a translation target (98 codes; English is the source language and isn't a target).
+- `special` — `auto` and `multi`, which aren't real languages.
+
+**GET `/api/languages/translation-support?provider=ollama&model=llama3.2:3b`**
+
+Which translation targets a model officially supports. The Web UI greys out the rest; the backend never blocks a translation.
+
+**Response:**
+```json
+{
+  "supported": ["de", "es", "fr", "hi", "it", "pt", "th"],
+  "verified": true,
+  "label": "Llama 3",
+  "source": "github.com/meta-llama/llama-models/blob/main/models/llama3_1/MODEL_CARD.md"
+}
+```
+
+`supported: null` means every target: cloud providers, broadly multilingual families (Qwen 3, Gemma 3+), and unrecognized Ollama models. Unrecognized models also return `verified: false`, which the UI shows as "unverified". The table lives in `core/model_languages.py`.
+
+**GET `/api/settings/languages`**
+
+The saved choices: `{"transcription": [codes] | null, "translation": [codes] | null}`. A missing or unreadable file reads as all `null`.
+
+**PUT `/api/settings/languages`**
+
+Save the choices. Send either key or both; an omitted key keeps its saved value.
+
+```json
+{"transcription": ["en", "es", "fr", "cy"], "translation": null}
+```
+
+Returns the saved object. Unknown codes, an empty list, or a non-list value → 400. An unwritable `SETTINGS_PATH` → 500.
+
+#### Ollama
+
+**GET `/api/ollama/models?host=http://localhost:11434`**
+
+Lists the models installed on an Ollama server (a proxy for Ollama's `/api/tags`). `host` is optional and falls back to `OLLAMA_HOST`; it must look like `host:port` or `http(s)://host:port`.
+
+**Response:**
+```json
+{
+  "host": "http://localhost:11434",
+  "models": [
+    {"name": "llama3.2:3b", "family": "llama", "parameter_size": "3.2B"},
+    {"name": "qwen3:8b", "family": "qwen3", "parameter_size": "8.2B"}
+  ]
+}
+```
+
+No host or a malformed host → 400. Server unreachable, a non-200 reply, or a redirect → 502 with `{"error", "host"}`. The request times out after 3 s.
 
 #### File Browsing
 
@@ -785,10 +872,11 @@ Generate keyterms with an LLM from the show/movie name inferred from the file pa
 }
 ```
 
-- `provider` — `anthropic` · `openai` · `google` (default `anthropic`).
-- `model` — a model id from the [model table](#ai-powered-generation); defaults to the provider's best-quality model. Retired ids (`claude-sonnet-4-6`, `gpt-4.1`, `gemini-2.5-flash`, …) are accepted and mapped to their replacements.
+- `provider` — `anthropic` · `openai` · `google` · `ollama` (default `anthropic`).
+- `model` — a model id from the [model table](#ai-powered-generation); defaults to the provider's best-quality model. Retired ids (`claude-sonnet-4-6`, `gpt-4.1`, `gemini-2.5-flash`, …) are accepted and mapped to their replacements. For Ollama, an installed model name such as `qwen3:8b` (required).
+- `ollama_host` — Ollama endpoint for `provider: "ollama"`; falls back to the `OLLAMA_HOST` env var. Without either → 400.
 - `preserve_existing` — merge with the show's existing keyterms instead of replacing them.
-- `estimate_only` — return `{estimated_tokens, estimated_cost, model}` instead of queueing.
+- `estimate_only` — return `{estimated_tokens, estimated_cost, model}` instead of queueing. Ollama estimates are always `0`.
 
 **Response:**
 ```json
@@ -831,9 +919,9 @@ Translate a video's existing `.srt` into one or more target languages, writing l
 }
 ```
 
-- `video_path` (required), `targets` (required) — list of language codes from the [58 translation targets](languages.md#llm-powered-translation).
+- `video_path` (required), `targets` (required) — list of language codes from the [98 translation targets](languages.md#llm-powered-translation). Any target is accepted; model support (see `/api/languages/translation-support`) is advisory.
 - `provider` — `anthropic` · `openai` · `google` · `ollama` (default `anthropic`).
-- `model` — model id for cloud providers (defaults to the provider's best-quality model; retired ids are mapped to their replacements), or a free-text model name for Ollama (required).
+- `model` — model id for cloud providers (defaults to the provider's best-quality model; retired ids are mapped to their replacements), or an installed model name for Ollama (required; the Web UI lists them via `/api/ollama/models`).
 - `ollama_host` — Ollama endpoint; falls back to the `OLLAMA_HOST` env var.
 - `source_srt` — explicit source subtitle; defaults to the auto-located sidecar.
 - `overwrite` — re-translate even if the target sidecar already exists (default `false`).
@@ -977,7 +1065,7 @@ DEA
 
 ### AI-Powered Generation
 
-The Web UI supports AI-powered keyterm generation using Anthropic Claude, OpenAI GPT, or Google Gemini. The same models also translate subtitles. Translation can additionally use a local Ollama model (free-text model name); keyterm generation is cloud-only.
+The Web UI supports AI-powered keyterm generation and subtitle translation using Anthropic Claude, OpenAI GPT, Google Gemini, or a local Ollama model. For Ollama, both panels list the models installed on your server (with a refresh button and a Host field) and fall back to a free-text model name if the server can't be reached. Ollama calls cost nothing.
 
 **Supported Models** (prices as of October 2026; the source of truth is `MODEL_SPECS` in `core/llm_providers.py`):
 
@@ -1012,7 +1100,7 @@ All six cloud models returned the main cast with full names (Jeff Winger, Britta
 - **Free:** Gemini 3.5 Flash-Lite on the free tier. It is the fastest model and has a solid keyterm list.
 - **Best value (paid):** GPT-6 Luna or Claude Haiku 5.5. Each costs a fraction of a cent per call, with near-premium keyterm lists and clean translations.
 - **Premium quality:** Claude Sonnet 5.5 or GPT-6.1 Sol, for the richest keyterms and the most natural translations.
-- **Offline:** Ollama with a 7B+ model (e.g. `qwen2.5:7b`) on a GPU or Apple Silicon. 3B models finish but produce noticeably rougher translations. On a low-power CPU, generation can fall below 1 token/s; set `OLLAMA_TIMEOUT` or use a faster host.
+- **Offline:** Ollama with a 7B+ model (e.g. `qwen2.5:7b` or `qwen3:8b`) on a GPU or Apple Silicon. 3B models finish but produce noticeably rougher translations. Thinking models work too: on an M2, `qwen3:4b` returned 19 keyterms in about 35 s, helped by `OLLAMA_THINKING_HEADROOM`. Small models support fewer languages; the Translate panel greys out targets the model's card doesn't list. On a low-power CPU, generation can fall below 1 token/s; set `OLLAMA_TIMEOUT` or use a faster host.
 - Gemini 3.8 Flash's lowest accepted thinking level still reasons, so it is the slowest cloud option, especially for translation.
 
 > **Reasoning controls.** Every model above thinks by default. Keyterm lists and subtitle translation gain nothing from long reasoning, which only adds latency and output-token cost. Each model is therefore pinned to the lowest setting its API accepts:

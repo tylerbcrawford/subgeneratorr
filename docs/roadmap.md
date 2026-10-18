@@ -30,6 +30,14 @@ Audit and align features between CLI and Web UI. LLM keyterm generation is inten
 
 ---
 
+## Completed (V3.3)
+
+- Ollama for keyterm generation as well as translation, so the fully local stack (Whisper + Ollama) no longer needs hand-written keyterms; both panels pick from the models installed on the Ollama server
+- Single language catalog driving engine-aware transcription lists (Nova-3 on Cloud, Whisper's 99 languages on Local, 40 of them newly selectable) and 98 translation targets
+- Model-aware translation targets: a per-model support table greys out languages the selected LLM doesn't list
+- Customize languages panel, saved server-side, to trim both dropdowns to the languages you use
+- Thinking-model support for Ollama (token headroom, `<think>` stripping)
+
 ## Completed (V3.2)
 
 - LLM catalog refreshed to current models (Claude Sonnet 5.5 / Haiku 5.5, GPT-6.1 Sol / GPT-6 Luna, Gemini 3.8 Flash / 3.5 Flash-Lite), served to the UI from a single backend catalog; retired model ids are mapped to their replacements

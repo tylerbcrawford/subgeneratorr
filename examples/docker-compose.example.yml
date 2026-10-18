@@ -46,6 +46,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
+      SETTINGS_PATH: ${SETTINGS_PATH:-/logs/subgeneratorr-settings.json}  # saved Customize-languages choices
       DEFAULT_MODEL: ${DEFAULT_MODEL:-nova-3}
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
@@ -54,8 +55,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline translation (e.g. http://host.docker.internal:11434)
+      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline keyterms and translation (e.g. http://host.docker.internal:11434)
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
+      OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       DISABLE_AUTH: ${DISABLE_AUTH:-true}  # Default: auth disabled for local use. Set to false + configure a reverse proxy for remote/production access
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media  # read-write: web writes keyterms to Transcripts/Keyterms/
@@ -110,8 +112,9 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline translation (e.g. http://host.docker.internal:11434)
+      OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for free offline keyterms and translation (e.g. http://host.docker.internal:11434)
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
+      OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       CELERYD_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The example compose files now forward `OLLAMA_THINKING_HEADROOM` (web and worker)
+  and `SETTINGS_PATH` (web). Before, setting either in `.env` had no effect, because
+  the examples pass environment variables to the containers one by one.
+
+### Documentation
+- Technical docs cover the v3.3 API: `/api/languages`,
+  `/api/languages/translation-support`, `/api/settings/languages` and
+  `/api/ollama/models`, Ollama for `/api/keyterms/generate`, and the `providers` and
+  `llm_models` fields of `/api/config` and `/api/capabilities`.
+- Language counts updated throughout (99 Whisper languages, 98 translation targets).
+
 ## [3.3.0] - 2026-10-18
 
 ### Added

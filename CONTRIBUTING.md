@@ -41,6 +41,8 @@ docker compose logs -f web worker
 
 - **Backend** (`web/app.py`, `web/tasks.py`, `core/`) — Python 3.11+, Flask, Celery
 - **Frontend** (`web/static/app.js`, `web/static/styles.css`) — Vanilla JS, no build tools
+  - `languages.js` (language dropdowns + Customize panel), `ollama.js` (Ollama model picker) and `translate.js` are classic scripts sharing one global scope; `index.html` loads them before and after `app.js` in a fixed order. Bump the `?v=` cache-buster on any asset you change.
+- **Languages** — add or change a language in `core/languages.py` (`LANGUAGE_NAMES` and the engine sets) and in the two tag maps in `core/transcribe.py` (`_SUBTITLE_LANG_MAP`, `_STREAM_LANG_MAP`); a test keeps all three in lockstep. Per-model translation support lives in `core/model_languages.py`.
 - **CLI** (`cli/`) — Standalone Python scripts
 
 ### Code Style

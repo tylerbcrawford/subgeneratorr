@@ -84,7 +84,7 @@ Every AI step after transcription is provider-agnostic too: keyterm generation a
 
 <p align="center">
   <img src="docs/screenshots/translate-panel.png" width="780" alt="Translate panel with target language chips (Spanish, French, Japanese, Punjabi, Georgian) and a live cost estimate"><br>
-  <sub>Turn one subtitle into many — pick target languages (58 available) and an LLM provider; timing is preserved.</sub>
+  <sub>Turn one subtitle into many — pick target languages (98 available) and an LLM provider; timing is preserved.</sub>
 </p>
 
 <sub>Demo library uses Creative Commons / public-domain titles (Blender open movies, Pioneer One, Night of the Living Dead) so nothing copyrighted appears in the shots.</sub>
@@ -203,7 +203,7 @@ New Deepgram accounts get **$200 in free credits**, roughly 35,000–46,000 minu
 ## Documentation
 
 - **[Technical docs](docs/technical.md)** — architecture, API endpoints, advanced config, speaker maps, AI model benchmarks
-- **[Language support](docs/languages.md)** — the full Nova-3 transcription matrix (59 languages, 91 codes) and the 58 translation targets
+- **[Language support](docs/languages.md)** — the full Nova-3 transcription matrix (59 languages, 91 codes), the 99 local Whisper languages, the 98 translation targets and which models support them, and the Customize languages panel
 - **[Roadmap](docs/roadmap.md)** — planned features
 
 <details>
@@ -228,7 +228,7 @@ Yes — one-click generation via Claude, GPT, Gemini, or a local Ollama model in
 Yes — after transcription, an LLM translates the cue text into any of 98 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
 
 **What languages are supported?**
-Nova-3 transcribes 59 languages (91 codes counting regional variants), with auto-detect and a `multi` code-switching mode. Translation then covers 58 target languages. See the [language guide](docs/languages.md).
+Nova-3 transcribes 59 languages (91 codes counting regional variants), with auto-detect and a `multi` code-switching mode. The Local Whisper engine transcribes 99 languages, including 40 that Nova-3 doesn't have (Welsh, Swahili, Yoruba, …). Translation then covers 98 target languages. See the [language guide](docs/languages.md).
 
 </details>
 
