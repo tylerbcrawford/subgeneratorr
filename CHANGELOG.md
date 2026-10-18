@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Ollama for keyterm generation.** The keyterm panel gains an "Ollama (Local · Free)"
+  provider, so a fully local stack (Whisper + Ollama) no longer needs hand-written
+  keyterm lists. `/api/keyterms/generate` accepts `provider=ollama` with `ollama_host`.
+- **Installed-model picker for Ollama.** In both the keyterm and Translate panels the
+  Model dropdown lists the models installed on the Ollama server
+  (`GET /api/ollama/models`, a proxy for Ollama's `/api/tags`), with a refresh button
+  and a Host field. If the server can't be reached, it falls back to a free-text name.
+- **Customize languages panel.** "Customize languages…" at the end of the language
+  dropdowns opens a dialog (Transcription / Translation tabs, search, all/none) that
+  trims the lists to the languages you use. Saved server-side through
+  `GET/PUT /api/settings/languages` to `SETTINGS_PATH` (default
+  `/logs/subgeneratorr-settings.json`, on the existing logs volume, so no compose
+  change is needed). Keeping everything selected lets future languages appear
+  automatically.
+- **Engine-aware transcription languages.** The dropdown follows the Cloud/Local
+  switch: Nova-3's 91 codes (regional variants, Multi-language) for Cloud, and
+  Whisper's 99 languages for Local. 40 Whisper-only languages (Welsh, Swahili,
+  Yoruba, Icelandic, Basque, Malayalam, and more) are now selectable, each with an
+  ISO 639-2 sidecar tag.
+- **Model-aware translation targets.** Translation now offers 98 targets. Languages
+  the selected model's card doesn't list are greyed out under "Not supported by
+  <model>"; already-picked ones get a ⚠ chip. Cloud models support everything. Ollama
+  families (Qwen, Gemma, Llama, Mistral, Aya, Command R, Phi, gpt-oss) map to their
+  published lists, and unknown models stay fully selectable with an "unverified"
+  note. The check is advisory: the backend never blocks a translation.
+- `GET /api/languages` and `GET /api/languages/translation-support` serve the new
+  single language catalog (`core/languages.py`) and per-model support table
+  (`core/model_languages.py`).
+- `OLLAMA_THINKING_HEADROOM` (default 8192) adds token budget to every Ollama call,
+  so thinking models have room to reason before they answer.
+
+### Fixed
+- Thinking-only Ollama models (for example `qwen3:4b`) spent the whole keyterm budget
+  reasoning and returned nothing. Ollama calls now get thinking headroom, and inline
+  `<think>` blocks are stripped.
+- Translation replies made of bare strings (qwen3 answers `{"output": [...]}`) are
+  accepted when the cue count matches. Before, every such window fell back to slow
+  per-cue requests.
+- The web UI waits up to 11 min (keyterms) and 60 min (translation) for Ollama jobs
+  before giving up, instead of the 3 and 5 min used for cloud models.
+
 ## [3.2.0] - 2026-10-17
 
 ### Added

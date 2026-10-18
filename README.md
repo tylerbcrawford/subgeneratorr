@@ -1,6 +1,6 @@
 # Subgeneratorr
 
-**Subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle translation into 58 languages.**
+**Subtitle generation for Plex, Jellyfin, and Emby — cloud or fully local. Transcribe with Deepgram Nova-3 or an offline Whisper engine on your own hardware, then let Claude, GPT, Gemini, or a local Ollama model handle keyterms and translation into 98 languages.**
 
 > **Built with Claude Code.** I set the requirements and the architecture, made the design decisions, and run it in production on my media server, with real users. The agent wrote most of the code under my direction.
 
@@ -32,7 +32,7 @@ Since v3, transcription is a per-job switch right on the main screen:
 | **Setup** | API key | No account, no key; larger image with the model baked in |
 | **Extras** | Diarization, redaction, audio intelligence | Core transcription (cloud-only options hide automatically) |
 
-Every AI step after transcription is provider-agnostic too: keyterm generation runs on Claude, GPT, or Gemini, and translation adds a local **Ollama** option — pair Local Whisper with Ollama translation (and manual keyterm lists) and the entire pipeline runs offline at $0, with no vendor lock-in anywhere.
+Every AI step after transcription is provider-agnostic too: keyterm generation and translation run on Claude, GPT, Gemini, or a local **Ollama** model picked from a list of the models installed on your server — pair Local Whisper with Ollama and the entire pipeline runs offline at $0, with no vendor lock-in anywhere.
 
 > Free and open-source. Not affiliated with Deepgram, Anthropic, OpenAI, or any other provider.
 
@@ -42,8 +42,9 @@ Every AI step after transcription is provider-agnostic too: keyterm generation r
 
 - 🎯 **Deepgram Nova-3 speech-to-text** — strong on fast dialogue, accents, and 59 transcription languages (91 language codes counting regional variants; General + Medical models), including Deepgram's 2026 additions: Afrikaans, Armenian, Georgian, Nepali, Punjabi, and, new in v3.2, Assamese, Kazakh, Mongolian, and Pashto
 - 🏠 **Local engine (v3)** — opt-in `-local` images transcribe on your own hardware via faster-whisper: CPU-only, offline, $0, default model baked in
-- 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, or Gemini
-- 🌐 **Subtitle translation into 58 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation
+- 🔑 **Keyterm prompting** — feed character names, locations, and jargon to Nova-3 for up to ~90% better accuracy on proper nouns; generate them with one click via Claude, GPT, Gemini, or a local Ollama model
+- 🌐 **Subtitle translation into 98 languages** — turn one transcription into many: an LLM translates the generated SRT with timing preserved and writes tagged sidecars Plex, Jellyfin, and Emby pick up; use Claude, GPT, Gemini, or a local **Ollama** model for free offline translation, and languages your chosen model doesn't support are greyed out
+- 🗂️ **Your languages, your list** — a Customize panel trims the transcription and translation dropdowns to the languages you actually use (saved on the server, so every browser sees the same list); the transcription list also follows the engine, swapping between Nova-3's languages and Whisper's 99
 - 🔍 **Library-wide scan** — find every file missing subtitles across your whole library, grouped by folder, with CSV export
 - 🗣️ **Speaker diarization** — labeled, character-named transcripts
 - 🌍 **Multilingual transcription** — auto-detect, `multi` code-switching, and regional variants across 91 Nova-3 language codes
@@ -133,13 +134,17 @@ Provide them manually as a CSV, or click **Generate Keyterms** in the Web UI: an
 
 One transcription, many languages. After Nova-3 produces a subtitle, an LLM translates the cue text into the languages you pick and writes tagged sidecars (`.spa.srt`, `.fre.srt`, and so on) that Plex, Jellyfin, and Emby auto-detect. Timing is copied from the source frame for frame, so the translation never drifts, and the show's keyterms ride along as a glossary to keep names spelled consistently.
 
-Open the **Translate** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. Ollama runs on your own hardware over its OpenAI-compatible endpoint, so translation is free and fully offline (the cost estimate shows $0.00) — use a capable 3B+ model like `qwen2.5:7b` for reliable results. Existing translations are skipped unless you choose to overwrite.
+Open the **Translate** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. With Ollama, the Model dropdown lists the models installed on your server (↻ refreshes it; a Host field overrides `OLLAMA_HOST`). It runs on your own hardware, so translation is free and fully offline. Local models differ a lot in language coverage, so targets a model's card doesn't list are greyed out (e.g. Llama 3 covers 8 languages, while Qwen 3 and Gemma 3 cover 100+). Thinking models like `qwen3` are slower but work; use a 3B+ model for reliable results. Existing translations are skipped unless you choose to overwrite.
+
+### Customize your language lists
+
+The last entry in the language dropdown (and in the Translate panel's dropdown) is **Customize languages…**. It opens a panel with Transcription and Translation tabs where you tick just the languages you use; everything else disappears from the dropdowns. The choice is saved on the server (`SETTINGS_PATH`), so it follows you to any browser. With everything ticked (the default), languages added in future versions show up automatically.
 
 ### Run fully local (no cloud, $0)
 
 The opt-in `-local` images swap Deepgram for [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU. The `small` model is baked in, so it works offline from first boot; bigger models download into a cache volume, and the model picker shows RAM/speed guidance for each.
 
-Start from `examples/docker-compose.local.example.yml`, which builds web, worker, and CLI from the `local` target. No `DEEPGRAM_API_KEY` needed — without one the UI greys out the Cloud engine and defaults to Local. For headless runs, the `subgeneratorr-cli-local` image uses the same engine via `ASR_ENGINE=whisper`. Add Ollama for translation (keyterms can still be entered manually) and no audio, text, or API key ever leaves your machine.
+Start from `examples/docker-compose.local.example.yml`, which builds web, worker, and CLI from the `local` target. No `DEEPGRAM_API_KEY` needed — without one the UI greys out the Cloud engine and defaults to Local. For headless runs, the `subgeneratorr-cli-local` image uses the same engine via `ASR_ENGINE=whisper`. Add Ollama for keyterms and translation and no audio, text, or API key ever leaves your machine.
 
 On the standard image it's the reverse: Deepgram stays the default and Local shows as unavailable. Either way the engine is a per-job switch in the Web UI, preselected from your server's `ASR_ENGINE`.
 
@@ -173,7 +178,8 @@ Two values are required; everything else has sensible defaults.
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
 | `PROFANITY_FILTER` | `off` or `on` — masks profanity with asterisks | `off` |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | AI keyterm generation and translation (optional) | – |
-| `OLLAMA_HOST` | Local Ollama endpoint for free offline translation, e.g. `http://localhost:11434` (optional) | – |
+| `OLLAMA_HOST` | Local Ollama endpoint for free offline keyterms and translation, e.g. `http://localhost:11434` (optional) | – |
+| `SETTINGS_PATH` | Where the Web UI saves your language list choices | `/logs/subgeneratorr-settings.json` |
 
 `MEDIA_PATH` examples: `/home/you/media` (Linux), `/Users/you/Movies` (macOS), `C:/Users/You/Videos` (Windows). On Linux, set `PUID`/`PGID` to match your user so generated files keep the right ownership. Full reference: **[Technical docs](docs/technical.md#environment-variables-complete-reference)**.
 
@@ -216,10 +222,10 @@ A list of show-specific terms (character names, places, made-up words) that Nova
 Yes — it writes language-tagged SRT sidecars (`.eng.srt`, `.spa.srt`, etc.) that all three auto-detect. Refresh your library after generation.
 
 **Can I auto-generate keyterms?**
-Yes — one-click generation via Claude, GPT, or Gemini infers the title from the file path and returns 20–50 terms. Gemini's free tier makes it effectively free.
+Yes — one-click generation via Claude, GPT, Gemini, or a local Ollama model infers the title from the file path and returns 20–50 terms. Gemini's free tier or Ollama makes it effectively free.
 
 **Can it translate subtitles?**
-Yes — after transcription, an LLM translates the cue text into any of 58 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
+Yes — after transcription, an LLM translates the cue text into any of 98 languages and writes tagged sidecars (`.spa.srt`, `.fre.srt`, …) with the original timing preserved. Use Claude, GPT, Gemini, or a free local Ollama model. See [Translate subtitles](#translate-subtitles).
 
 **What languages are supported?**
 Nova-3 transcribes 59 languages (91 codes counting regional variants), with auto-detect and a `multi` code-switching mode. Translation then covers 58 target languages. See the [language guide](docs/languages.md).

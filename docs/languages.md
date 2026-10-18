@@ -1,6 +1,6 @@
 # Language Support Guide
 
-**Complete guide to 59 transcription languages (91 language codes) with regional variants**
+**Complete guide to 59 Nova-3 transcription languages (91 language codes) with regional variants, 99 local Whisper languages, and 98 translation targets**
 
 ---
 
@@ -14,6 +14,8 @@ Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rat
 - **Multilingual model** processing 10 languages simultaneously
 - **Automatic language detection** for 35 languages (batch mode)
 - **Regional variants** for optimal local accuracy
+
+The list in the web UI follows the engine: the Cloud engine shows the Nova-3 codes below, and the Local (Whisper) engine shows Whisper's languages (see [Local Engine Languages](#local-engine-languages-whisper)). Use **Customize languages…** at the end of the dropdown to keep only the languages you work with (see [Customizing the Language Lists](#customizing-the-language-lists)).
 
 ---
 
@@ -285,7 +287,9 @@ Translation is a post-processing step that runs on a subtitle Subgeneratorr alre
 
 One transcription can produce many language outputs. Existing sidecars are skipped unless you choose to overwrite.
 
-### Supported Target Languages (58)
+### Supported Target Languages (98)
+
+Every base language Subgeneratorr can tag is a target: the 58 Nova-3 languages below plus the 40 Whisper-only languages listed under [Local Engine Languages](#local-engine-languages-whisper).
 
 Afrikaans (af), Arabic (ar), Armenian (hy), Assamese (as), Belarusian (be), Bengali (bn), Bosnian (bs), Bulgarian (bg), Catalan (ca), Chinese (zh), Croatian (hr), Czech (cs), Danish (da), Dutch (nl), Estonian (et), Finnish (fi), French (fr), Georgian (ka), German (de), Greek (el), Gujarati (gu), Hebrew (he), Hindi (hi), Hungarian (hu), Indonesian (id), Italian (it), Japanese (ja), Kannada (kn), Kazakh (kk), Korean (ko), Latvian (lv), Lithuanian (lt), Macedonian (mk), Malay (ms), Marathi (mr), Mongolian (mn), Nepali (ne), Norwegian (no), Pashto (ps), Persian (fa), Polish (pl), Portuguese (pt), Punjabi (pa), Romanian (ro), Russian (ru), Serbian (sr), Slovak (sk), Slovenian (sl), Spanish (es), Swedish (sv), Tagalog (tl), Tamil (ta), Telugu (te), Thai (th), Turkish (tr), Ukrainian (uk), Urdu (ur), Vietnamese (vi).
 
@@ -294,12 +298,58 @@ The source language is whatever Nova-3 transcribed; English is the implicit sour
 ### Providers
 
 - **Anthropic Claude, OpenAI GPT, Google Gemini**: cloud providers, billed per token. The web UI shows a cost estimate before you run.
-- **Ollama (local)**: point `OLLAMA_HOST` at a local Ollama server (OpenAI-compatible endpoint) to translate fully offline at no cost. The model name is free-text, and the cost estimate reports $0.00. Use a capable instruction-following model (3B parameters or larger, for example `qwen2.5:7b` or `llama3.1:8b`) for reliable results. Translation is sent as a structured JSON request, and very small models (for example a 1.5B) often fail to honor it; any cues a model misses keep their original text rather than being dropped, so the subtitle stays complete and in sync but may be partly untranslated.
+- **Ollama (local)**: point `OLLAMA_HOST` at a local Ollama server (OpenAI-compatible endpoint), or enter a host in the panel, to translate fully offline at no cost. The Model dropdown lists the models installed on that server; if it can't be reached you can type a name instead. The cost shows as free. Use a capable instruction-following model (3B parameters or larger, for example `qwen3:8b`, `gemma3:4b`, or `llama3.1:8b`) for reliable results. Thinking models such as `qwen3` reason before answering, so expect a few minutes per language on modest hardware. Translation is sent as a structured JSON request, and very small models (for example a 1.5B) often fail to honor it; any cues a model misses keep their original text rather than being dropped, so the subtitle stays complete and in sync but may be partly untranslated.
+
+### Model Language Support
+
+Local models vary a lot in which languages they officially support, so the Translate panel checks the selected model and greys out targets its model card doesn't list (they move into a "Not supported by <model>" group, and any you already picked get a ⚠ chip). This is advice only: nothing stops a translation.
+
+| Model family (Ollama) | Officially supported targets |
+|---|---|
+| Claude, GPT, Gemini (cloud) | All 98 |
+| `qwen3`, `qwen3.5`+ | All (119+ languages) |
+| `gemma3`, `gemma4` | All (140+ languages) |
+| `qwen2.5`, `qwen2` | 27 (zh, de, fr, es, pt, it, nl, ru, cs, pl, ar, fa, he, tr, ja, ko, vi, th, id, ms, lo, my, km, tl, hi, bn, ur) |
+| `aya`, `aya-expanse` | 22 |
+| `phi3.5`, `phi4-mini` | 22 |
+| `gpt-oss` | 14 (the languages its model card evaluates) |
+| `llama4` | 11 |
+| `mistral-nemo`, `mistral-small` | 10 |
+| `command-r` | 9 |
+| `llama3.x` | 7 (de, fr, it, pt, hi, es, th) |
+| `mistral` (7B), `gemma2`, `phi3`, `phi4` | English only, so no targets |
+
+Models not in this table (for example `deepseek-r1`) keep every target selectable and show an "unverified" note. The table lives in `core/model_languages.py`, with each family's source cited.
 
 ### Notes
 
 - Translation is web-UI first, matching the keyterm-generation feature. CLI parity is on the roadmap.
 - Redaction and profanity filtering applied at transcription time carry through as text; translation operates on the produced SRT as-is.
+
+---
+
+## Local Engine Languages (Whisper)
+
+The Local engine (faster-whisper) transcribes 99 languages. It has no regional models: a regional code such as `pt-BR` is folded to its base language, and Multi-language (code-switching) is Cloud-only, while Auto-detect works on both engines.
+
+Besides the 59 Nova-3 base languages, Whisper adds 40 that are only available on the Local engine (and as translation targets):
+
+Albanian (sq), Amharic (am), Azerbaijani (az), Bashkir (ba), Basque (eu), Breton (br), Burmese (my), Faroese (fo), Galician (gl), Haitian Creole (ht), Hausa (ha), Hawaiian (haw), Icelandic (is), Javanese (jv), Khmer (km), Lao (lo), Latin (la), Lingala (ln), Luxembourgish (lb), Malagasy (mg), Malayalam (ml), Maltese (mt), Maori (mi), Norwegian Nynorsk (nn), Occitan (oc), Sanskrit (sa), Shona (sn), Sindhi (sd), Sinhala (si), Somali (so), Sundanese (su), Swahili (sw), Tajik (tg), Tatar (tt), Tibetan (bo), Turkmen (tk), Uzbek (uz), Welsh (cy), Yiddish (yi), Yoruba (yo).
+
+Each writes an ISO 639-2/B sidecar (`.wel.srt`, `.swa.srt`, …). Cantonese (`yue`) is not offered because only Whisper `large-v3` knows it. Whisper's own code for Javanese is `jw`; Subgeneratorr uses the standard `jv` and converts it at the engine boundary.
+
+Accuracy on these languages depends heavily on the Whisper model size. `small` (the baked-in default) is fine for well-resourced languages, while low-resource ones benefit from `medium` or `large-v3`.
+
+---
+
+## Customizing the Language Lists
+
+The language dropdown and the Translate panel's dropdown both end with **Customize languages…**, which opens a panel with two tabs:
+
+- **Transcription**: every language either engine supports, badged **Cloud** and/or **Local**. The dropdown then shows your selection limited to what the current engine supports.
+- **Translation**: the 98 translation targets.
+
+Search filters the list, and **All** / **None** apply to the rows the search currently shows. Keep at least one language per list. Choices are saved on the server in `SETTINGS_PATH` (default `/logs/subgeneratorr-settings.json`), so every browser sees the same lists. With everything selected (the default), the setting is stored as "all", and languages added in future versions appear automatically.
 
 ---
 

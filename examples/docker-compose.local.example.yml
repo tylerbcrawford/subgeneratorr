@@ -3,8 +3,8 @@
 #
 # Runs transcription on your own hardware via faster-whisper (CPU, int8) —
 # no Deepgram account or API key needed. Pair with an Ollama server
-# (OLLAMA_HOST) for local subtitle translation (keyterms can be entered
-# manually), and nothing leaves your machine.
+# (OLLAMA_HOST) for local keyterm generation and subtitle translation, and
+# nothing leaves your machine.
 #
 # Quick start:
 #   1. Copy this file: cp examples/docker-compose.local.example.yml docker-compose.yml
