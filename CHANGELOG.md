@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-10-18
+
 ### Fixed
 - The example compose files now forward `OLLAMA_THINKING_HEADROOM` (web and worker)
   and `SETTINGS_PATH` (web). Before, setting either in `.env` had no effect, because
@@ -362,7 +364,8 @@ Initial public release.
 - **Path traversal protection**: Input validation on file paths to prevent directory escape
 - **Error path hardening**: Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.1...HEAD
+[3.3.1]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.0.0...v3.1.0
