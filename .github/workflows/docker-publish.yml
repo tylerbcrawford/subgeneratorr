@@ -38,7 +38,7 @@ jobs:
           - image: subgeneratorr-web
             dockerfile: web/Dockerfile
             context: .
-            description: "Subgeneratorr Web UI — generate & translate subtitles for Plex, Jellyfin, and Emby with Deepgram Nova-3 (keyterm prompting, LLM translation into 54 languages)"
+            description: "Subgeneratorr Web UI — generate & translate subtitles for Plex, Jellyfin, and Emby with Deepgram Nova-3 (keyterm prompting, LLM translation into 98 languages)"
           - image: subgeneratorr-worker
             dockerfile: web/Dockerfile
             context: .
