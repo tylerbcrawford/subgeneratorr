@@ -184,7 +184,12 @@ def index():
         "redaction": core_transcribe.NOVA3_ADDON_REDACTION,
     }
     return render_template(
-        "index.html", llm_models=model_catalog(), deepgram_pricing=deepgram_pricing
+        "index.html",
+        llm_models=model_catalog(),
+        deepgram_pricing=deepgram_pricing,
+        languages=catalog_payload(),
+        language_prefs=load_language_prefs(),
+        default_language=DEFAULT_LANGUAGE,
     )
 
 

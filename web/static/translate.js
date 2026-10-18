@@ -1,5 +1,5 @@
 /**
- * Subtitle translation UI (v2.4.0).
+ * Subtitle translation UI (v2.4.0; catalog + model-aware targets v3.3.0).
  *
  * Self-contained add-on to app.js. Reuses app.js globals (getCurrentVideoPath,
  * showToast, escapeHtml) which are available because both are classic scripts
@@ -8,43 +8,12 @@
 (function () {
     'use strict';
 
-    // Supported subtitle target languages (mirrors core/_SUBTITLE_LANG_MAP),
-    // sorted by display name. The backend validates these too.
-    const TRANSLATE_LANGUAGES = [
-        { code: 'af', name: 'Afrikaans' }, { code: 'ar', name: 'Arabic' },
-        { code: 'hy', name: 'Armenian' }, { code: 'as', name: 'Assamese' },
-        { code: 'be', name: 'Belarusian' },
-        { code: 'bn', name: 'Bengali' }, { code: 'bs', name: 'Bosnian' },
-        { code: 'bg', name: 'Bulgarian' }, { code: 'ca', name: 'Catalan' },
-        { code: 'zh', name: 'Chinese' }, { code: 'hr', name: 'Croatian' },
-        { code: 'cs', name: 'Czech' }, { code: 'da', name: 'Danish' },
-        { code: 'nl', name: 'Dutch' }, { code: 'et', name: 'Estonian' },
-        { code: 'fi', name: 'Finnish' }, { code: 'fr', name: 'French' },
-        { code: 'ka', name: 'Georgian' },
-        { code: 'de', name: 'German' }, { code: 'el', name: 'Greek' },
-        { code: 'gu', name: 'Gujarati' }, { code: 'he', name: 'Hebrew' },
-        { code: 'hi', name: 'Hindi' }, { code: 'hu', name: 'Hungarian' },
-        { code: 'id', name: 'Indonesian' }, { code: 'it', name: 'Italian' },
-        { code: 'ja', name: 'Japanese' }, { code: 'kn', name: 'Kannada' },
-        { code: 'kk', name: 'Kazakh' },
-        { code: 'ko', name: 'Korean' }, { code: 'lv', name: 'Latvian' },
-        { code: 'lt', name: 'Lithuanian' }, { code: 'mk', name: 'Macedonian' },
-        { code: 'ms', name: 'Malay' }, { code: 'mr', name: 'Marathi' },
-        { code: 'mn', name: 'Mongolian' },
-        { code: 'ne', name: 'Nepali' },
-        { code: 'no', name: 'Norwegian' }, { code: 'ps', name: 'Pashto' },
-        { code: 'fa', name: 'Persian' },
-        { code: 'pl', name: 'Polish' }, { code: 'pt', name: 'Portuguese' },
-        { code: 'pa', name: 'Punjabi' },
-        { code: 'ro', name: 'Romanian' }, { code: 'ru', name: 'Russian' },
-        { code: 'sr', name: 'Serbian' }, { code: 'sk', name: 'Slovak' },
-        { code: 'sl', name: 'Slovenian' }, { code: 'es', name: 'Spanish' },
-        { code: 'sv', name: 'Swedish' }, { code: 'tl', name: 'Tagalog' },
-        { code: 'ta', name: 'Tamil' }, { code: 'te', name: 'Telugu' },
-        { code: 'th', name: 'Thai' }, { code: 'tr', name: 'Turkish' },
-        { code: 'uk', name: 'Ukrainian' }, { code: 'ur', name: 'Urdu' },
-        { code: 'vi', name: 'Vietnamese' },
-    ];
+    // Target languages come from the shared catalog (languages.js, rendered
+    // from core/languages.py) filtered by the user's saved list; the backend
+    // validates them too.
+    function targetLanguages() {
+        return window.SubgenLanguages ? window.SubgenLanguages.translationTargets() : [];
+    }
 
     // Cloud model roster from core/llm_providers.MODEL_SPECS, injected by
     // index.html as window.LLM_MODELS ({provider: [{id, label, hint}]}).
@@ -84,41 +53,115 @@
 
     let selectedTargets = []; // target language codes, in selection order
 
+    // Advisory support info for the selected model (GET /api/languages/translation-support):
+    // {supported: [codes] | null (all), verified, label}
+    let support = { supported: null, verified: true, label: '' };
+
+    function isSupported(code) {
+        return !support.supported || support.supported.indexOf(code) !== -1;
+    }
+
     function buildTargetDropdown() {
         const select = $('translateTargetSelect');
         if (!select) return;
-        const placeholder = '<option value="" disabled selected>Add a language…</option>';
-        const opts = TRANSLATE_LANGUAGES.map(function (lang) {
-            return '<option value="' + lang.code + '">' + esc(lang.name) + '</option>';
-        }).join('');
-        select.innerHTML = placeholder + opts;
+        const langs = targetLanguages();
+        const ok = langs.filter(function (l) { return isSupported(l.code); });
+        const no = langs.filter(function (l) { return !isSupported(l.code); });
+        function opt(l, disabled) {
+            return '<option value="' + esc(l.code) + '"' + (disabled ? ' disabled' : '') + '>' +
+                esc(l.name) + '</option>';
+        }
+        let html = '<option value="" disabled selected>Add a language…</option>' +
+            ok.map(function (l) { return opt(l, false); }).join('');
+        if (no.length) {
+            html += '<optgroup label="Not supported by ' + esc(support.label) + '">' +
+                no.map(function (l) { return opt(l, true); }).join('') + '</optgroup>';
+        }
+        const customize = window.SubgenLanguages ? window.SubgenLanguages.CUSTOMIZE : '';
+        if (customize) {
+            html += '<optgroup label="──────────"><option value="' + customize +
+                '">Customize languages…</option></optgroup>';
+        }
+        select.innerHTML = html;
+        renderSupportNote(langs.length, no.length);
+    }
+
+    function renderSupportNote(total, unsupported) {
+        const note = $('translateSupportNote');
+        if (!note) return;
+        let text = '';
+        if (!support.verified) {
+            text = 'No language data for ' + support.label + ' — every target is listed, but quality is unverified.';
+        } else if (support.supported && support.supported.length === 0) {
+            text = support.label + ' is English-only per its model card. Pick a multilingual model (e.g. qwen3, gemma3) to translate.';
+        } else if (unsupported) {
+            text = support.label + ' officially supports ' + (total - unsupported) + ' of these ' + total +
+                ' languages; the rest are greyed out.';
+        }
+        note.textContent = text;
+        note.classList.toggle('hidden', !text);
     }
 
     function _langName(code) {
-        const lang = TRANSLATE_LANGUAGES.find(function (l) { return l.code === code; });
-        return lang ? lang.name : code;
+        return window.SubgenLanguages ? window.SubgenLanguages.name(code) : code;
     }
 
     function renderChips() {
         const box = $('translateChips');
         if (!box) return;
         box.innerHTML = selectedTargets.map(function (code) {
+            const ok = isSupported(code);
+            const title = ok ? '' : ' title="Not officially supported by ' + esc(support.label) + '"';
             return (
-                '<span class="translate-chip">' + esc(_langName(code)) +
-                '<button type="button" class="chip-remove" data-code="' + code +
+                '<span class="translate-chip' + (ok ? '' : ' translate-chip-warn') + '"' + title + '>' +
+                (ok ? '' : '<span aria-hidden="true">⚠</span>') + esc(_langName(code)) +
+                (ok ? '' : '<span class="sr-only"> (not supported by ' + esc(support.label) + ')</span>') +
+                '<button type="button" class="chip-remove" data-code="' + esc(code) +
                 '" aria-label="Remove ' + esc(_langName(code)) + '">✕</button></span>'
             );
         }).join('');
         box.querySelectorAll('.chip-remove').forEach(function (btn) {
             btn.addEventListener('click', function () { removeTarget(btn.getAttribute('data-code')); });
         });
-        // Grey out already-selected languages in the dropdown.
+        // Grey out already-selected and unsupported languages in the dropdown.
         const select = $('translateTargetSelect');
         if (select) {
             Array.from(select.options).forEach(function (opt) {
-                if (opt.value) opt.disabled = selectedTargets.indexOf(opt.value) !== -1;
+                if (opt.value && !(window.SubgenLanguages && opt.value === window.SubgenLanguages.CUSTOMIZE)) {
+                    opt.disabled = selectedTargets.indexOf(opt.value) !== -1 || !isSupported(opt.value);
+                }
             });
         }
+    }
+
+    let supportRequest = 0;
+
+    async function refreshSupport() {
+        const pm = getProviderModel();
+        const ticket = ++supportRequest;
+        let info = { supported: null, verified: true, label: modelLabel(pm.model) };
+        if (pm.provider === 'ollama' && !pm.model) {
+            info = { supported: null, verified: true, label: 'Ollama' };
+        } else {
+            try {
+                const resp = await fetch('/api/languages/translation-support?provider=' +
+                    encodeURIComponent(pm.provider) + '&model=' + encodeURIComponent(pm.model || ''));
+                if (resp.ok) info = await resp.json();
+            } catch (_e) { /* advisory only: keep everything selectable */ }
+        }
+        if (ticket !== supportRequest) return; // a newer model choice won
+        support = info;
+        buildTargetDropdown();
+        renderChips();
+    }
+
+    function rebuildTargets() {
+        // Drop chips the user removed from their saved list; keep the rest
+        const allowed = targetLanguages().map(function (l) { return l.code; });
+        selectedTargets = selectedTargets.filter(function (c) { return allowed.indexOf(c) !== -1; });
+        buildTargetDropdown();
+        renderChips();
+        updateCostEstimate();
     }
 
     function addTarget(code) {
@@ -138,41 +181,51 @@
         return selectedTargets.slice();
     }
 
+    let ollamaPicker = null; // web/static/ollama.js controller
+
     function getProviderModel() {
         const provider = ($('translateProvider') || {}).value || 'anthropic';
-        let model;
-        let ollamaHost = null;
         if (provider === 'ollama') {
-            model = ($('translateOllamaModel') || {}).value || 'llama3.1';
-            ollamaHost = ($('translateOllamaHost') || {}).value || null;
-        } else {
-            model = ($('translateModel') || {}).value || (modelsFor(provider)[0] || {}).id;
+            return {
+                provider: provider,
+                model: ollamaPicker ? ollamaPicker.model() : '',
+                ollamaHost: ollamaPicker ? ollamaPicker.host() : null,
+            };
         }
-        return { provider: provider, model: model, ollamaHost: ollamaHost };
+        const model = ($('translateModel') || {}).value || (modelsFor(provider)[0] || {}).id;
+        return { provider: provider, model: model, ollamaHost: null };
     }
 
     // --- Provider / model wiring -------------------------------------------
 
+    function onModelChange() {
+        updateModelDisplay();
+        updateProviderStatusBadge();
+        updateCostEstimate();
+        refreshSupport();
+    }
+
     function onProviderChange() {
         const provider = ($('translateProvider') || {}).value || 'anthropic';
         const modelSelect = $('translateModel');
-        const ollamaModel = $('translateOllamaModel');
         const ollamaHostGroup = $('translateOllamaHostGroup');
 
         const isOllama = provider === 'ollama';
-        if (modelSelect) modelSelect.classList.toggle('hidden', isOllama);
-        if (ollamaModel) ollamaModel.classList.toggle('hidden', !isOllama);
         if (ollamaHostGroup) ollamaHostGroup.classList.toggle('hidden', !isOllama);
 
-        if (!isOllama && modelSelect) {
+        if (isOllama && ollamaPicker) {
+            if (modelSelect) modelSelect.innerHTML = '';
+            ollamaPicker.refresh(); // fills the select, then calls onModelChange
+            onModelChange();
+            return;
+        }
+        if (ollamaPicker) ollamaPicker.deactivate();
+        if (modelSelect) {
             modelSelect.innerHTML = modelsFor(provider).map(function (m) {
                 return '<option value="' + esc(m.id) + '">' + esc(m.label) + ' (' + esc(m.hint) + ')</option>';
             }).join('');
         }
-
-        updateModelDisplay();
-        updateProviderStatusBadge();
-        updateCostEstimate();
+        onModelChange();
     }
 
     function updateModelDisplay() {
@@ -180,7 +233,7 @@
         if (!display) return;
         const pm = getProviderModel();
         if (pm.provider === 'ollama') {
-            display.textContent = 'Ollama (' + (pm.model || 'local') + ')';
+            display.textContent = 'Ollama (' + (pm.model || 'pick a model') + ')';
         } else {
             display.textContent = modelLabel(pm.model);
         }
@@ -190,7 +243,8 @@
         const provider = ($('translateProvider') || {}).value || 'anthropic';
         const badge = $('translateKeyStatus');
         const notice = $('translateKeyNotice');
-        const ok = !!providerStatus[provider];
+        const ok = !!providerStatus[provider] ||
+            (provider === 'ollama' && !!(ollamaPicker && ollamaPicker.host()));
         const label = provider.charAt(0).toUpperCase() + provider.slice(1);
 
         if (badge) {
@@ -226,6 +280,11 @@
         }
 
         const pm = getProviderModel();
+        if (pm.provider === 'ollama') {
+            el.textContent = pm.model ? 'Free · runs on your Ollama server' : 'Pick an Ollama model';
+            el.style.color = 'var(--text-tertiary)';
+            return;
+        }
         try {
             el.textContent = 'Calculating...';
             el.style.color = 'var(--text-tertiary)';
@@ -280,6 +339,10 @@
             return;
         }
         const pm = getProviderModel();
+        if (pm.provider === 'ollama' && !pm.model) {
+            toast('warning', 'Pick an installed Ollama model (or type a model name) first');
+            return;
+        }
         const overwrite = !!($('translateOverwrite') || {}).checked;
 
         setTranslating(true);
@@ -302,16 +365,17 @@
             }
             toast('info', 'Translating into ' + targets.length + ' language' +
                 (targets.length === 1 ? '' : 's') + '...');
-            pollStatus(data.task_id);
+            pollStatus(data.task_id, pm.provider);
         } catch (err) {
             setTranslating(false);
             toast('error', 'Translation failed: ' + err.message);
         }
     }
 
-    function pollStatus(taskId) {
+    function pollStatus(taskId, provider) {
         let polls = 0;
-        const maxPolls = 150; // 150 × 2s = 5 min
+        // 150 × 2s = 5 min for cloud; local CPU models can take much longer
+        const maxPolls = provider === 'ollama' ? 1800 : 150;
         const interval = setInterval(async function () {
             polls++;
             try {
@@ -371,6 +435,11 @@
         const targetSelect = $('translateTargetSelect');
         if (targetSelect) {
             targetSelect.addEventListener('change', function () {
+                if (window.SubgenLanguages && targetSelect.value === window.SubgenLanguages.CUSTOMIZE) {
+                    targetSelect.value = '';
+                    window.SubgenLanguages.openPanel('translation');
+                    return;
+                }
                 addTarget(targetSelect.value);
                 targetSelect.value = ''; // reset to the "Add a language…" placeholder
             });
@@ -380,17 +449,19 @@
         if (provider) provider.addEventListener('change', onProviderChange);
 
         const modelSelect = $('translateModel');
-        if (modelSelect) {
-            modelSelect.addEventListener('change', updateModelDisplay);
-            modelSelect.addEventListener('change', updateCostEstimate);
+        if (modelSelect) modelSelect.addEventListener('change', onModelChange);
+        if (window.SubgenOllama && provider) {
+            ollamaPicker = window.SubgenOllama.attach({
+                select: modelSelect,
+                textInput: $('translateOllamaModel'),
+                hostInput: $('translateOllamaHost'),
+                refreshBtn: $('translateOllamaRefresh'),
+                statusEl: $('translateOllamaStatus'),
+                isActive: function () { return provider.value === 'ollama'; },
+                onChange: onModelChange,
+            });
         }
-        const ollamaModel = $('translateOllamaModel');
-        if (ollamaModel) {
-            ollamaModel.addEventListener('input', updateModelDisplay);
-            ollamaModel.addEventListener('input', updateCostEstimate);
-        }
-        const ollamaHost = $('translateOllamaHost');
-        if (ollamaHost) ollamaHost.addEventListener('input', updateProviderStatusBadge);
+        if (window.SubgenLanguages) window.SubgenLanguages.onPrefsChange(rebuildTargets);
 
         const toggle = $('translateConfigToggleBtn');
         const panel = $('translateConfigPanel');

@@ -80,6 +80,7 @@ def save_language_prefs(prefs: dict) -> dict:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(settings, fh, indent=2, sort_keys=True)
+        os.chmod(tmp, 0o644)  # mkstemp creates 0600; match the app's other files
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

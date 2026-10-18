@@ -217,15 +217,39 @@ def test_call_llm_ollama_builds_openai_client_with_base_url_and_key_fallback(mon
     )
     assert result == ("Ciao", 3, 4)
     assert constructed["base_url"] == "http://ollama:11434/v1"
-    # Ollama's compatibility layer reads max_tokens and gets no reasoning knobs.
+    # Ollama's compatibility layer reads max_tokens and gets no reasoning knobs;
+    # thinking headroom is added so reasoning models still reach an answer.
     kw = constructed["instance"].chat.completions.create.kwargs
-    assert kw["max_tokens"] == 4096
+    assert kw["max_tokens"] == 4096 + llm_providers.OLLAMA_THINKING_HEADROOM
     assert "reasoning_effort" not in kw
     # Ollama ignores the key but the OpenAI client requires a non-empty placeholder.
     assert constructed["api_key"]
     # Local generation is CPU-bound: explicit timeout, no SDK retries.
     assert constructed["timeout"] == llm_providers.OLLAMA_TIMEOUT
     assert constructed["max_retries"] == 0
+
+
+def _ollama_client_returning(text, finish_reason="stop"):
+    message = types.SimpleNamespace(content=text, refusal=None)
+    response = types.SimpleNamespace(
+        choices=[types.SimpleNamespace(message=message, finish_reason=finish_reason)],
+        usage=types.SimpleNamespace(prompt_tokens=5, completion_tokens=7),
+    )
+    return types.SimpleNamespace(
+        chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=lambda **kw: response))
+    )
+
+
+def test_ollama_strips_inline_think_blocks():
+    client = _ollama_client_returning("<think>\nLet me recall the cast.\n</think>\nCobb, Ariadne")
+    text, _, _ = call_llm(LLMProvider.OLLAMA, "qwen3:4b", None, "p", max_tokens=10, client=client)
+    assert text == "Cobb, Ariadne"
+
+
+def test_ollama_reasoning_only_reply_is_an_error():
+    client = _ollama_client_returning("<think>hmm</think>")
+    with pytest.raises(LLMError, match="only reasoning"):
+        call_llm(LLMProvider.OLLAMA, "qwen3:4b", None, "p", max_tokens=10, client=client)
 
 
 def test_ollama_timeout_maps_to_actionable_error():

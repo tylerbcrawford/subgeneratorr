@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (!shouldLoadSaved) {
                 const languageSelect = document.getElementById('language');
-                if (languageSelect) languageSelect.value = serverDefaults.default_language;
+                if (languageSelect) setTranscriptionLanguage(serverDefaults.default_language);
                 setDefaultModel(serverDefaults.default_model);
             }
         })
@@ -231,11 +231,35 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup LLM provider change handler
     const llmProvider = document.getElementById('llmProvider');
+    if (llmProvider && window.SubgenOllama) {
+        // Ollama: the model <select> lists the server's installed models
+        const keytermModelSelect = document.getElementById('llmModel');
+        keytermOllama = window.SubgenOllama.attach({
+            select: keytermModelSelect,
+            textInput: document.getElementById('llmOllamaModel'),
+            hostInput: document.getElementById('llmOllamaHost'),
+            refreshBtn: document.getElementById('llmOllamaRefresh'),
+            statusEl: document.getElementById('llmOllamaStatus'),
+            isActive: () => llmProvider.value === 'ollama',
+            onChange: () => {
+                keytermModelSelect.dispatchEvent(new Event('change'));
+                checkApiKeyStatus();
+            },
+        });
+    }
     if (llmProvider) {
         llmProvider.addEventListener('change', (e) => {
             const provider = e.target.value;
             const modelSelect = document.getElementById('llmModel');
-            
+            const isOllama = provider === 'ollama';
+            document.getElementById('llmOllamaHostGroup')?.classList.toggle('hidden', !isOllama);
+            if (isOllama && keytermOllama) {
+                modelSelect.innerHTML = '';
+                keytermOllama.refresh();
+                return;
+            }
+            if (keytermOllama) keytermOllama.deactivate();
+
             modelSelect.innerHTML = llmModelsFor(provider).map(m =>
                 `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label)} (${escapeHtml(m.hint)})</option>`
             ).join('');
@@ -788,7 +812,7 @@ function toggleRememberSettings() {
 function applyDefaultSettings() {
     // Reset language dropdown to default
     const languageSelect = document.getElementById('language');
-    if (languageSelect) languageSelect.value = serverDefaults.default_language;
+    if (languageSelect) setTranscriptionLanguage(serverDefaults.default_language);
 
     // Reset checkboxes that should be unchecked by default
     const uncheckIds = [
@@ -900,7 +924,7 @@ function loadSavedSettings() {
             const settings = JSON.parse(savedSettings);
 
             // Apply saved settings
-            if (settings.language) document.getElementById('language').value = settings.language;
+            if (settings.language) setTranscriptionLanguage(settings.language);
             if (settings.model) {
                 const modelRadio = document.querySelector(`input[name="model"][value="${settings.model}"]`);
                 if (modelRadio) modelRadio.checked = true;
@@ -1384,8 +1408,21 @@ function applyServerDefaults() {
     }
 }
 
-function applyEngineGating() {
+// Set #language through the catalog so a code the current engine/prefs hide
+// falls back sensibly instead of leaving the dropdown blank.
+function setTranscriptionLanguage(code) {
+    if (window.SubgenLanguages) window.SubgenLanguages.selectTranscription(code);
+    else document.getElementById('language').value = code;
+}
+
+function applyEngineGating(event) {
     const engine = getSelectedEngine();
+
+    // Transcription language list follows the engine (Nova-3 vs Whisper
+    // languages); only a user-initiated switch announces a fallback.
+    if (window.SubgenLanguages) {
+        window.SubgenLanguages.renderTranscription(engine, { notify: event instanceof Event });
+    }
     const caps = engineCapabilities?.engines?.[engine]?.capabilities || null;
 
     // Capability-tagged controls: visible only when the active engine
@@ -1714,15 +1751,31 @@ function llmModelsFor(provider) {
     return (window.LLM_MODELS && window.LLM_MODELS[provider]) || [];
 }
 
+// Ollama picker controller for the keyterm panel (web/static/ollama.js)
+let keytermOllama = null;
+
+// Provider/model/host the keyterm panel currently points at
+function keytermProviderModel() {
+    const provider = document.getElementById('llmProvider')?.value || 'anthropic';
+    if (provider === 'ollama' && keytermOllama) {
+        return { provider, model: keytermOllama.model(), ollama_host: keytermOllama.host() };
+    }
+    const model = document.getElementById('llmModel')?.value || llmModelsFor(provider)[0]?.id;
+    return { provider, model, ollama_host: null };
+}
+
 function updateAiModelDisplay() {
     const modelSelect = document.getElementById('llmModel');
     const display = document.getElementById('aiModelDisplay');
-    if (modelSelect && display) {
-        const selectedOption = modelSelect.options[modelSelect.selectedIndex];
-        // Extract just the model name (before the parenthetical)
-        const text = selectedOption.text.split(' (')[0];
-        display.textContent = text;
+    if (!modelSelect || !display) return;
+    const pm = keytermProviderModel();
+    if (pm.provider === 'ollama') {
+        display.textContent = 'Ollama (' + (pm.model || 'pick a model') + ')';
+        return;
     }
+    const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+    // Extract just the model name (before the parenthetical)
+    display.textContent = selectedOption ? selectedOption.text.split(' (')[0] : '';
 }
 
 // Close popovers on outside click
@@ -1895,8 +1948,8 @@ function displayEstimates(data) {
 }
 
 async function estimateLLMCostForBatch(files) {
-    const provider = document.getElementById('llmProvider')?.value || 'anthropic';
-    const model = document.getElementById('llmModel')?.value || llmModelsFor(provider)[0]?.id;
+    const { provider, model, ollama_host } = keytermProviderModel();
+    if (provider === 'ollama') return 0; // local models are free
 
     try {
         // For >10 files, estimate just the first file and extrapolate
@@ -1911,6 +1964,7 @@ async function estimateLLMCostForBatch(files) {
                         video_path: file,
                         provider: provider,
                         model: model,
+                        ollama_host: ollama_host,
                         estimate_only: true
                     })
                 });
@@ -3888,13 +3942,18 @@ async function updateKeytermCostEstimate() {
         return;
     }
 
-    const provider = document.getElementById('llmProvider').value;
-    const model = document.getElementById('llmModel').value;
+    const { provider, model, ollama_host } = keytermProviderModel();
+    if (provider === 'ollama') {
+        // Local generation is always $0; no estimate round-trip needed
+        costElement.textContent = model ? 'Free · runs on your Ollama server' : 'Pick an Ollama model';
+        costElement.style.color = 'var(--text-tertiary)';
+        return;
+    }
 
     try {
         costElement.textContent = 'Calculating...';
         costElement.style.color = 'var(--text-tertiary)';
-        const estimate = await fetchCostEstimate(videoPath, provider, model);
+        const estimate = await fetchCostEstimate(videoPath, provider, model, ollama_host);
         costElement.textContent = `Est. cost: $${estimate.estimated_cost.toFixed(4)}`;
         costElement.style.color = 'var(--text-secondary)';
     } catch (error) {
@@ -3907,7 +3966,7 @@ async function updateKeytermCostEstimate() {
 /**
  * Fetch cost estimate for keyterm generation
  */
-async function fetchCostEstimate(videoPath, provider, model) {
+async function fetchCostEstimate(videoPath, provider, model, ollamaHost = null) {
     const response = await fetch('/api/keyterms/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3915,6 +3974,7 @@ async function fetchCostEstimate(videoPath, provider, model) {
             video_path: videoPath,
             provider: provider,
             model: model,
+            ollama_host: ollamaHost,
             estimate_only: true
         })
     });
@@ -3929,9 +3989,11 @@ async function fetchCostEstimate(videoPath, provider, model) {
 /**
  * Poll generation status
  */
-async function pollGenerationStatus(taskId) {
+async function pollGenerationStatus(taskId, provider = '') {
     let pollCount = 0;
-    const maxPolls = 90; // 90 polls × 2s = 3 minute timeout
+    // 90 polls × 2s = 3 minutes for cloud; local CPU models get OLLAMA_TIMEOUT
+    // (600s by default) plus queue headroom
+    const maxPolls = provider === 'ollama' ? 330 : 90;
     const interval = setInterval(async () => {
         pollCount++;
         try {
@@ -3952,7 +4014,7 @@ async function pollGenerationStatus(taskId) {
                 return;
             }
 
-            // Timeout guard — stop polling after 3 minutes
+            // Timeout guard — stop polling after maxPolls
             if (pollCount >= maxPolls) {
                 clearInterval(interval);
                 hideSpinner();
@@ -4091,8 +4153,12 @@ async function checkApiKeyStatus() {
         } else if (provider === 'google') {
             hasKey = config.google_api_key_configured || false;
             statusMessage = hasKey ? 'Gemini API key configured' : 'Gemini API key missing';
+        } else if (provider === 'ollama') {
+            // No key: Ollama just needs a host (OLLAMA_HOST or the host field)
+            hasKey = Boolean(config.ollama_configured || keytermOllama?.host());
+            statusMessage = hasKey ? 'Ollama host configured' : 'Ollama host not set';
         }
-        
+
         const notice = document.getElementById('providerKeyNotice');
         // Update indicator
         if (hasKey) {
@@ -4113,7 +4179,9 @@ async function checkApiKeyStatus() {
                 generateBtn.style.display = 'none';
             }
             if (notice) {
-                notice.textContent = statusMessage + '. Configure the API key in your .env file.';
+                notice.textContent = provider === 'ollama'
+                    ? 'Set OLLAMA_HOST in .env (or enter a host below) to use a local model.'
+                    : statusMessage + '. Configure the API key in your .env file.';
                 notice.style.display = 'block';
             }
         }
@@ -4214,8 +4282,11 @@ async function handleGenerateKeyterms() {
         return;
     }
 
-    const provider = providerEl.value;
-    const model = modelEl.value;
+    const { provider, model, ollama_host } = keytermProviderModel();
+    if (provider === 'ollama' && !model) {
+        showMessage('Pick an installed Ollama model (or type a model name) first', 'error');
+        return;
+    }
 
     // Validate that the selected provider has a configured API key
     const providerKeyMap = {
@@ -4263,6 +4334,7 @@ async function handleGenerateKeyterms() {
                 video_path: videoPath,
                 provider: provider,
                 model: model,
+                ollama_host: ollama_host,
                 preserve_existing: preserveExisting
             })
         });
@@ -4274,7 +4346,7 @@ async function handleGenerateKeyterms() {
         }
 
         // Poll for completion
-        pollGenerationStatus(data.task_id);
+        pollGenerationStatus(data.task_id, provider);
 
     } catch (error) {
         hideSpinner();

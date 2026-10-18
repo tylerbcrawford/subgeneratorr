@@ -49,6 +49,8 @@ def test_put_then_get_round_trips_and_persists(client, settings_file):
     assert client.get("/api/settings/languages").get_json()["translation"] == ["es"]
     on_disk = json.loads(settings_file.read_text())
     assert on_disk["languages"]["transcription"] == ["en", "auto", "fr"]
+    assert settings_file.stat().st_mode & 0o777 == 0o644
+    assert [f.name for f in settings_file.parent.iterdir()] == ["settings.json"]  # no temp left
 
 
 def test_put_partial_keeps_other_list(client, settings_file):

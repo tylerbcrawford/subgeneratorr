@@ -20,6 +20,7 @@ name is free-text (e.g. ``llama3.1``) and carries no ``MODEL_SPECS`` entry,
 """
 
 import os
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,6 +29,12 @@ DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 # Seconds to wait for one Ollama completion. Local generation on a slow CPU can
 # legitimately take minutes; raise this rather than letting requests time out.
 OLLAMA_TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
+# Extra token budget for local models. Thinking models (qwen3, deepseek-r1,
+# gpt-oss...) reason before answering and cannot always be switched off, so a
+# visible-answer budget alone ends in an empty, truncated reply. Non-thinking
+# models stop at their natural end, so the headroom costs them nothing.
+OLLAMA_THINKING_HEADROOM = int(os.environ.get("OLLAMA_THINKING_HEADROOM", "8192"))
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 def ollama_api_root(host: str) -> str:
@@ -252,8 +259,9 @@ def call_llm(
         model: The provider's model identifier (API string, not the enum).
         api_key: Provider API key (ignored by Ollama; a placeholder is used).
         prompt: The user prompt.
-        max_tokens: Response token budget (the model's thinking headroom is
-            added on top, so callers size it for the visible answer only).
+        max_tokens: Response token budget (the model's thinking headroom, or
+            OLLAMA_THINKING_HEADROOM for Ollama, is added on top, so callers
+            size it for the visible answer only).
         system_prompt: Optional system instruction. Omitted entirely when None
             (this preserves KeytermSearcher's Anthropic call, which sends none).
         base_url: Override the endpoint (used to point Ollama at its server).
@@ -266,7 +274,10 @@ def call_llm(
     """
     spec = _spec_for(model) if provider != LLMProvider.OLLAMA else None
     options = dict(spec.request_options) if spec else {}
-    budget = max_tokens + (spec.thinking_headroom if spec else 0)
+    if provider == LLMProvider.OLLAMA:
+        budget = max_tokens + OLLAMA_THINKING_HEADROOM
+    else:
+        budget = max_tokens + (spec.thinking_headroom if spec else 0)
 
     if provider == LLMProvider.ANTHROPIC:
         return _call_anthropic(model, api_key, prompt, budget, system_prompt, options, client)
@@ -418,6 +429,11 @@ def _call_openai_compatible(
         if getattr(choice, "finish_reason", None) == "length":
             raise LLMError(f"{label} response hit the token limit before producing any text")
         raise LLMError(f"{label} API returned an empty response")
+    if is_ollama:
+        # Older Ollama builds inline a thinking model's reasoning in the content
+        text = _THINK_BLOCK_RE.sub("", text).strip()
+        if not text:
+            raise LLMError(f"{label} response contained only reasoning, no answer")
     return text, response.usage.prompt_tokens, response.usage.completion_tokens
 
 
