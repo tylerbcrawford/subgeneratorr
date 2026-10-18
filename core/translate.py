@@ -322,6 +322,12 @@ def _parse_translation_response(text: str, expected_count: int) -> List[str]:
     if not isinstance(data, list):
         return []
 
+    # Some local models (e.g. qwen3 via Ollama) answer with bare strings, often
+    # wrapped as {"output": [...]}; the regex above already unwrapped the list.
+    # Order is then positional; the caller's count check still guards 1:1.
+    if data and all(isinstance(item, str) for item in data):
+        return list(data)
+
     by_index = {}
     for item in data:
         if isinstance(item, dict) and "i" in item and "text" in item:

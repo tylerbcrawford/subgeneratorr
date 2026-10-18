@@ -437,7 +437,7 @@
             targetSelect.addEventListener('change', function () {
                 if (window.SubgenLanguages && targetSelect.value === window.SubgenLanguages.CUSTOMIZE) {
                     targetSelect.value = '';
-                    window.SubgenLanguages.openPanel('translation');
+                    window.SubgenLanguages.openPanel('translation', targetSelect);
                     return;
                 }
                 addTarget(targetSelect.value);

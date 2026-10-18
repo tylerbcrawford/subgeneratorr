@@ -231,6 +231,22 @@ def test_parse_translation_response_extracts_json_from_fenced_block():
     assert _parse_translation_response(text, 2) == ["Hola", "Mundo"]
 
 
+def test_parse_translation_response_accepts_wrapped_bare_strings():
+    # qwen3:4b's real reply shape via Ollama (captured 2026-10-18)
+    text = '{\n  "output": [\n    "Hola",\n    "Mundo"\n  ]\n}'
+    assert _parse_translation_response(text, 2) == ["Hola", "Mundo"]
+
+
+def test_parse_translation_response_bare_strings_wrong_count_still_signals_retry():
+    # Positional strings are only trusted when the count matches (caller checks)
+    assert len(_parse_translation_response('["Hola"]', 2)) != 2
+
+
+def test_parse_translation_response_mixed_items_ignore_strings():
+    text = '[{"i": 0, "text": "Hola"}, "stray", {"i": 1, "text": "Mundo"}]'
+    assert _parse_translation_response(text, 2) == ["Hola", "Mundo"]
+
+
 def test_parse_translation_response_returns_empty_on_garbage():
     assert _parse_translation_response("not json at all", 2) == []
 

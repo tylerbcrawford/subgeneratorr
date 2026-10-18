@@ -3020,6 +3020,7 @@ details[open] > .collapse-summary::after {
    ============================================ */
 
 .lang-panel {
+  margin: auto; /* the global margin reset would pin the dialog top-left */
   width: min(560px, calc(100vw - 32px));
   max-width: none;
   max-height: min(720px, calc(100dvh - 32px));
@@ -3178,6 +3179,7 @@ details[open] > .collapse-summary::after {
 }
 
 .lang-row-name {
+  color: var(--text-primary); /* the global label color is too faint for a long list */
   flex: 1;
   min-width: 0;
   font-size: var(--font-body);
@@ -3216,6 +3218,17 @@ details[open] > .collapse-summary::after {
 .lang-badge-local {
   border-color: var(--color-green);
   color: var(--color-green);
+}
+
+/* Accent text at 10px needs darker shades to stay legible on the light canvas */
+[data-theme="light"] .lang-badge-cloud {
+  border-color: #0077A3;
+  color: #0077A3;
+}
+
+[data-theme="light"] .lang-badge-local {
+  border-color: #00805A;
+  color: #00805A;
 }
 
 .lang-empty {

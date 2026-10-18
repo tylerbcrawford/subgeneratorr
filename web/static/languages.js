@@ -156,7 +156,7 @@
         list.innerHTML = entries.length ? entries.map(function (l) {
             return '<label class="lang-row"><input type="checkbox" value="' + esc(l.code) + '"' +
                 (chosen.has(l.code) ? ' checked' : '') + '>' +
-                '<span class="lang-row-name">' + esc(l.name) + '</span>' +
+                '<span class="lang-row-name" title="' + esc(l.name) + '">' + esc(l.name) + '</span>' +
                 '<span class="lang-row-meta">' + badges(l) +
                 (l.special ? '' : '<span class="lang-row-code">' + esc(l.code) + '</span>') +
                 '</span></label>';
@@ -186,10 +186,10 @@
         renderList();
     }
 
-    function openPanel(kind) {
+    function openPanel(kind, returnFocusTo) {
         const dialog = $('languagePanel');
         if (!dialog || typeof dialog.showModal !== 'function') return;
-        lastFocus = document.activeElement;
+        lastFocus = returnFocusTo || document.activeElement;
         startDraft();
         const search = $('langSearch');
         if (search) search.value = '';
@@ -313,7 +313,7 @@
             if (select.value === CUSTOMIZE) {
                 e.stopImmediatePropagation();
                 select.value = previous;
-                openPanel('transcription');
+                openPanel('transcription', select);
                 return;
             }
             previous = select.value;
