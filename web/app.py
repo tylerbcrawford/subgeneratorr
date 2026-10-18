@@ -42,7 +42,7 @@ from core.model_languages import translation_support
 from core.settings_store import (
     SettingsError,
     load_language_prefs,
-    save_language_prefs,
+    update_language_prefs,
     validate_language_list,
 )
 from core.transcribe import (
@@ -303,13 +303,14 @@ def api_put_language_settings():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         return jsonify({"error": "JSON object required"}), 400
-    prefs = load_language_prefs()
     allowed = {"transcription": TRANSCRIPTION_CODES, "translation": TRANSLATION_CODES}
     try:
-        for kind, codes in allowed.items():
-            if kind in body:
-                prefs[kind] = validate_language_list(kind, body[kind], codes)
-        saved = save_language_prefs(prefs)
+        changes = {
+            kind: validate_language_list(kind, body[kind], codes)
+            for kind, codes in allowed.items()
+            if kind in body
+        }
+        saved = update_language_prefs(changes)
     except SettingsError as e:
         return jsonify({"error": str(e)}), 400
     except OSError as e:
@@ -1322,19 +1323,17 @@ def api_keyterms_generate():
         app.logger.error(f"Exception extracting metadata: {str(e)}")
         return jsonify({"error": f"Failed to extract metadata: {str(e)}"}), 400
 
-    # Get API key from environment
-    if provider == "anthropic":
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            return jsonify({"error": "ANTHROPIC_API_KEY not configured"}), 500
-    elif provider == "openai":
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "OPENAI_API_KEY not configured"}), 500
-    elif provider == "google":
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "GEMINI_API_KEY not configured"}), 500
+    # Get API key from environment. The estimate is offline token arithmetic,
+    # so it works (and the UI can show a price) before a key is configured.
+    key_env = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "google": "GEMINI_API_KEY",
+    }
+    if provider in key_env:
+        api_key = os.environ.get(key_env[provider])
+        if not api_key and not estimate_only:
+            return jsonify({"error": f"{key_env[provider]} not configured"}), 500
     elif provider == "ollama":
         api_key = None  # local server, no key
     else:

@@ -5,9 +5,12 @@ browsers (currently: which languages appear in the dropdowns).
 Lives at ``SETTINGS_PATH`` (default ``/logs/subgeneratorr-settings.json``:
 ``/logs`` is the one persistent, writable volume every shipped compose file
 already mounts, so upgrading needs no compose changes). Writes are atomic
-(temp file + ``os.replace``) so a crash never leaves a half-written file.
+(temp file + ``os.replace``) so a crash never leaves a half-written file, and
+read-modify-write updates hold an exclusive lock on a sibling ``.lock`` file
+so concurrent saves from different gunicorn workers can't drop each other.
 """
 
+import fcntl
 import json
 import logging
 import os
@@ -68,6 +71,21 @@ def validate_language_list(kind: str, value, allowed: Iterable[str]) -> Optional
     if not deduped:
         raise SettingsError(f"Keep at least one {kind} language")
     return deduped
+
+
+def update_language_prefs(changes: dict) -> dict:
+    """Apply validated per-list changes to the saved prefs atomically.
+
+    Keys absent from ``changes`` keep their saved value. The load, merge and
+    save happen under one file lock.
+    """
+    path = settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_name(path.name + ".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prefs = load_language_prefs()
+        prefs.update({kind: changes[kind] for kind in LANGUAGE_LISTS if kind in changes})
+        return save_language_prefs(prefs)
 
 
 def save_language_prefs(prefs: dict) -> dict:

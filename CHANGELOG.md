@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The example compose files now forward `OLLAMA_THINKING_HEADROOM` (web and worker)
   and `SETTINGS_PATH` (web). Before, setting either in `.env` had no effect, because
   the examples pass environment variables to the containers one by one.
+- **Keyterm parsing of hedged or labelled replies.** For obscure titles, Claude models
+  sometimes answered with a list, a disclaimer paragraph, then a revised list, or with
+  labelled groups ("Characters: …"). Disclaimer fragments leaked in as keyterms, and
+  lines fused across line breaks ("Corpus Christi Thom"). The parser now strips labels
+  and bullets, drops prose lines, keeps a revised list in place of the one it replaces,
+  and no longer discards lists wrapped in code fences. Anthropic models now also get
+  the keyterm system prompt, which asks for the bare list without caveats.
+- The keyterm result toast showed "Cost: $0.000" for very cheap models (Haiku 5.5,
+  GPT-6 Luna). Sub-cent costs now show two significant figures, e.g. "$0.0002".
+- A file's subtitle dot turns green as soon as its batch completes. Before, it waited
+  for a refresh 10 seconds later, and stayed yellow when auto-clear was off or the
+  batch had failures.
+- The keyterm cost estimate no longer returns HTTP 500 when the provider's API key is
+  unset. The estimate is computed locally, so it now shows a price; generating still
+  requires the key.
+- Two language-settings saves at the same moment (e.g. from two tabs) could overwrite
+  each other's list. Saves are now serialised with a file lock (`<SETTINGS_PATH>.lock`).
+- Choosing "Customize languages…" could restore a stale transcription language after
+  the language had been set by code (settings restore, Reset to defaults).
 
 ### Documentation
 - Technical docs cover the v3.3 API: `/api/languages`,

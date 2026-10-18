@@ -2445,9 +2445,29 @@ function persistCompletedBatchResults(results) {
 
     if (completedPaths.length > 0) {
         addCompletedFiles(completedPaths);
+        markRowsHaveSubtitles(completedPaths);
     }
 
     return completedPaths;
+}
+
+// Flip finished files' status dots now, without waiting for the delayed
+// re-browse (which only runs when auto-clear is on).
+function markRowsHaveSubtitles(paths) {
+    const done = new Set(paths);
+    document.querySelectorAll('#directoryList .browser-file .item-checkbox').forEach(cb => {
+        if (!done.has(cb.value)) return;
+        const row = cb.closest('.browser-file');
+        row.setAttribute('data-has-subtitles', 'true');
+        const dot = row.querySelector('.item-status');
+        if (dot) dot.outerHTML = getStatusIcon({ has_subtitles: true });
+    });
+}
+
+// Show sub-cent costs with enough precision to be non-zero ($0.0002, not $0.000)
+function formatUsd(amount) {
+    if (amount > 0 && amount < 0.01) return '$' + amount.toPrecision(2).replace(/0+$/, '');
+    return '$' + amount.toFixed(amount < 1 ? 3 : 2);
 }
 
 async function checkChunkStatus(batchId) {
@@ -4075,7 +4095,7 @@ async function pollGenerationStatus(taskId, provider = '') {
 
                 // Show success message with cost
                 showMessage(
-                    `✅ Generated ${data.keyterm_count} keyterms • Cost: $${data.actual_cost.toFixed(3)} • Tokens: ${data.token_count}`,
+                    `✅ Generated ${data.keyterm_count} keyterms • Cost: ${formatUsd(data.actual_cost)} • Tokens: ${data.token_count}`,
                     'success'
                 );
 

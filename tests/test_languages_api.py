@@ -50,7 +50,8 @@ def test_put_then_get_round_trips_and_persists(client, settings_file):
     on_disk = json.loads(settings_file.read_text())
     assert on_disk["languages"]["transcription"] == ["en", "auto", "fr"]
     assert settings_file.stat().st_mode & 0o777 == 0o644
-    assert [f.name for f in settings_file.parent.iterdir()] == ["settings.json"]  # no temp left
+    left = sorted(f.name for f in settings_file.parent.iterdir())
+    assert left == ["settings.json", "settings.json.lock"]  # no temp file left
 
 
 def test_put_partial_keeps_other_list(client, settings_file):
@@ -215,3 +216,41 @@ def test_ollama_models_unreachable_is_502(client, monkeypatch, result):
     resp = client.get("/api/ollama/models?host=localhost:11434")
     assert resp.status_code == 502
     assert "Could not reach Ollama" in resp.get_json()["error"]
+
+
+def test_concurrent_partial_updates_do_not_drop_each_other(settings_file):
+    import threading
+    import time
+
+    import core.settings_store as store
+
+    # Widen the race window: every load is slow, so unlocked updates interleave
+    real_load = store.load_settings
+
+    def slow_load():
+        data = real_load()
+        time.sleep(0.002)
+        return data
+
+    store_load = store.load_settings
+    store.load_settings = slow_load
+    try:
+
+        def writer(kind, codes):
+            for i in range(25):
+                store.update_language_prefs({kind: [codes[i % len(codes)]]})
+
+        threads = [
+            threading.Thread(target=writer, args=("transcription", ["en", "fr"])),
+            threading.Thread(target=writer, args=("translation", ["de", "es"])),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        store.load_settings = store_load
+
+    saved = json.loads(settings_file.read_text())["languages"]
+    # Last write of each list (i = 24) wins, and neither list was lost
+    assert saved == {"transcription": ["en"], "translation": ["de"]}

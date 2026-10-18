@@ -59,6 +59,21 @@ def test_ollama_estimate_is_free(tmp_path, monkeypatch):
     assert body["model"] == "qwen3:8b"
 
 
+def test_cloud_estimate_works_without_api_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    resp = _post(tmp_path, monkeypatch, provider="anthropic", estimate_only=True)
+    body = resp.get_json()
+    assert resp.status_code == 200, body
+    assert body["estimated_cost"] > 0
+
+
+def test_cloud_generation_still_requires_api_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    resp = _post(tmp_path, monkeypatch, provider="anthropic")
+    assert resp.status_code == 500
+    assert resp.get_json()["error"] == "ANTHROPIC_API_KEY not configured"
+
+
 def test_ollama_generation_queues_task_with_host(tmp_path, monkeypatch):
     calls = []
 

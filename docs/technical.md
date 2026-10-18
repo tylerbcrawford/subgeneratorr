@@ -876,7 +876,7 @@ Generate keyterms with an LLM from the show/movie name inferred from the file pa
 - `model` — a model id from the [model table](#ai-powered-generation); defaults to the provider's best-quality model. Retired ids (`claude-sonnet-4-6`, `gpt-4.1`, `gemini-2.5-flash`, …) are accepted and mapped to their replacements. For Ollama, an installed model name such as `qwen3:8b` (required).
 - `ollama_host` — Ollama endpoint for `provider: "ollama"`; falls back to the `OLLAMA_HOST` env var. Without either → 400.
 - `preserve_existing` — merge with the show's existing keyterms instead of replacing them.
-- `estimate_only` — return `{estimated_tokens, estimated_cost, model}` instead of queueing. Ollama estimates are always `0`.
+- `estimate_only` — return `{estimated_tokens, estimated_cost, model}` instead of queueing. Ollama estimates are always `0`. The estimate is computed locally, so it works before the provider's API key is set; generating requires the key.
 
 **Response:**
 ```json

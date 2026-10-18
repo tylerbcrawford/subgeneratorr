@@ -7,6 +7,7 @@ This module provides intelligent keyterm generation using Large Language Models
 contextually relevant keyterms that improve transcription accuracy up to 90%.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from core.llm_providers import MODEL_SPECS, LLMModel, LLMProvider, calculate_cost, call_llm
@@ -15,10 +16,13 @@ from core.media_metadata import MediaMetadata, format_metadata_for_prompt
 # LLMProvider / LLMModel are imported above and re-exported here for backward
 # compatibility — web/app.py and web/tasks.py import them from this module.
 
-# System instruction used for keyterm generation (OpenAI + Google paths; the
-# Anthropic path historically sends no system prompt).
+# System instruction sent with every keyterm request. Without the last two
+# sentences, Claude models hedge on obscure titles: a list, a disclaimer, then
+# a second list (_parse_response copes, but a clean reply is cheaper).
 KEYTERM_SYSTEM_PROMPT = (
-    "You are a helpful assistant that generates keyterm lists for transcription accuracy."
+    "You are a helpful assistant that generates keyterm lists for transcription accuracy. "
+    "Reply with the comma-separated list only: no preamble, labels, notes or caveats. "
+    "If you are unsure of a term, leave it out instead of explaining."
 )
 
 
@@ -158,6 +162,45 @@ Dom Cobb,Ariadne,Eames,Arthur,Mal,Saito,Yusuf,Fischer,Proclus Global,Mombasa,tot
 Begin your research and generate the keyterm list now."""
 
 
+# Response parsing. A keyterm is at most a short phrase; longer comma-separated
+# segments, or longer lines without commas, are prose (preambles, disclaimers).
+_MAX_TERM_WORDS = 6
+_MAX_SINGLE_TERM_WORDS = 5
+_MAX_LABEL_WORDS = 5
+_MAX_TERM_CHARS = 60
+
+_FENCE_RE = re.compile(r"^[ \t]*```[\w-]*[ \t]*$", re.MULTILINE)
+_BULLET_RE = re.compile(r"^(?:[-*•]|\d+[.)])\s+")
+# "Characters: ...", "**Characters:** ...", "**Places**: ..." (label may be all there is)
+_LABEL_RE = re.compile(r"^\*{0,2}([^:,*]{1,40}?)\*{0,2}\s*:\*{0,2}\s*(.*)$")
+
+
+def _parse_list_line(line: str) -> Optional[List[str]]:
+    """Split one response line into keyterms.
+
+    Returns [] for lines that carry no terms (blank, header, bare label) and
+    None for prose, which the caller treats as a boundary between lists.
+    """
+    text = line.strip()
+    if not text or text.startswith("#"):
+        return []
+    text = _BULLET_RE.sub("", text)
+    label = _LABEL_RE.match(text)
+    if label and len(label.group(1).split()) <= _MAX_LABEL_WORDS:
+        text = label.group(2).strip()
+        if not text:
+            return []
+
+    segments = [s.strip().strip("\"'*`").strip() for s in text.split(",")]
+    if len(segments) == 1:
+        words = len(segments[0].split())
+        if words > _MAX_SINGLE_TERM_WORDS or (words >= 3 and segments[0].endswith(".")):
+            return None
+    elif any(len(s.split()) > _MAX_TERM_WORDS for s in segments):
+        return None
+    return [s for s in segments if s and len(s) <= _MAX_TERM_CHARS]
+
+
 class KeytermSearcher:
     """Generate contextually relevant keyterms using LLM analysis."""
 
@@ -227,16 +270,15 @@ class KeytermSearcher:
 
         # Call the LLM via the shared provider layer. The 500-token answer budget
         # matches Deepgram's 500-token keyterm limit; call_llm adds each model's
-        # thinking headroom on top. Anthropic historically sends no system prompt.
+        # thinking headroom on top.
         max_tokens = 500
-        system_prompt = None if self.provider == LLMProvider.ANTHROPIC else KEYTERM_SYSTEM_PROMPT
         response_text, input_tokens, output_tokens = call_llm(
             self.provider,
             self.model_id,
             self.api_key,
             prompt,
             max_tokens=max_tokens,
-            system_prompt=system_prompt,
+            system_prompt=KEYTERM_SYSTEM_PROMPT,
             base_url=self.base_url,
         )
 
@@ -365,9 +407,12 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
         """
         Parse LLM response into list of keyterms.
 
-        Handles models that return extraneous content like markdown headers,
-        research summaries, or explanatory paragraphs by stripping non-keyterm
-        lines before parsing the comma-separated list.
+        Models don't always answer with a bare list. For obscure titles some
+        hedge: a list, a disclaimer paragraph, then a revised list. Others add
+        a preamble, label their groups ("Characters: ..."), or use bullets.
+        Each line is classified as a list line or prose; prose lines split
+        the reply into blocks. A later block that mostly repeats the terms so
+        far is a revision and replaces them; otherwise blocks are merged.
 
         Args:
             response: Raw LLM response text
@@ -375,50 +420,29 @@ Feel free to use these as inspiration but generate a fresh, optimized list."""
         Returns:
             List of parsed keyterms
         """
-        import re
-
-        response = response.strip()
-
-        # Strip markdown fences (```...```)
-        response = re.sub(r"```[\s\S]*?```", "", response)
-
-        # Remove lines that look like headers or commentary, not keyterms:
-        #   - Markdown headers (# ...)
-        #   - Lines starting with ** (bold labels like **Research:** ...)
-        #   - Lines that are clearly sentences (>80 chars with multiple spaces)
-        #   - Blank lines
-        cleaned_lines = []
-        for line in response.split("\n"):
-            stripped = line.strip()
-            if not stripped:
+        blocks: List[List[str]] = [[]]
+        for line in _FENCE_RE.sub("", response).split("\n"):
+            terms = _parse_list_line(line)
+            if terms is None:
+                if blocks[-1]:
+                    blocks.append([])
                 continue
-            if stripped.startswith("#"):
-                continue
-            if stripped.startswith("**") and ":" in stripped:
-                continue
-            if re.match(
-                r"^(Note|Here|These|The following|Research|Summary|I )", stripped, re.IGNORECASE
-            ):
-                continue
-            cleaned_lines.append(stripped)
+            blocks[-1].extend(terms)
 
-        response = " ".join(cleaned_lines)
+        keyterms: List[str] = []
+        for block in blocks:
+            if not block:
+                continue
+            kept = {t.lower() for t in keyterms}
+            repeated = sum(1 for t in block if t.lower() in kept)
+            if keyterms and repeated * 2 >= len(block):
+                keyterms = []
+            keyterms.extend(block)
 
-        # Split by comma
-        keyterms = [term.strip() for term in response.split(",")]
-
-        # Filter out empty, too-long (not a keyterm), and duplicate terms
+        # Filter out duplicate terms (case-insensitive), keeping first spelling
         seen = set()
         unique_keyterms = []
-
         for term in keyterms:
-            # Strip surrounding quotes or asterisks
-            term = term.strip("\"'*`")
-            if not term:
-                continue
-            # Skip terms that are clearly sentences (>60 chars)
-            if len(term) > 60:
-                continue
             if term.lower() not in seen:
                 seen.add(term.lower())
                 unique_keyterms.append(term)

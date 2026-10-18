@@ -15,6 +15,10 @@
 
     const CUSTOMIZE = '__customize__';
     let rendering = false;
+    // Last real (non-Customize) value of #language, restored when the
+    // Customize entry is picked. Updated wherever this module sets the value,
+    // since programmatic writes fire no change event.
+    let lastValue = '';
     const SEPARATOR = '──────────';
     const KINDS = ['transcription', 'translation'];
 
@@ -117,6 +121,7 @@
 
         const value = pickValue(entries, wanted);
         select.value = value;
+        lastValue = value;
         if (opts && opts.notify && wanted && wanted !== CUSTOMIZE && value !== wanted) {
             const where = engine === 'whisper' ? 'the Local engine' : 'the Cloud engine';
             toast('info', name(wanted) + ' isn\'t available with ' + where + ' — switched to ' + name(value));
@@ -137,6 +142,7 @@
         if (!select) return;
         if (code) preferred = code;
         select.value = pickValue(engineEntries(engine), code);
+        lastValue = select.value;
     }
 
     // --- Customize panel ---------------------------------------------------
@@ -325,16 +331,15 @@
     function initTranscriptionSelect() {
         const select = $('language');
         if (!select) return;
-        let previous = select.value;
-        select.addEventListener('focus', function () { previous = select.value; });
+        if (select.value !== CUSTOMIZE) lastValue = select.value;
         select.addEventListener('change', function (e) {
             if (select.value === CUSTOMIZE) {
                 e.stopImmediatePropagation();
-                select.value = previous;
+                select.value = lastValue;
                 openPanel('transcription', select);
                 return;
             }
-            previous = select.value;
+            lastValue = select.value;
             // A fallback chosen by renderTranscription is not the user's choice
             if (!rendering) preferred = select.value;
         });
