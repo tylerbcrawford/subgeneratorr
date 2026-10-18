@@ -28,6 +28,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
+from core.languages import catalog_language_code, whisper_language_code
+
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
@@ -278,6 +280,11 @@ class DeepgramEngine(ASREngine):
         return NormalizedResult(segments=segments, detected_language=detected, raw=resp)
 
 
+def _catalog_detected(code: Optional[str]) -> Optional[str]:
+    """Whisper's detected-language code, mapped back to the catalog spelling."""
+    return catalog_language_code(code) if code else code
+
+
 class WhisperEngine(ASREngine):
     """Local faster-whisper engine (CPU, int8). Ships only in the -local image."""
 
@@ -359,11 +366,12 @@ class WhisperEngine(ASREngine):
 
         # Deepgram's multilingual code-switching mode ("multi") has no Whisper
         # equivalent; auto-detect is the closest behavior. Regional variants
-        # ("pt-BR") normalize to base codes — whisper rejects them.
+        # ("pt-BR") normalize to base codes — whisper rejects them — and the few
+        # codes Whisper spells differently ("jv" -> "jw") are aliased.
         if opts.detect_language or opts.language == "multi" or not opts.language:
             language = None
         else:
-            language = opts.language.split("-", 1)[0]
+            language = whisper_language_code(opts.language)
 
         segments_iter, info = model.transcribe(
             io.BytesIO(buf),
@@ -388,7 +396,7 @@ class WhisperEngine(ASREngine):
                 progress_callback(seg.end, total)
 
         result = NormalizedResult(
-            segments=segments, detected_language=getattr(info, "language", None)
+            segments=segments, detected_language=_catalog_detected(getattr(info, "language", None))
         )
         return _apply_replacements(result, opts.replace)
 

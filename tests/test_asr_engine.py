@@ -237,6 +237,10 @@ def test_whisper_language_mapping(fake_faster_whisper):
     eng.transcribe(b"a", TranscribeOptions(language="pt-BR"))
     assert _find_fake_model().transcribe_kwargs["language"] == "pt"
 
+    # Whisper spells Javanese "jw"; the catalog uses ISO 639-1 "jv"
+    eng.transcribe(b"a", TranscribeOptions(language="jv"))
+    assert _find_fake_model().transcribe_kwargs["language"] == "jw"
+
 
 def test_whisper_hotwords_from_keyterms(fake_faster_whisper):
     eng = WhisperEngine(model="tiny")

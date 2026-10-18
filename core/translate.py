@@ -29,6 +29,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import srt as srt_lib
 
+from core.languages import LANGUAGE_NAMES
 from core.llm_providers import LLMModel, LLMProvider, calculate_cost, call_llm
 from core.transcribe import (
     _SUBTITLE_LANG_MAP,
@@ -46,68 +47,8 @@ TRANSLATE_SYSTEM_PROMPT = (
 )
 
 # Human-readable names for the supported subtitle target codes (keys of
-# _SUBTITLE_LANG_MAP). Used to phrase the translation prompt clearly.
-_LANGUAGE_NAMES = {
-    "af": "Afrikaans",
-    "ar": "Arabic",
-    "as": "Assamese",
-    "be": "Belarusian",
-    "bg": "Bulgarian",
-    "bn": "Bengali",
-    "bs": "Bosnian",
-    "ca": "Catalan",
-    "cs": "Czech",
-    "da": "Danish",
-    "de": "German",
-    "el": "Greek",
-    "en": "English",
-    "es": "Spanish",
-    "et": "Estonian",
-    "fa": "Persian",
-    "fi": "Finnish",
-    "fr": "French",
-    "gu": "Gujarati",
-    "he": "Hebrew",
-    "hi": "Hindi",
-    "hr": "Croatian",
-    "hu": "Hungarian",
-    "hy": "Armenian",
-    "id": "Indonesian",
-    "it": "Italian",
-    "ja": "Japanese",
-    "ka": "Georgian",
-    "kk": "Kazakh",
-    "kn": "Kannada",
-    "ko": "Korean",
-    "lt": "Lithuanian",
-    "lv": "Latvian",
-    "mk": "Macedonian",
-    "mn": "Mongolian",
-    "mr": "Marathi",
-    "ms": "Malay",
-    "ne": "Nepali",
-    "nl": "Dutch",
-    "no": "Norwegian",
-    "pa": "Punjabi",
-    "pl": "Polish",
-    "ps": "Pashto",
-    "pt": "Portuguese",
-    "ro": "Romanian",
-    "ru": "Russian",
-    "sk": "Slovak",
-    "sl": "Slovenian",
-    "sr": "Serbian",
-    "sv": "Swedish",
-    "ta": "Tamil",
-    "te": "Telugu",
-    "th": "Thai",
-    "tl": "Tagalog",
-    "tr": "Turkish",
-    "uk": "Ukrainian",
-    "ur": "Urdu",
-    "vi": "Vietnamese",
-    "zh": "Chinese",
-}
+# _SUBTITLE_LANG_MAP), from the shared catalog. Used to phrase the prompt.
+_LANGUAGE_NAMES = LANGUAGE_NAMES
 
 # Known 3-letter sidecar tags, used to strip a source language tag from a
 # subtitle filename (e.g. "Movie.eng.srt" -> media stem "Movie").
