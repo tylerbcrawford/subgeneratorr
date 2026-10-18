@@ -1243,13 +1243,16 @@ def api_keyterms_download():
 @app.post("/api/keyterms/generate")
 def api_keyterms_generate():
     """
-    Generate keyterms using LLM (Anthropic Claude, OpenAI GPT, or Google Gemini).
+    Generate keyterms using LLM (Anthropic Claude, OpenAI GPT, Google Gemini, or Ollama).
 
     Request Body (JSON):
         video_path: Path to video file (required)
-        provider: LLM provider - "anthropic", "openai", or "google" (default: "anthropic")
+        provider: LLM provider - "anthropic", "openai", "google", or "ollama"
+            (default: "anthropic")
         model: Model id from core.llm_providers.MODEL_SPECS (default: the
-            provider's best-quality model); retired ids map to their replacements
+            provider's best-quality model); retired ids map to their replacements.
+            For ollama, the installed model name (required, e.g. "qwen3:8b")
+        ollama_host: Ollama endpoint (falls back to OLLAMA_HOST env)
         preserve_existing: Merge with existing keyterms (default: false)
         estimate_only: Only return cost estimate (default: false)
 
@@ -1267,10 +1270,18 @@ def api_keyterms_generate():
     model = body.get("model") or _default_model_id(provider)
     preserve_existing = body.get("preserve_existing", False)
     estimate_only = body.get("estimate_only", False)
+    ollama_host = body.get("ollama_host") or os.environ.get("OLLAMA_HOST")
 
     # Validate inputs
     if not video_path:
         return jsonify({"error": "video_path required"}), 400
+    if provider == "ollama":
+        if not model:
+            return jsonify({"error": "Ollama model name required (e.g. qwen3:8b)"}), 400
+        if not ollama_host:
+            return jsonify(
+                {"error": "Ollama host not configured — set OLLAMA_HOST or pass ollama_host"}
+            ), 400
 
     vp = Path(video_path)
 
@@ -1317,6 +1328,8 @@ def api_keyterms_generate():
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             return jsonify({"error": "GEMINI_API_KEY not configured"}), 500
+    elif provider == "ollama":
+        api_key = None  # local server, no key
     else:
         return jsonify({"error": f"Unsupported provider: {provider}"}), 400
 
@@ -1330,10 +1343,10 @@ def api_keyterms_generate():
             app.logger.debug(f"Provider: {provider}, Model: {model}")
 
             provider_enum = LLMProvider(provider)
-            model_enum = resolve_model(model)
+            model_arg = model if provider == "ollama" else resolve_model(model)
 
             app.logger.debug("Initializing KeytermSearcher...")
-            searcher = KeytermSearcher(provider_enum, model_enum, api_key)
+            searcher = KeytermSearcher(provider_enum, model_arg, api_key)
 
             app.logger.debug("Calling estimate_cost...")
             estimate = searcher.estimate_cost(metadata)
@@ -1357,6 +1370,7 @@ def api_keyterms_generate():
             provider=provider,
             model=model,
             preserve_existing=preserve_existing,
+            ollama_host=ollama_host if provider == "ollama" else None,
         )
 
         return jsonify({"task_id": task.id, "status": "pending"})

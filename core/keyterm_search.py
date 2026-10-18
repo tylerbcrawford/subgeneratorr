@@ -161,23 +161,37 @@ Begin your research and generate the keyterm list now."""
 class KeytermSearcher:
     """Generate contextually relevant keyterms using LLM analysis."""
 
-    def __init__(self, provider: LLMProvider, model: LLMModel, api_key: str):
+    def __init__(
+        self,
+        provider: LLMProvider,
+        model: Any,
+        api_key: Optional[str],
+        base_url: Optional[str] = None,
+    ):
         """
         Initialize KeytermSearcher with LLM configuration.
 
         Args:
-            provider: LLM provider (Anthropic, OpenAI, or Google)
-            model: Specific model to use (must belong to ``provider``)
-            api_key: API key for the provider
+            provider: LLM provider (Anthropic, OpenAI, Google, or Ollama)
+            model: ``LLMModel`` for cloud providers (must belong to ``provider``),
+                or a free-text model name for Ollama
+            api_key: API key for the provider (ignored by Ollama)
+            base_url: Ollama endpoint (``http://host:11434/v1``)
 
         Raises:
             ValueError: If provider/model combination is invalid
         """
         self.provider = provider
-        self.model = model
+        self.model = model  # kept for cost lookup (enum -> pricing; str -> $0)
+        self.model_id = model.value if isinstance(model, LLMModel) else model
         self.api_key = api_key
+        self.base_url = base_url
         self._client = None
 
+        if provider == LLMProvider.OLLAMA:
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError("Ollama model name required")
+            return
         # Validate provider/model combination against the model catalog
         spec = MODEL_SPECS.get(model)
         if spec is None or spec.provider != provider:
@@ -218,11 +232,12 @@ class KeytermSearcher:
         system_prompt = None if self.provider == LLMProvider.ANTHROPIC else KEYTERM_SYSTEM_PROMPT
         response_text, input_tokens, output_tokens = call_llm(
             self.provider,
-            self.model.value,
+            self.model_id,
             self.api_key,
             prompt,
             max_tokens=max_tokens,
             system_prompt=system_prompt,
+            base_url=self.base_url,
         )
 
         # Parse response into keyterms
@@ -246,7 +261,7 @@ class KeytermSearcher:
             "token_count": token_count,
             "estimated_cost": cost,
             "provider": self.provider.value,
-            "model": self.model.value,
+            "model": self.model_id,
         }
 
     def estimate_cost(self, metadata: MediaMetadata) -> Dict[str, Any]:
@@ -276,7 +291,7 @@ class KeytermSearcher:
         return {
             "estimated_tokens": input_tokens + output_tokens,
             "estimated_cost": cost,
-            "model": self.model.value,
+            "model": self.model_id,
         }
 
     def _build_prompt(

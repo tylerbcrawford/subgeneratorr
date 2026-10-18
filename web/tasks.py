@@ -495,17 +495,23 @@ def batch_finalize(results):
 
 @celery_app.task(bind=True, name="generate_keyterms_task")
 def generate_keyterms_task(
-    self, video_path: str, provider: str, model: str, preserve_existing: bool = False
+    self,
+    video_path: str,
+    provider: str,
+    model: str,
+    preserve_existing: bool = False,
+    ollama_host: str = None,
 ):
     """
     Async task to generate keyterms using LLM.
 
     Args:
         video_path: Path to video file
-        provider: LLM provider ("anthropic", "openai", or "google")
+        provider: LLM provider ("anthropic", "openai", "google", or "ollama")
         model: Model id from core.llm_providers.MODEL_SPECS (e.g. "claude-sonnet-5-5");
-            retired ids are mapped to their replacements
+            retired ids are mapped to their replacements; free-text name for ollama
         preserve_existing: If True, merge with existing; if False, overwrite
+        ollama_host: Ollama endpoint (falls back to OLLAMA_HOST env)
 
     Returns:
         dict: Generated keyterms and metadata
@@ -528,10 +534,12 @@ def generate_keyterms_task(
             api_key = os.environ.get("OPENAI_API_KEY")
         elif provider == "google":
             api_key = os.environ.get("GEMINI_API_KEY")
+        elif provider == "ollama":
+            api_key = None
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-        if not api_key:
+        if not api_key and provider != "ollama":
             raise ValueError(f"API key not configured for {provider}")
 
         # Extract metadata from video path
@@ -551,12 +559,20 @@ def generate_keyterms_task(
 
         try:
             provider_enum = LLMProvider(provider)
-            model_enum = resolve_model(model)
+            model_enum = model if provider == "ollama" else resolve_model(model)
         except ValueError:
             raise ValueError(f"Invalid provider or model: {provider}, {model}")
 
         # Generate keyterms
-        searcher = KeytermSearcher(provider=provider_enum, model=model_enum, api_key=api_key)
+        base_url = None
+        if provider == "ollama":
+            host = ollama_host or os.environ.get("OLLAMA_HOST")
+            if not host:
+                raise ValueError("Ollama host not configured")
+            base_url = _normalize_ollama_base_url(host)
+        searcher = KeytermSearcher(
+            provider=provider_enum, model=model_enum, api_key=api_key, base_url=base_url
+        )
 
         result = searcher.generate_from_metadata(
             metadata=metadata, existing_keyterms=existing, preserve_existing=preserve_existing
