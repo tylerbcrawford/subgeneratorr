@@ -11,7 +11,7 @@ Deepgram Nova-3 represents a fundamental shift in global speech recognition. Rat
 **Key Capabilities:**
 - **59 individual languages (91 codes)** with regional dialect support
 - **Universal keyterm prompting** across all languages (500 tokens)
-- **Multilingual model** processing 10 languages simultaneously
+- **Multilingual model** processing 55 languages simultaneously (code-switching)
 - **Automatic language detection** for 35 languages (batch mode)
 - **Regional variants** for optimal local accuracy
 
@@ -177,17 +177,12 @@ The list in the web UI follows the engine: the Cloud engine shows the Nova-3 cod
 
 **Special language code**: `multi`
 
-**Processes 10 Languages Simultaneously:**
-1. English
-2. Spanish
-3. French
-4. German
-5. Hindi
-6. Russian
-7. Portuguese
-8. Japanese
-9. Italian
-10. Dutch
+**Processes 55 Languages Simultaneously.** Deepgram expanded the Nova-3 multilingual
+model from 10 to 55 languages on 2026-10-23; existing `multi` requests use the new model
+automatically. The current list is in Deepgram's
+[Models & Languages Overview](https://developers.deepgram.com/docs/models-languages-overview#nova-3).
+
+Multi-language subtitles are tagged `und` (undetermined), since one file can mix languages.
 
 **Ideal For:**
 - Mixed-language content (Hinglish, Spanglish, Konglish)

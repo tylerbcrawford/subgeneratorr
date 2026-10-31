@@ -185,6 +185,9 @@ h2, h3 {
   margin-bottom: var(--space-xl);
   border: 1px solid var(--border);
   overflow-y: auto;
+  /* Vertical scroller only: overflow-y:auto silently computes overflow-x to
+     auto too, so any stray wide child would make the card pan sideways on touch. */
+  overflow-x: hidden;
   overscroll-behavior: none;
   max-height: calc(100dvh - 40px);
   scrollbar-width: none;
@@ -1806,6 +1809,8 @@ input[readonly] {
 
 .item-name {
   flex: 1;
+  min-width: 0; /* let flex shrink it below the unbreakable filename width */
+  overflow-wrap: anywhere; /* release names like Show.S01E01.1080p... have no spaces */
   font-size: var(--font-body);
   color: var(--text-secondary);
   font-weight: 500;
@@ -1820,6 +1825,7 @@ input[readonly] {
   width: 16px;
   height: 16px;
   color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 /* Status Indicator (minimal dot) */
@@ -2846,6 +2852,7 @@ details[open] > .collapse-summary::after {
 }
 
 .engine-segment {
+  position: relative; /* containing block for the visually-hidden radio */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2863,6 +2870,10 @@ details[open] > .collapse-summary::after {
 
 .engine-segment input {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
   pointer-events: none;
 }

@@ -281,7 +281,7 @@ The Cloud engine (Nova-3) transcribes 59 languages (91 language codes including 
 **Quick reference:**
 - Set `LANGUAGE=en` (or any supported code) in `.env`
 - Regional variants: `en-GB`, `pt-BR`, `es-419`, etc.
-- Multilingual: `LANGUAGE=multi` (10 languages simultaneously)
+- Multilingual: `LANGUAGE=multi` (55 languages simultaneously)
 - Auto-detect: `DETECT_LANGUAGE=1` (35 languages, batch mode only)
 - Translate finished subtitles into 98 languages with an LLM — see [LLM-Powered Translation](languages.md#llm-powered-translation). Targets the selected model doesn't support are greyed out in the Web UI
 - Trim either dropdown to the languages you use with **Customize languages…** — see [Customizing the language lists](languages.md#customizing-the-language-lists)

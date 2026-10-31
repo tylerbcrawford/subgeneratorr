@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Sideways scrolling on mobile.** The main card could be dragged left and right on
+  phones. The hidden radio inputs behind the Cloud/Local engine switch were positioned
+  against the sticky action bar instead of their own segment and stuck out past the
+  right edge. Long release-style file and folder names
+  (`Show.S01E01.1080p.WEB-DL...mkv`) also widened the file list because they contain
+  no spaces to wrap at. Names now wrap inside the list, and the card scrolls
+  vertically only.
+
+### Changed
+- Docs: Multi-language mode now covers 55 languages, following Deepgram's 2026-10-23
+  Nova-3 multilingual expansion. No code change was needed: `language=multi` requests
+  reach the new model automatically, and Subgeneratorr never read the per-word
+  `language` fields that Deepgram says may now be missing.
+
 ## [3.3.1] - 2026-10-18
 
 ### Fixed
