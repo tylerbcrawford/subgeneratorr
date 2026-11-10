@@ -1,13 +1,13 @@
 flask==3.1.*
-celery==5.6.*
+celery==5.7.*
 # kombu 5.6 (celery's transport) requires redis-py <6.5
-redis>=6.4,<6.5
+redis>=8.1.0,<8.2
 gunicorn==26.*
 gevent==26.*
 deepgram-sdk==7.*
 deepgram-captions==2.*
-srt>=3.5,<4
+srt>=3.5.3,<4
 requests==2.*
-anthropic>=1,<2
-openai>=3,<4
-google-genai>=2,<3
+anthropic>=2.6.0,<3
+openai>=3.46.0,<4
+google-genai>=3.0.0,<4
