@@ -603,4 +603,4 @@ Deepgram continues expanding Nova-3 language support with focus on:
 
 ## Summary
 
-Nova-3's 59-language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection — plus LLM translation of finished subtitles into 58 target languages — makes Subgeneratorr a flexible subtitle solution for international media libraries.
+Nova-3's 59-language support with regional variants, universal keyterm prompting, multilingual model, and automatic detection — plus LLM translation of finished subtitles into 98 target languages — makes Subgeneratorr a flexible subtitle solution for international media libraries.

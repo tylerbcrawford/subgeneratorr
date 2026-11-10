@@ -4,13 +4,15 @@
 
 If you discover a security vulnerability in Subgeneratorr, please report it responsibly.
 
-**Email:** Open a [GitHub Security Advisory](https://github.com/tylerbcrawford/subgeneratorr/security/advisories/new) (preferred) or create a private issue.
+Open a private [GitHub Security Advisory](https://github.com/tylerbcrawford/subgeneratorr/security/advisories/new). Only the maintainer can see it, and you will get a reply there.
 
 **Please do not** open a public issue for security vulnerabilities.
 
 ## What to Report
 
 - Authentication or authorization bypasses
+- Cross-site request forgery or other ways a web page can drive the API
+- Reading or writing files outside the media directory
 - API key exposure or leakage
 - Container escape or privilege escalation
 - Dependency vulnerabilities with known exploits

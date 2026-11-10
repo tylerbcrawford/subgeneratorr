@@ -19,7 +19,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
    cp .env.example .env
    cp examples/docker-compose.example.yml docker-compose.yml
    # Add your DEEPGRAM_API_KEY to .env
-   docker compose build
+   docker compose build   # builds from your checkout; a plain `up` would pull the published images
    ```
 
 ## Development Workflow

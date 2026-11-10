@@ -12,6 +12,9 @@ Consolidate Redis, Flask, and Celery into a single Docker container for simpler 
 ### Bazarr Auto-Fallback
 Automatically trigger Subgeneratorr for files where Bazarr can't find community subtitles. The library scan feature (shipped in v2.1.0) provides the scanning capability; remaining work is webhook/scheduled integration with Bazarr's post-processing pipeline.
 
+### Webhook Triggers
+Start a job when Sonarr, Radarr, Plex, Jellyfin, or Emby reports a new file, so new media gets subtitles without opening the Web UI. Today every job starts from the Web UI or the CLI.
+
 ### Language Detection UX
 Surface Nova-3's language detection metadata in the Web UI — show detected language with confidence score after transcription, display language breakdown for code-switching content, and add visual indicators when auto-detect or multi-language mode is active.
 
@@ -24,6 +27,12 @@ Modern drag-and-drop interface for selecting files across multiple directories. 
 
 ### Subtitle Synchronization
 Built-in timing correction for generated subtitles using FFmpeg. Auto-correct drift without external tools like Subsyncarr.
+
+### Translation Context Across Windows
+Cues are translated in windows of 30 with no view of the previous window. Passing the last few source lines as read-only context should help pronouns and split sentences, but needs a quality comparison across cloud and small local models first.
+
+### Frontend Tests
+The Web UI JavaScript is syntax-checked in CI but has no unit or browser tests.
 
 ### CLI/Web Feature Parity
 Audit and align features between CLI and Web UI. LLM keyterm generation is intentionally Web-only, but other gaps should be documented or closed.

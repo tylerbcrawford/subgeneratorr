@@ -7,7 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Cross-site requests can no longer drive the API.** Five endpoints parsed any request
+  body as JSON whatever its content type, so with authentication off (the default for
+  local use) a web page open in the same browser could post to `localhost:5000` and
+  queue transcription, keyterm or translation jobs. State-changing requests must now
+  send `Content-Type: application/json`, and any request a browser marks
+  `Sec-Fetch-Site: cross-site` is refused. The keyterm CSV upload still takes
+  `multipart/form-data` and the cancel endpoints still take no body. Scripts that
+  already send JSON are unaffected; ones that posted JSON without the header now get 415.
+- Responses carry `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and
+  `X-Frame-Options: SAMEORIGIN`. Set `FRAME_OPTIONS=` (empty) to keep embedding the UI in
+  a dashboard iframe on another origin.
+- `ollama_host` is validated on keyterm generation and translation as well as on the
+  model list, so the worker only ever calls a bare `host:port`.
+
+### Added
+- **Translation resumes after a failure.** Progress is saved to `<sidecar>.partial`
+  after every window. A run that stops partway (rate limit, timeout, cancelled job)
+  picks up after the last finished window next time, so translation already paid for
+  is not redone. The checkpoint is ignored if the source subtitle or the model changed.
+- `RESULT_EXPIRES_DAYS` (default 7): how long batch status and library-scan results,
+  including the CSV export, stay available. It was Celery's default of one day.
+- `JOB_LOG_KEEP` (default 1000): per-job JSON logs are pruned to the newest N. They
+  grew without limit before.
+- `SUBGENERATORR_VERSION` in the example compose files pins the image tag.
+
+### Changed
+- **"Missing subtitles" now follows your language.** An embedded subtitle track tagged
+  with a different language than the one selected no longer counts as existing
+  subtitles, and forced tracks never count. A film with only an embedded Spanish track
+  now shows up as missing English subtitles. Untagged tracks still count, and
+  Auto-detect and Multi-language accept any track, as before. Expect library scans to
+  list more files. API callers opt in with the new `language` parameter on
+  `/api/browse`, `/api/search`, `/api/scan` and `/api/library-scan`.
+- **The example compose files pull the published GHCR images** instead of building, so
+  Quick Start needs no clone. From a clone, `docker compose up -d --build` still builds
+  from source.
+- Removed the unused `/api/progress` ping stream; the UI has always polled
+  `/api/job/<id>` for progress.
+- Removed settings that did nothing: `SECRET_KEY` (the app has no sessions) and
+  `BAZARR_BASE_URL`/`BAZARR_API_KEY` (the rescan task they fed was never called).
+  Leftover values in `.env` are ignored.
+
 ### Fixed
+- **Translating from a translation.** With more than one subtitle next to a video, the
+  source was whichever sorted first by name, so `Movie.ara.srt` (an earlier
+  translation) was used instead of `Movie.eng.srt`. The source is now the sidecar in
+  your transcription language, never one of the requested targets, and the result
+  message names the file used.
+- A file descriptor leaked on every transcription job, and the temporary audio file
+  was left behind when ffmpeg failed or a job was cancelled. Leftovers from cancelled
+  jobs are swept when a worker next starts a job.
+- Docs: translation target counts (98 everywhere), the profanity filter values
+  (`off`/`on`, not `off`/`tag`/`remove`), and the security policy's reporting route.
 - **Sideways scrolling on mobile.** The main card could be dragged left and right on
   phones. The hidden radio inputs behind the Cloud/Local engine switch were positioned
   against the sticky action bar instead of their own segment and stuck out past the

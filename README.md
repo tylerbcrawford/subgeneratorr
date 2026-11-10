@@ -15,7 +15,7 @@
   <img src="docs/demo/preview.gif" width="820" alt="Subgeneratorr workflow: browse the library, scan for missing subtitles, generate keyterms, transcribe with Deepgram Nova-3, translate with a local Ollama model, and customize the language lists">
 </p>
 
-Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 58 more languages with the original timing preserved.
+Subgeneratorr generates language-tagged SRT subtitles for the media [Bazarr](https://www.bazarr.media/) can't find — obscure shows, older episodes, anything without community subs. It runs as a Docker container with a Web UI and CLI, uses **keyterm prompting** so proper nouns come out right, and can translate every subtitle it makes into 98 languages with the original timing preserved.
 
 *I created it to fill the hundreds of missing-subtitle gaps in my own media library.*
 
@@ -25,7 +25,7 @@ Since v3, transcription is a per-job switch right on the main screen:
 
 | | ☁️ **Cloud** — Deepgram Nova-3 | 🏠 **Local** — Whisper *(since v3)* |
 |---|---|---|
-| **Accuracy** | Best in class; keyterms boost proper nouns up to ~90% | ~89% word-level agreement with Nova-3 (`small` model) |
+| **Accuracy** | Best in class; keyterms improve accuracy on proper nouns by up to ~90% | ~89% word-level agreement with Nova-3 (`small` model) |
 | **Speed** | ~1% of runtime | Near-real-time on a modest CPU (0.3× measured on an N100) |
 | **Cost** | $0.0043/min (+$0.0013 with keyterms), [$200 free credits](https://console.deepgram.com/) (~600–775 hrs) | **$0, forever** |
 | **Privacy** | Audio goes to Deepgram's API | **Nothing leaves your machine** |
@@ -105,25 +105,28 @@ Every AI step after transcription is provider-agnostic too: keyterm generation a
 
 **Requirements:** Docker + Docker Compose · media files (MKV, MP4, AVI, MOV, MP3, WAV, FLAC, …) · a [Deepgram API key](https://console.deepgram.com/) for the cloud flavor only
 
-```bash
-git clone https://github.com/tylerbcrawford/subgeneratorr.git
-cd subgeneratorr
+No clone or build needed. The compose file pulls the published images from GHCR (amd64 and arm64):
 
-cp .env.example .env
-cp examples/docker-compose.example.yml docker-compose.yml          # ☁️ cloud (default)
-# cp examples/docker-compose.local.example.yml docker-compose.yml  # 🏠 fully local
+```bash
+mkdir subgeneratorr && cd subgeneratorr
+BASE=https://raw.githubusercontent.com/tylerbcrawford/subgeneratorr/main
+
+curl -fsSL $BASE/.env.example -o .env
+curl -fsSL $BASE/examples/docker-compose.example.yml -o docker-compose.yml          # ☁️ cloud (default)
+# curl -fsSL $BASE/examples/docker-compose.local.example.yml -o docker-compose.yml  # 🏠 fully local
 
 # In .env, set:
 #   MEDIA_PATH=/path/to/your/media
 #   DEEPGRAM_API_KEY=your_key_here   # ☁️ cloud flavor only
 
-docker compose build
 docker compose up -d          # Web UI at http://localhost:5000
 # ...or run headless:
 docker compose run --rm cli   # processes the whole MEDIA_PATH library
 ```
 
-> **Security:** `DISABLE_AUTH=true` is the default and is for local access only. For remote/production use, set `DISABLE_AUTH=false` and put an authenticating reverse proxy in front that forwards `X-Auth-Request-Email` or `X-Forwarded-User`. The CLI is synchronous and headless; the Web UI adds async batches, progress tracking, library scanning, and AI keyterm generation.
+Update later with `docker compose pull && docker compose up -d`, or pin a release with `SUBGENERATORR_VERSION=3.3.1` in `.env`. To build from source instead, clone the repo, copy the same two files into place, and run `docker compose up -d --build`.
+
+> **Security:** `DISABLE_AUTH=true` is the default and is for local access only; the example compose binds the port to `127.0.0.1`. For remote/production use, set `DISABLE_AUTH=false` and put an authenticating reverse proxy in front that forwards `X-Auth-Request-Email` or `X-Forwarded-User`. Requests that change anything must be same-site JSON, so another web page open in your browser cannot queue jobs. The CLI is synchronous and headless; the Web UI adds async batches, progress tracking, library scanning, and AI keyterm generation.
 
 ---
 
@@ -141,6 +144,8 @@ One transcription, many languages. After Nova-3 produces a subtitle, an LLM tran
 
 Open the **Translate** panel in the Web UI, pick your target languages, and choose a provider: Claude, GPT, Gemini, or a local **Ollama** model. With Ollama, the Model dropdown lists the models installed on your server (↻ refreshes it; a Host field overrides `OLLAMA_HOST`). It runs on your own hardware, so translation is free and fully offline. Local models differ a lot in language coverage, so targets a model's card doesn't list are greyed out (e.g. Llama 3 covers 8 languages, while Qwen 3 and Gemma 3 cover 100+). Thinking models like `qwen3` are slower but work; use a 3B+ model for reliable results. Existing translations are skipped unless you choose to overwrite.
 
+When a folder already holds several subtitles for a video, the source is the one in your transcription language (the language dropdown), never an earlier translation, and the result message names the file it used. A translation interrupted partway (rate limit, timeout, cancelled job) resumes where it stopped on the next run instead of starting over.
+
 ### Customize your language lists
 
 The last entry in the language dropdown (and in the Translate panel's dropdown) is **Customize languages…**. It opens a panel with Transcription and Translation tabs where you tick just the languages you use; everything else disappears from the dropdowns. The choice is saved on the server (`SETTINGS_PATH`), so it follows you to any browser. With everything ticked (the default), languages added in future versions show up automatically.
@@ -157,7 +162,7 @@ One change to cloud output in v3: subtitle cues no longer embed `[speaker N]` ta
 
 ### Find all missing subtitles
 
-Point it at a library of thousands of files and it tells you exactly what's missing. A two-phase scan checks sidecar files (seconds), then optionally probes embedded tracks with ffprobe (~50–100ms/file). Results come back grouped by directory, persist across page reloads, and export to CSV. A 4,662-file library scans in ~6 minutes with embedded detection on, or in seconds in sidecar-only mode.
+Point it at a library of thousands of files and it tells you exactly what's missing. A two-phase scan checks sidecar files (seconds), then optionally probes embedded tracks with ffprobe (~50–100ms/file). The embedded check follows the language you have selected: a track tagged with another language, or a forced track that only covers foreign-language lines, does not count, so a film with only Spanish subtitles still shows up as missing English ones. With Auto-detect or Multi-language selected, any embedded track counts. Results come back grouped by directory, persist across page reloads, and export to CSV. A 4,662-file library scans in ~6 minutes with embedded detection on, or in seconds in sidecar-only mode.
 
 ### The full library cleanup (the workflow I actually use)
 
@@ -217,6 +222,9 @@ New Deepgram accounts get **$200 in free credits**, roughly 35,000–46,000 minu
 **How is this different from Bazarr?**
 Bazarr finds *existing* community subtitles; Subgeneratorr *generates* them from audio for whatever Bazarr can't find. Run Bazarr first, then Subgeneratorr on the gaps.
 
+**How is this different from subgen or Bazarr's Whisper provider?**
+[subgen](https://github.com/McCloudS/subgen) is the tool to pick if you want hands-off automation: it transcribes with Whisper when Plex, Jellyfin, Emby, or Tautulli fires a webhook, can watch folders, serves as Bazarr's Whisper provider, and supports Nvidia GPUs. Subgeneratorr does none of that yet; you start jobs from the Web UI or the CLI, and the local engine is CPU-only. What it adds is a library browser and missing-subtitle scan, a cloud engine (Nova-3) for when CPU Whisper is too slow or not accurate enough, keyterm prompting for names, and LLM translation into 98 languages rather than Whisper's translate-to-English. Webhook and Bazarr-triggered runs are on the [roadmap](docs/roadmap.md).
+
 **Cloud or local — which engine should I pick?**
 Cloud (Nova-3) for the best accuracy and speed from $0.0043/min; Local (Whisper) for $0, offline, fully private transcription at near-real-time speed. It's a per-job switch, so you can use both — see the [comparison table](#cloud-or-local--you-choose).
 
@@ -245,6 +253,10 @@ Nova-3 transcribes 59 languages (91 codes counting regional variants), with auto
 **Permission errors (Linux)** — Set `PUID`/`PGID` (from `id -u` / `id -g`) on all three services (cli, web, worker) so they share ownership.
 
 **API errors** — Verify the key in `.env` and check your balance at the [Deepgram Console](https://console.deepgram.com/).
+
+**415 or 403 from your own script** — Requests that change something must send `Content-Type: application/json` (the keyterm CSV upload uses `multipart/form-data`). A 403 means the browser marked the request as cross-site; call the API from the same origin or from a non-browser client.
+
+**The UI is blank inside a dashboard iframe** — The Web UI sends `X-Frame-Options: SAMEORIGIN`. Set `FRAME_OPTIONS=` (empty) in `.env` to allow embedding from another origin.
 
 **"Local whisper engine is not installed" (400)** — You're running the standard (Deepgram-only) image. Deploy the `-local` images — start from `examples/docker-compose.local.example.yml` — to enable the Local engine.
 

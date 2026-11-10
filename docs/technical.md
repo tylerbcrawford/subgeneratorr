@@ -57,7 +57,7 @@ The Web UI adds asynchronous processing capabilities:
 1. User submits batch via Web UI
 2. Flask API creates Celery task group
 3. Workers process files in parallel (configurable concurrency)
-4. Progress updates sent via Server-Sent Events (SSE)
+4. The UI polls `/api/job/<batch_id>` every few seconds for per-file progress
 5. Results returned to the UI
 
 ---
@@ -351,7 +351,7 @@ See `examples/video-list-example.txt` for a complete example.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROFANITY_FILTER` | `off` | Profanity filter: `off`, `tag`, or `remove` |
+| `PROFANITY_FILTER` | `off` | Profanity filter: `off` or `on` (masks profanity with asterisks) |
 | `NUMERALS` | `0` | Convert spoken numbers to digits (e.g., "twenty twenty four" → "2024") |
 | `FILLER_WORDS` | `0` | Include filler words like "uh", "um" (usually off for subtitles) |
 | `DETECT_LANGUAGE` | `0` | Auto-detect language for international content |
@@ -362,7 +362,9 @@ See `examples/video-list-example.txt` for a complete example.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | `change-me` | Flask session secret (generate with `python -c "import secrets; print(secrets.token_hex(32))"`) |
+| `FRAME_OPTIONS` | `SAMEORIGIN` | `X-Frame-Options` header sent with every response. Set to an empty value to embed the UI in a dashboard on another origin |
+| `RESULT_EXPIRES_DAYS` | `7` | How long batch status and library-scan results (and their CSV export) stay in Redis |
+| `JOB_LOG_KEEP` | `1000` | Per-job JSON logs kept in `LOG_ROOT`; the oldest are pruned (`0` keeps all) |
 | `REDIS_URL` | `redis://redis:6379/0` | Redis connection string |
 | `MEDIA_ROOT` | `/media` | Media root path |
 | `LOG_ROOT` | `/logs` | Log directory path |
@@ -443,6 +445,8 @@ OAuth2-Proxy can emit `X-Auth-Request-Email` directly. Other proxies such as Aut
 ## API Endpoints
 
 ### Web UI REST API
+
+**Request rules.** Every `POST`/`PUT` must send `Content-Type: application/json` (other types get `415`). The two exceptions are `/api/keyterms/upload` (`multipart/form-data`) and the body-less `.../cancel` endpoints. Requests a browser marks `Sec-Fetch-Site: cross-site` get `403`. Together these stop a page on another site from driving the API through your browser; scripts and `curl` are unaffected as long as they send JSON.
 
 #### Configuration
 
@@ -563,6 +567,7 @@ Browse directories and media files.
 **Parameters:**
 - `path` - Directory path to browse
 - `show_all` - Show all files (true) or only media without subtitles (false)
+- `language` - Language you want subtitles in (optional). An embedded track tagged with a different language then does not count as existing subtitles. Forced tracks never count; untagged tracks always do. Omit it, or pass `auto`/`multi`, to accept any language. `/api/search`, `/api/scan` and `/api/library-scan` take the same parameter
 
 **Response:**
 ```json
@@ -728,19 +733,6 @@ Cancel a running job.
 }
 ```
 
-**GET `/api/progress`**
-
-Server-Sent Events stream for real-time updates.
-
-**Event Format:**
-```
-event: job_progress
-data: {"batch_id": "abc123", "progress": 50, "status": "processing"}
-
-event: job_complete
-data: {"batch_id": "abc123", "status": "completed"}
-```
-
 #### Keyterm Management
 
 **GET `/api/keyterms/load?video_path=/media/tv/Show/episode.mkv`**
@@ -787,9 +779,12 @@ Launch a library-wide scan for files missing subtitles. Uses a two-phase approac
 **Request:**
 ```json
 {
-  "skip_embedded": false
+  "skip_embedded": false,
+  "language": "en"
 }
 ```
+
+`language` is optional and works as described under `/api/browse`.
 
 **Response:**
 ```json
@@ -915,6 +910,7 @@ Translate a video's existing `.srt` into one or more target languages, writing l
   "overwrite": false,
   "ollama_host": "http://localhost:11434",
   "source_srt": "/media/tv/Show/episode.eng.srt",
+  "source_language": "en",
   "estimate_only": false
 }
 ```
@@ -924,6 +920,10 @@ Translate a video's existing `.srt` into one or more target languages, writing l
 - `model` — model id for cloud providers (defaults to the provider's best-quality model; retired ids are mapped to their replacements), or an installed model name for Ollama (required; the Web UI lists them via `/api/ollama/models`).
 - `ollama_host` — Ollama endpoint; falls back to the `OLLAMA_HOST` env var.
 - `source_srt` — explicit source subtitle; defaults to the auto-located sidecar.
+- `source_language` — the language the video was transcribed in. When several same-stem `.srt` files exist, the source is picked in this order: the sidecar tagged with `source_language`, then the server's `DEFAULT_LANGUAGE`, then `.und.srt`, then an untagged `.srt`, then any other by name. A sidecar in one of the requested `targets` is never used as the source. The response includes the chosen file as `source_srt`.
+- `ollama_host` must be a bare `host:port` or `http(s)://host:port` (optionally ending in `/v1`); anything with a path, query or credentials is rejected with `400`.
+
+A run that fails partway leaves `<sidecar>.partial` next to the media file. The next run for the same source, target and model resumes after the last finished window and removes the file when it completes.
 - `overwrite` — re-translate even if the target sidecar already exists (default `false`).
 - `estimate_only` — return a cost estimate instead of queueing the job.
 
@@ -1284,6 +1284,8 @@ The response is a typed `ListenV1Response` (pydantic). Code reads it by attribut
 ### Web UI Security
 
 - Web UI can be protected with OAuth authentication (configured at reverse proxy level)
+- State-changing API requests must be same-site JSON (see [Request rules](#web-ui-rest-api)), which blocks cross-site request forgery even with `DISABLE_AUTH=true`
+- Responses carry `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and `X-Frame-Options` (`FRAME_OPTIONS`)
 - Both web and worker containers require read-write media mounts (web writes keyterms to `Transcripts/Keyterms/`, worker writes subtitles and transcripts)
 - Language-tagged `.srt` subtitle files are written next to source media files; transcript outputs are written under sibling `Transcripts/` folders
 - Email allowlist available for additional access control via `ALLOWED_EMAILS` environment variable
