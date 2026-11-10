@@ -294,6 +294,7 @@
                 body: JSON.stringify({
                     video_path: videoPath,
                     targets: targets,
+                    source_language: document.getElementById('language')?.value || undefined,
                     provider: pm.provider,
                     model: pm.model,
                     ollama_host: pm.ollamaHost,
@@ -353,6 +354,7 @@
                 body: JSON.stringify({
                     video_path: videoPath,
                     targets: targets,
+                    source_language: document.getElementById('language')?.value || undefined,
                     provider: pm.provider,
                     model: pm.model,
                     ollama_host: pm.ollamaHost,
@@ -401,6 +403,7 @@
                     const skipped = data.skipped_count || 0;
                     let msg = 'Translation complete — ' + made + ' written';
                     if (skipped) msg += ', ' + skipped + ' skipped (already existed)';
+                    if (made && data.source_srt) msg += ' (from ' + data.source_srt + ')';
                     toast('success', msg);
                     updateCostEstimate();
                 } else if (data.state === 'FAILURE') {

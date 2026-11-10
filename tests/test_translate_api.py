@@ -283,3 +283,70 @@ class _patch_env_var:
 
 def _patched_env(app_module, media_root):
     return _patch(app_module, "MEDIA_ROOT", media_root)
+
+
+# --- source subtitle selection ------------------------------------------------
+
+
+def _touch_sidecars(tmp_path, *names):
+    video = tmp_path / "Movie.mkv"
+    video.write_text("video")
+    for name in names:
+        (tmp_path / name).write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n")
+    return video
+
+
+def _source_name(video, source_language=None, targets=()):
+    src = app_module._find_source_srt(video, source_language, targets)
+    return src.name if src else None
+
+
+def test_source_prefers_default_language_over_alphabetical_order(tmp_path):
+    # Movie.ara.srt (an earlier translation) sorts first; it must not be the source.
+    video = _touch_sidecars(tmp_path, "Movie.ara.srt", "Movie.eng.srt")
+    assert _source_name(video, targets=["es"]) == "Movie.eng.srt"
+
+
+def test_source_follows_the_transcription_language(tmp_path):
+    video = _touch_sidecars(tmp_path, "Movie.eng.srt", "Movie.ger.srt")
+    assert _source_name(video, source_language="de", targets=["es"]) == "Movie.ger.srt"
+
+
+def test_source_is_never_one_of_the_targets(tmp_path):
+    video = _touch_sidecars(tmp_path, "Movie.eng.srt", "Movie.ger.srt")
+    assert _source_name(video, targets=["en"]) == "Movie.ger.srt"
+    assert _source_name(video, targets=["en", "de"]) is None
+
+
+def test_source_falls_back_to_neutral_then_untagged_then_name(tmp_path):
+    video = _touch_sidecars(tmp_path, "Movie.fre.srt", "Movie.srt", "Movie.und.srt")
+    assert _source_name(video, targets=["es"]) == "Movie.und.srt"
+    (tmp_path / "Movie.und.srt").unlink()
+    assert _source_name(video, targets=["es"]) == "Movie.srt"
+    (tmp_path / "Movie.srt").unlink()
+    assert _source_name(video, targets=["es"]) == "Movie.fre.srt"
+
+
+def test_source_ignores_other_videos_with_a_shared_prefix(tmp_path):
+    video = _touch_sidecars(tmp_path, "Movie 2.eng.srt", "Movie.eng.sdh.srt")
+    assert _source_name(video, targets=["es"]) == "Movie.eng.sdh.srt"
+
+
+def test_translate_response_names_the_source(tmp_path):
+    video = _touch_sidecars(tmp_path, "Movie.ara.srt", "Movie.eng.srt")
+    with (
+        app.test_client() as client,
+        _patched_env(app_module, tmp_path),
+        _patch_env_var("ANTHROPIC_API_KEY", "sk-test"),
+    ):
+        resp = client.post(
+            "/api/translate",
+            json={
+                "video_path": str(video),
+                "targets": ["es"],
+                "provider": "anthropic",
+                "estimate_only": True,
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.get_json()["source_srt"] == "Movie.eng.srt"

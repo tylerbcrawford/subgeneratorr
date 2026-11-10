@@ -42,7 +42,7 @@ Optional environment variables:
   NUMERALS           Set to '1' to convert spoken numbers to digits
   FILLER_WORDS       Set to '1' to include filler words (uh, um, ...)
   MEASUREMENTS       Set to '1' to convert spoken measurements
-  PROFANITY_FILTER   'off' (default), 'tag', or 'remove'
+  PROFANITY_FILTER   'off' (default) or 'on' (masks profanity with asterisks)
   SAVE_RAW_JSON      Set to '1' to save raw Deepgram API response as JSON
   LOG_PATH           Directory for log files (default: /logs)
 """

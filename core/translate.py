@@ -21,6 +21,7 @@ Two invariants make subtitle translation trustworthy:
 Provider plumbing (incl. local Ollama) and cost live in ``core.llm_providers``.
 """
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -115,25 +116,35 @@ class SubtitleTranslator:
         cues: List[Any],
         target_language: str,
         keyterms: Optional[List[str]] = None,
+        *,
+        resume_texts: Optional[List[str]] = None,
+        on_window: Optional[Callable[[List[str]], None]] = None,
     ) -> TranslationResult:
         """Translate a list of srt cues into ``target_language``.
 
         Returns a TranslationResult whose cues copy the source index/start/end
         verbatim, with only the content translated.
+
+        ``resume_texts`` are translations already made for the first cues (from
+        an interrupted run); only the remaining cues are sent to the LLM.
+        ``on_window`` is called with every translated text so far after each
+        window, so the caller can checkpoint.
         """
         target_tag = self._resolve_tag(target_language)
         target_name = self._language_name(target_language)
 
-        translated_texts: List[str] = []
+        translated_texts: List[str] = list(resume_texts or [])[: len(cues)]
         input_tokens = 0
         output_tokens = 0
 
-        for window in _chunk(cues, self.window_size):
+        for window in _chunk(cues[len(translated_texts) :], self.window_size):
             texts = [cue.content for cue in window]
             out_texts, in_tok, out_tok = self._translate_with_retry(texts, target_name, keyterms)
             input_tokens += in_tok
             output_tokens += out_tok
             translated_texts.extend(out_texts)
+            if on_window:
+                on_window(translated_texts)
 
         new_cues = [
             srt_lib.Subtitle(
@@ -169,6 +180,11 @@ class SubtitleTranslator:
 
         Skips writing (and reading) when the target sidecar already exists,
         unless ``overwrite`` is set.
+
+        Progress is checkpointed to ``<sidecar>.partial`` after every window.
+        If a run dies partway (rate limit, timeout, cancelled job), the next
+        run for the same source, target and model resumes after the last
+        finished window, so translation that was already paid for is kept.
         """
         srt_path = Path(srt_path)
         target_tag = self._resolve_tag(target_language)  # validate before any I/O
@@ -182,12 +198,24 @@ class SubtitleTranslator:
                 skipped=True,
             )
 
-        cues = list(srt_lib.parse(srt_path.read_text(encoding="utf-8")))
-        result = self.translate_cues(cues, target_language, keyterms=keyterms)
+        source_text = srt_path.read_text(encoding="utf-8")
+        cues = list(srt_lib.parse(source_text))
+        partial = dest.with_name(dest.name + ".partial")
+        fingerprint = hashlib.sha256(
+            f"{self.model_id}\0{target_tag}\0{source_text}".encode("utf-8")
+        ).hexdigest()
+        result = self.translate_cues(
+            cues,
+            target_language,
+            keyterms=keyterms,
+            resume_texts=_load_partial(partial, fingerprint, len(cues)),
+            on_window=lambda texts: _save_partial(partial, fingerprint, texts),
+        )
         # reindex=False keeps every cue's index/timing verbatim. The default
         # (reindex=True) runs sort_and_reindex, which silently drops cues with
         # empty content or non-positive duration and renumbers the survivors.
         dest.write_text(srt_lib.compose(result.cues, reindex=False), encoding="utf-8")
+        partial.unlink(missing_ok=True)
         result.output_path = dest
         result.skipped = False
         return result
@@ -258,6 +286,40 @@ class SubtitleTranslator:
 
 
 # --- Module-level helpers ---------------------------------------------------
+
+
+def _load_partial(partial: Path, fingerprint: str, cue_count: int) -> List[str]:
+    """Translations checkpointed by an interrupted run, or [] if none apply.
+
+    The fingerprint covers the source text, target and model, so a checkpoint
+    is never applied to a regenerated source or a different model.
+    """
+    try:
+        data = json.loads(partial.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    texts = data.get("texts") if isinstance(data, dict) else None
+    if (
+        data.get("fingerprint") != fingerprint
+        or not isinstance(texts, list)
+        or len(texts) > cue_count
+        or not all(isinstance(t, str) for t in texts)
+    ):
+        return []
+    return texts
+
+
+def _save_partial(partial: Path, fingerprint: str, texts: List[str]) -> None:
+    """Checkpoint progress; best-effort (a failed write only costs resumability)."""
+    try:
+        tmp = partial.with_name(partial.name + ".tmp")
+        tmp.write_text(
+            json.dumps({"fingerprint": fingerprint, "texts": texts}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp.replace(partial)
+    except OSError:
+        pass
 
 
 def _chunk(seq, size):

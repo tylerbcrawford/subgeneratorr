@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -32,6 +33,9 @@ AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wma"}
 
 # Neutral language tag used when the output language cannot be resolved safely
 NEUTRAL_SUBTITLE_LANG = "und"
+
+# Prefix of the temporary audio files extract_audio() writes.
+AUDIO_TMP_PREFIX = "subgeneratorr-audio-"
 
 # Deepgram's improved speaker diarization model (batch / pre-recorded only, 2026-05-13).
 # diarize_model is self-contained: it both enables diarization and selects the model, and
@@ -550,7 +554,80 @@ def has_sidecar_subtitle(stem: str, dir_filenames: set) -> bool:
     return find_existing_sidecar_subtitle(Path(stem), dir_filenames=dir_filenames) is not None
 
 
-def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
+def _stream_language_codes(language: Optional[str]) -> Optional[set]:
+    """Container language tags that mean ``language``; None when it names no single language."""
+    normalized = normalize_language_code(language)
+    if not normalized or normalized in ("auto", "multi"):
+        return None
+    base = normalized.split("-", 1)[0]
+    codes = set(_STREAM_LANG_MAP.get(base, {base}))
+    codes.update({normalized, base})
+    return codes
+
+
+def embedded_subtitle_streams(media_path: Path) -> List[dict]:
+    """
+    List a container's embedded subtitle streams via ffprobe.
+
+    Returns:
+        ``[{"language": "eng" | "", "forced": bool}, ...]``; empty when there
+        are none or ffprobe is unavailable, fails, or times out.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "s",
+                "-show_entries",
+                "stream=index:stream_tags=language:stream_disposition=forced",
+                "-of",
+                "json",
+                str(media_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        streams = json.loads(result.stdout or "{}").get("streams") or []
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError, ValueError):
+        return []
+    return [
+        {
+            "language": str((stream.get("tags") or {}).get("language") or "").lower(),
+            "forced": bool((stream.get("disposition") or {}).get("forced")),
+        }
+        for stream in streams
+        if isinstance(stream, dict)
+    ]
+
+
+def has_embedded_subtitle(media_path: Path, language: Optional[str] = None) -> bool:
+    """
+    Whether a container already carries a usable embedded subtitle track.
+
+    Forced tracks never count: they only cover foreign-language lines, not the
+    whole dialogue. With ``language`` given (a single language, not
+    ``auto``/``multi``), a track tagged with a different language does not
+    count either, so a film with only Spanish subtitles still shows up as
+    missing English ones. Untagged (or ``und``) tracks count, because their
+    language is unknown and transcribing costs time or money.
+    """
+    wanted = _stream_language_codes(language)
+    for stream in embedded_subtitle_streams(media_path):
+        if stream["forced"]:
+            continue
+        tag = stream["language"]
+        if wanted is None or tag in ("", NEUTRAL_SUBTITLE_LANG) or tag in wanted:
+            return True
+    return False
+
+
+def check_subtitles(
+    media_path: Path, dir_filenames: set = None, language: Optional[str] = None
+) -> dict:
     """
     Check if a media file has subtitles (sidecar files or embedded tracks).
 
@@ -558,12 +635,13 @@ def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
         media_path: Path to the media file
         dir_filenames: Optional pre-built set of filenames in the same directory.
                        If None, will scan the directory (slower for batch calls).
+        language: Optional language the caller wants subtitles in. Embedded
+                  tracks tagged with another language are then ignored (see
+                  ``has_embedded_subtitle``). Sidecar files count in any language.
 
     Returns:
         dict with 'has_subtitles' (bool) and 'subtitle_source' ("sidecar"|"embedded"|None)
     """
-    import subprocess
-
     stem = media_path.stem
 
     # Step 1: Check for sidecar subtitle files (instant — in-memory string matching)
@@ -574,29 +652,8 @@ def check_subtitles(media_path: Path, dir_filenames: set = None) -> dict:
         return {"has_subtitles": True, "subtitle_source": "sidecar"}
 
     # Step 2: Fallback — ffprobe for embedded subtitle tracks (~50-100ms)
-    if is_video(media_path):
-        try:
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "quiet",
-                    "-select_streams",
-                    "s",
-                    "-show_entries",
-                    "stream=codec_type",
-                    "-of",
-                    "csv=p=0",
-                    str(media_path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.stdout.strip():
-                return {"has_subtitles": True, "subtitle_source": "embedded"}
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+    if is_video(media_path) and has_embedded_subtitle(media_path, language):
+        return {"has_subtitles": True, "subtitle_source": "embedded"}
 
     return {"has_subtitles": False, "subtitle_source": None}
 
@@ -725,7 +782,11 @@ def extract_audio(video: Path, language: Optional[str] = None) -> Path:
     Raises:
         subprocess.CalledProcessError: If FFmpeg extraction fails
     """
-    tmp = Path(tempfile.mkstemp(suffix=".mp3")[1])
+    # mkstemp returns an open descriptor; close it (ffmpeg reopens the path) so
+    # a long-lived worker does not leak one per job.
+    fd, tmp_name = tempfile.mkstemp(prefix=AUDIO_TMP_PREFIX, suffix=".mp3")
+    os.close(fd)
+    tmp = Path(tmp_name)
 
     # Build -map flag if a specific language stream is found
     map_args = []
@@ -764,10 +825,34 @@ def extract_audio(video: Path, language: Optional[str] = None) -> Path:
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=3600)
     except subprocess.TimeoutExpired:
-        if tmp.exists():
-            tmp.unlink()
+        tmp.unlink(missing_ok=True)
         raise RuntimeError(f"FFmpeg audio extraction timed out after 1 hour for: {video.name}")
+    except BaseException:
+        # ffmpeg failed (or the job was cancelled): the caller never learns the
+        # temp path, so remove the partial file here.
+        tmp.unlink(missing_ok=True)
+        raise
     return tmp
+
+
+def sweep_stale_audio_temp_files(max_age_seconds: float = 6 * 3600) -> int:
+    """
+    Delete extracted-audio temp files left behind by killed jobs.
+
+    Cancelling a batch terminates the worker process, which skips its cleanup.
+    Only files older than ``max_age_seconds`` go, so a job running in another
+    worker process keeps its audio. Returns the number of files removed.
+    """
+    removed = 0
+    cutoff = time.time() - max_age_seconds
+    for stale in Path(tempfile.gettempdir()).glob(f"{AUDIO_TMP_PREFIX}*.mp3"):
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def transcribe_file(

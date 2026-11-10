@@ -4,7 +4,6 @@ let selectedFiles = [];
 let currentPath = '/media';
 let currentFolder = '/media'; // Track which folder files are selected from
 let currentBatchId = null;
-let eventSource = null;
 let pollInterval = null;
 let pollCount = 0;
 let currentMaxPolls = 200; // Dynamic per-batch; default 200 polls × 3s = 10 minutes
@@ -53,6 +52,18 @@ let chunkResults = [];       // Accumulated results across chunks
 let totalChunkCount = 0;
 let chunkTotalFiles = 0;     // Total files across all chunks
 let chunkEstimateData = null; // Cost/duration estimate for extrapolation
+
+// Language the user wants subtitles in (the transcription language select).
+// Sent with browse/search/scan so an embedded track in another language still
+// shows the file as missing subtitles; auto/multi accept any language.
+function selectedSubtitleLanguage() {
+    return document.getElementById('language')?.value || '';
+}
+
+function subtitleLanguageParam() {
+    const language = selectedSubtitleLanguage();
+    return language ? `&language=${encodeURIComponent(language)}` : '';
+}
 
 function escapeHtml(str) {
     const div = document.createElement('div');
@@ -490,7 +501,7 @@ async function browseDirectories(path) {
     directoryList.style.display = 'block';
     
     try {
-        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&show_all=${showAll}&only_folders_with_videos=${onlyFoldersWithVideos}`);
+        const response = await fetch(`/api/browse?path=${encodeURIComponent(path)}&show_all=${showAll}&only_folders_with_videos=${onlyFoldersWithVideos}${subtitleLanguageParam()}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -716,7 +727,7 @@ async function _searchBrowserAPI(query) {
     directoryList.innerHTML = '<div style="text-align:center; padding: var(--space-l); color: var(--text-secondary);">Searching...</div>';
 
     try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}${subtitleLanguageParam()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
@@ -2413,13 +2424,9 @@ async function submitChunk(index) {
 
 function startChunkMonitoring(batchId, fileCount) {
     if (pollInterval) clearInterval(pollInterval);
-    if (eventSource) eventSource.close();
 
     pollCount = 0;
     currentMaxPolls = Math.max(200, fileCount * 20);
-
-    eventSource = new EventSource('/api/progress');
-    eventSource.addEventListener('ping', function(e) {});
 
     pollInterval = setInterval(() => checkChunkStatus(batchId), 3000);
     checkChunkStatus(batchId);
@@ -2476,7 +2483,6 @@ async function checkChunkStatus(batchId) {
 
         if (pollCount > currentMaxPolls) {
             clearInterval(pollInterval);
-            if (eventSource) eventSource.close();
             updateUnifiedStatus(`Chunk may be stuck — polling stopped. Click to retry.`, false);
             const statusText = document.getElementById('statusText');
             if (statusText) {
@@ -2498,7 +2504,6 @@ async function checkChunkStatus(batchId) {
         // Check for terminal states
         if (data.state === 'SUCCESS' || data.state === 'FAILURE' || data.state === 'REVOKED' || data.state === 'TIMEOUT') {
             clearInterval(pollInterval);
-            if (eventSource) eventSource.close();
 
             // Accumulate results
             const results = getTerminalBatchResults(data);
@@ -2779,7 +2784,6 @@ async function cancelChunkedBatch() {
 
     // Stop polling
     if (pollInterval) clearInterval(pollInterval);
-    if (eventSource) eventSource.close();
 
     // Reset cancel button to default handler
     const cancelBtn = document.getElementById('cancelBtn');
@@ -2799,18 +2803,10 @@ function startJobMonitoring(batchId, fileCount) {
     if (pollInterval) {
         clearInterval(pollInterval);
     }
-    if (eventSource) {
-        eventSource.close();
-    }
 
     pollCount = 0;
     // Scale watchdog: at 25 files → max(200, 500) = 500 polls × 3s = 25 min
     currentMaxPolls = Math.max(200, (fileCount || 10) * 20);
-
-    eventSource = new EventSource('/api/progress');
-    eventSource.addEventListener('ping', function(e) {
-        // Connection is alive
-    });
 
     pollInterval = setInterval(() => checkJobStatus(batchId), 3000);
     checkJobStatus(batchId);
@@ -2830,9 +2826,6 @@ async function checkJobStatus(batchId) {
         // Client-side polling watchdog: stop after currentMaxPolls polls
         if (pollCount > currentMaxPolls) {
             clearInterval(pollInterval);
-            if (eventSource) {
-                eventSource.close();
-            }
             document.getElementById('submitBtn').disabled = false;
             updateUnifiedStatus('Job may be stuck — polling stopped after 10 minutes. Click to retry.', false);
             const statusText = document.getElementById('statusText');
@@ -2855,9 +2848,6 @@ async function checkJobStatus(batchId) {
 
         if (data.state === 'SUCCESS' || data.state === 'FAILURE' || data.state === 'REVOKED' || data.state === 'TIMEOUT') {
             clearInterval(pollInterval);
-            if (eventSource) {
-                eventSource.close();
-            }
             document.getElementById('submitBtn').disabled = false;
             const results = getTerminalBatchResults(data);
             const summary = summarizeBatchResults(results);
@@ -3714,7 +3704,7 @@ async function startLibraryScan() {
         const response = await fetch('/api/library-scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ skip_embedded: skipEmbedded })
+            body: JSON.stringify({ skip_embedded: skipEmbedded, language: selectedSubtitleLanguage() })
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

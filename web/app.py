@@ -11,14 +11,13 @@ import io
 import json
 import os
 import re
-import secrets
 import time
 from datetime import date
 from pathlib import Path
 
 import redis as redis_lib
 import requests
-from flask import Flask, Response, abort, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 from tasks import (
     celery_app,
     generate_keyterms_task,
@@ -67,14 +66,67 @@ ALLOWED = set(
 
 def _check_media_path(p: Path) -> bool:
     """Check if a path is safely under MEDIA_ROOT."""
-    try:
-        return p.resolve().is_relative_to(MEDIA_ROOT.resolve())
-    except (ValueError, AttributeError):
-        return str(p.resolve()).startswith(str(MEDIA_ROOT.resolve()))
+    return p.resolve().is_relative_to(MEDIA_ROOT.resolve())
 
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+
+# X-Frame-Options value sent with every response. SAMEORIGIN stops other sites
+# framing the UI (clickjacking); set FRAME_OPTIONS to an empty string to embed
+# it in a dashboard served from another origin (Organizr, Homepage, ...).
+FRAME_OPTIONS = os.environ.get("FRAME_OPTIONS", "SAMEORIGIN").strip()
+
+_STATE_CHANGING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.before_request
+def _reject_cross_site_writes():
+    """
+    Cross-site request forgery guard for state-changing API calls.
+
+    Auth is off by default for local use, so without this any web page open in
+    the user's browser could POST to http://localhost:5000 and queue paid jobs.
+    Two checks:
+
+    1. Browsers label every request with Sec-Fetch-Site; "cross-site" writes are
+       refused. Non-browser clients (curl, scripts) do not send it and pass.
+    2. Writes must be JSON. A cross-origin page can only send form or
+       text/plain bodies without a CORS preflight, and this app never answers
+       one, so requiring application/json blocks the rest. Exceptions: the
+       multipart keyterm upload and the body-less cancel endpoints.
+    """
+    if request.method not in _STATE_CHANGING_METHODS or not request.path.startswith("/api/"):
+        return None
+    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+        abort(403, description="Cross-site requests are not allowed")
+    if request.path.endswith("/cancel"):
+        return None
+    if request.path == "/api/keyterms/upload":
+        if request.mimetype != "multipart/form-data":
+            abort(415, description="Content-Type must be multipart/form-data")
+        return None
+    if not request.is_json:
+        abort(415, description="Content-Type must be application/json")
+    return None
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    if FRAME_OPTIONS:
+        response.headers.setdefault("X-Frame-Options", FRAME_OPTIONS)
+    return response
+
+
+def _json_body() -> dict:
+    """The request's JSON object; 400 when the body is not a JSON object."""
+    body = request.get_json(silent=True)
+    if body is None:
+        return {}
+    if not isinstance(body, dict):
+        abort(400, description="JSON object required")
+    return body
 
 
 # Redis client for batch metadata (timeout tracking)
@@ -325,6 +377,19 @@ _OLLAMA_HOST_RE = re.compile(r"^(https?://)?[A-Za-z0-9._\-\[\]:]+(/v1)?/?$")
 OLLAMA_LIST_TIMEOUT = 3
 
 
+def _ollama_host_error(host):
+    """Why ``host`` is not an acceptable Ollama endpoint, or None when it is.
+
+    The worker sends requests to this host, so it must be a bare
+    ``host:port`` / ``http(s)://host:port`` — no path, query, or credentials.
+    """
+    if not isinstance(host, str):
+        return "ollama_host must be a string"
+    if not _OLLAMA_HOST_RE.match(host.strip()):
+        return "Ollama host must look like host:port or http://host:port"
+    return None
+
+
 @app.get("/api/ollama/models")
 def api_ollama_models():
     """
@@ -342,8 +407,9 @@ def api_ollama_models():
         return jsonify(
             {"error": "Ollama host not configured — set OLLAMA_HOST or enter a host"}
         ), 400
-    if not _OLLAMA_HOST_RE.match(host):
-        return jsonify({"error": "Ollama host must look like host:port or http://host:port"}), 400
+    host_error = _ollama_host_error(host)
+    if host_error:
+        return jsonify({"error": host_error}), 400
     root = ollama_api_root(host)
     try:
         resp = requests.get(f"{root}/api/tags", timeout=OLLAMA_LIST_TIMEOUT, allow_redirects=False)
@@ -377,6 +443,8 @@ def api_browse():
         path: Subdirectory to list (default: MEDIA_ROOT)
         show_all: Include media files with existing subtitles (default: false)
         only_folders_with_videos: Filter out folders with no direct media files (default: false)
+        language: Language you want subtitles in. Embedded tracks tagged with
+            another language then count as missing (default: any language)
 
     Returns:
         JSON with list of subdirectories and media files
@@ -390,18 +458,12 @@ def api_browse():
     only_folders_with_videos = (
         request.args.get("only_folders_with_videos", "false").lower() == "true"
     )
+    language = request.args.get("language")
     path = Path(path).resolve()
-    media_root_resolved = MEDIA_ROOT.resolve()
 
     # Security: Ensure path is under MEDIA_ROOT
-    try:
-        # Use is_relative_to for proper path comparison (Python 3.9+)
-        if not path.is_relative_to(media_root_resolved):
-            abort(400, "Path must be under MEDIA_ROOT")
-    except (ValueError, AttributeError):
-        # Fallback for older Python or path comparison issues
-        if not str(path).startswith(str(media_root_resolved)):
-            abort(400, "Path must be under MEDIA_ROOT")
+    if not _check_media_path(path):
+        abort(400, "Path must be under MEDIA_ROOT")
 
     if not path.exists() or not path.is_dir():
         abort(404, "Directory not found")
@@ -431,7 +493,7 @@ def api_browse():
                     }
                 )
             elif item.is_file() and is_media(item):
-                sub_info = check_subtitles(item, dir_filenames)
+                sub_info = check_subtitles(item, dir_filenames, language=language)
                 # Only include if showing all OR subtitle doesn't exist
                 if show_all or not sub_info["has_subtitles"]:
                     files.append(
@@ -464,6 +526,7 @@ def api_search():
     Query Parameters:
         q: Search query (minimum 2 characters)
         path: Root path to search from (default: MEDIA_ROOT)
+        language: Language you want subtitles in (default: any language)
 
     Returns:
         JSON with matching directories and files, each including a context path
@@ -477,15 +540,12 @@ def api_search():
         return jsonify({"directories": [], "files": [], "query": query})
 
     q_lower = query.lower()
+    language = request.args.get("language")
     root_path = Path(root).resolve()
     media_root_resolved = MEDIA_ROOT.resolve()
 
-    try:
-        if not root_path.is_relative_to(media_root_resolved):
-            abort(400, "Path must be under MEDIA_ROOT")
-    except (ValueError, AttributeError):
-        if not str(root_path).startswith(str(media_root_resolved)):
-            abort(400, "Path must be under MEDIA_ROOT")
+    if not _check_media_path(root_path):
+        abort(400, "Path must be under MEDIA_ROOT")
 
     matching_dirs = []
     matching_files = []
@@ -513,7 +573,7 @@ def api_search():
                     else:
                         _walk(item, depth + 1)
                 elif item.is_file() and is_media(item) and q_lower in item.stem.lower():
-                    sub_info = check_subtitles(item)
+                    sub_info = check_subtitles(item, language=language)
                     matching_files.append(
                         {
                             "name": item.name,
@@ -555,6 +615,7 @@ def api_scan():
     _require_auth()
     root = request.args.get("root", str(MEDIA_ROOT))
     show_all = request.args.get("show_all", "false").lower() == "true"
+    language = request.args.get("language")
     root = Path(root).resolve()
 
     # Security: Ensure path is under MEDIA_ROOT
@@ -567,7 +628,7 @@ def api_scan():
             if show_all:
                 files.append(str(p))
             else:
-                sub_info = check_subtitles(p)
+                sub_info = check_subtitles(p, language=language)
                 if not sub_info["has_subtitles"]:
                     files.append(str(p))
             if len(files) >= 500:
@@ -594,7 +655,7 @@ def api_estimate():
         - Estimated processing time: ~0.1x real-time (rough estimate)
     """
     _require_auth()
-    body = request.get_json(force=True) or {}
+    body = _json_body()
     raw_files = body.get("files", [])
     engine = body.get("engine") or default_engine()
     if engine not in VALID_ENGINES:
@@ -674,7 +735,7 @@ def api_submit():
         - Files must exist before submission
     """
     user = _require_auth()
-    body = request.get_json(force=True) or {}
+    body = _json_body()
 
     model = body.get("model", DEFAULT_MODEL)  # Support model selection (nova-3, nova-3-medical)
     language = body.get("language", DEFAULT_LANGUAGE)
@@ -838,7 +899,7 @@ def api_job(rid):
     try:
         group_result = GroupResult.restore(rid, app=celery_app)
     except Exception as e:
-        print(f"Failed to restore GroupResult: {e}")
+        app.logger.warning("Failed to restore GroupResult: %s", e)
         group_result = None
 
     # Check for batch timeout
@@ -886,10 +947,7 @@ def api_job(rid):
 
                 children_info.append(child_info)
             except Exception as child_error:
-                print(f"Error processing child task: {child_error}")
-                import traceback
-
-                traceback.print_exc()
+                app.logger.exception("Error processing child task: %s", child_error)
                 continue
 
         # Determine overall state
@@ -916,11 +974,16 @@ def api_job(rid):
             and elapsed_seconds > batch_meta["timeout_seconds"]
         ):
             state = "TIMEOUT"
-            print(
-                f"Batch {rid} timed out after {elapsed_seconds:.0f}s (limit: {batch_meta['timeout_seconds']}s)"
+            app.logger.warning(
+                "Batch %s timed out after %.0fs (limit: %ss)",
+                rid,
+                elapsed_seconds,
+                batch_meta["timeout_seconds"],
             )
 
-        print(f"Batch {rid}: {state} ({completed_count}/{total} done, {failed_count} failed)")
+        app.logger.debug(
+            "Batch %s: %s (%d/%d done, %d failed)", rid, state, completed_count, total, failed_count
+        )
 
         # The frontend expects data.data.results with status='ok'|'skipped'|'error'
         results_data = None
@@ -973,11 +1036,11 @@ def api_job(rid):
                     children_info.append(child_info)
                 except Exception as child_error:
                     # Skip problematic children but continue processing
-                    print(f"Error processing child task: {child_error}")
+                    app.logger.warning("Error processing child task: %s", child_error)
                     continue
 
     except Exception as e:
-        print(f"Error in api_job: {e}")
+        app.logger.warning("Error in api_job: %s", e)
         data = {"error": str(e), "error_type": type(e).__name__}
 
     # Check for timeout on non-terminal states (fallback path)
@@ -1021,25 +1084,6 @@ def api_cancel_job(rid):
         return jsonify({"status": "cancelled", "job_id": rid, "revoked": len(revoked_ids)})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
-
-@app.get("/api/progress")
-def api_progress():
-    """
-    Server-Sent Events (SSE) endpoint for real-time progress updates.
-
-    Sends periodic ping events to keep the connection alive.
-    Clients can poll /api/job/<batch_id> to get actual job status.
-    """
-    _require_auth()
-
-    def stream():
-        max_pings = 7200  # 4 hours at 2-second intervals
-        for _ in range(max_pings):
-            yield f"event: ping\ndata: {json.dumps({'t': time.time()})}\n\n"
-            time.sleep(2)
-
-    return Response(stream(), mimetype="text/event-stream")
 
 
 @app.post("/api/keyterms/upload")
@@ -1110,7 +1154,7 @@ def api_keyterms_save():
     """
     _require_auth()
 
-    data = request.get_json()
+    data = _json_body()
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
 
@@ -1270,7 +1314,7 @@ def api_keyterms_generate():
     """
     _require_auth()
 
-    body = request.get_json(force=True) or {}
+    body = _json_body()
     video_path = body.get("video_path")
     provider = body.get("provider", "anthropic")
     model = body.get("model") or _default_model_id(provider)
@@ -1290,6 +1334,9 @@ def api_keyterms_generate():
             return jsonify(
                 {"error": "Ollama host not configured — set OLLAMA_HOST or pass ollama_host"}
             ), 400
+        host_error = _ollama_host_error(ollama_host)
+        if host_error:
+            return jsonify({"error": host_error}), 400
 
     vp = Path(video_path)
 
@@ -1454,24 +1501,51 @@ _LLM_ENV_KEYS = {
 }
 
 
-def _find_source_srt(video_path: Path):
-    """Return an existing same-stem .srt sidecar for a video, if any.
+def _sidecar_tag(video_path: Path, srt_path: Path) -> str:
+    """Language tag of a same-stem sidecar: "eng" for Movie.eng.srt, "" for Movie.srt."""
+    middle = srt_path.name[len(video_path.stem) : -len(".srt")]
+    return middle.strip(".").split(".")[-1].lower() if middle else ""
 
-    Matches both ``Movie.srt`` and language-tagged ``Movie.eng.srt`` (the form
-    this tool produces), preferring the first by sorted name.
+
+def _find_source_srt(video_path: Path, source_language=None, targets=()):
+    """Pick the subtitle to translate from among a video's same-stem .srt sidecars.
+
+    A folder often holds the original transcription *and* earlier translations
+    of it, and translating a translation compounds errors. Sidecars tagged with
+    one of the requested ``targets`` are never the source. The rest rank:
+
+    1. the tag of ``source_language`` (the language the user transcribes in),
+    2. the tag of the server's DEFAULT_LANGUAGE,
+    3. the neutral ``und`` tag (auto-detect / multilingual output),
+    4. an untagged ``Movie.srt``,
+    5. anything else, by name.
     """
     stem = video_path.stem
     try:
         entries = sorted(p for p in video_path.parent.iterdir() if p.is_file())
     except OSError:
         return None
+
+    def tag_for(code):
+        tag = resolve_subtitle_language_tag(requested_language=code) if code else None
+        return tag if tag and tag != NEUTRAL_SUBTITLE_LANG else None
+
+    excluded = {tag_for(t) for t in targets if isinstance(t, str)} - {None}
+    preferred = [tag_for(source_language), tag_for(DEFAULT_LANGUAGE), NEUTRAL_SUBTITLE_LANG, ""]
+
+    candidates = []
     for p in entries:
         if p.suffix.lower() != ".srt" or not p.name.startswith(stem):
             continue
         remainder = p.name[len(stem) :]
-        if remainder == ".srt" or remainder.startswith("."):
-            return p
-    return None
+        if not (remainder.lower() == ".srt" or remainder.startswith(".")):
+            continue
+        tag = _sidecar_tag(video_path, p)
+        if tag in excluded:
+            continue
+        rank = preferred.index(tag) if tag in preferred else len(preferred)
+        candidates.append((rank, p.name, p))
+    return min(candidates)[2] if candidates else None
 
 
 def _estimate_translation(src_srt: Path, targets, provider, model):
@@ -1516,6 +1590,9 @@ def api_translate():
         overwrite: Re-translate even if the target sidecar exists (default: false)
         ollama_host: Ollama endpoint (falls back to OLLAMA_HOST env)
         source_srt: Explicit source .srt path (default: auto-located sidecar)
+        source_language: Language the video was transcribed in; picks the
+            matching sidecar as the source when several exist (default: the
+            server's DEFAULT_LANGUAGE)
         estimate_only: Return a cost estimate instead of queueing (default: false)
 
     Returns:
@@ -1523,7 +1600,7 @@ def api_translate():
     """
     _require_auth()
 
-    body = request.get_json(force=True) or {}
+    body = _json_body()
     video_path = body.get("video_path")
     targets = body.get("targets") or []
     provider = body.get("provider", "anthropic")
@@ -1531,6 +1608,7 @@ def api_translate():
     overwrite = body.get("overwrite", False)
     ollama_host = body.get("ollama_host") or os.environ.get("OLLAMA_HOST")
     source_srt = body.get("source_srt")
+    source_language = body.get("source_language")
     estimate_only = body.get("estimate_only", False)
 
     if not video_path:
@@ -1558,7 +1636,11 @@ def api_translate():
         if not _check_media_path(src) or not src.exists() or src.suffix.lower() != ".srt":
             return jsonify({"error": "Invalid source subtitle path"}), 400
     else:
-        src = _find_source_srt(vp)
+        src = _find_source_srt(
+            vp,
+            source_language if isinstance(source_language, str) else None,
+            targets,
+        )
         if src is None:
             return jsonify(
                 {
@@ -1574,6 +1656,9 @@ def api_translate():
             return jsonify(
                 {"error": "Ollama host not configured — set OLLAMA_HOST or pass ollama_host"}
             ), 400
+        host_error = _ollama_host_error(ollama_host)
+        if host_error:
+            return jsonify({"error": host_error}), 400
     else:
         env_key = _LLM_ENV_KEYS.get(provider)
         if not env_key:
@@ -1582,7 +1667,9 @@ def api_translate():
             return jsonify({"error": f"{env_key} not configured"}), 500
 
     if estimate_only:
-        return jsonify(_estimate_translation(src, targets, provider, model))
+        return jsonify(
+            {**_estimate_translation(src, targets, provider, model), "source_srt": src.name}
+        )
 
     try:
         task = translate_subtitles_task.delay(
@@ -1594,7 +1681,7 @@ def api_translate():
             overwrite=overwrite,
             ollama_host=ollama_host,
         )
-        return jsonify({"task_id": task.id, "status": "pending"})
+        return jsonify({"task_id": task.id, "status": "pending", "source_srt": src.name})
     except Exception as e:
         return jsonify({"error": f"Failed to queue task: {str(e)}"}), 500
 
@@ -1639,15 +1726,20 @@ def api_library_scan():
 
     Request Body (JSON):
         skip_embedded: Skip ffprobe embedded subtitle check (default: false)
+        language: Language you want subtitles in. Embedded tracks tagged with
+            another language then count as missing (default: any language)
 
     Returns:
         JSON with task_id and status
     """
     _require_auth()
-    body = request.get_json(force=True) or {}
+    body = _json_body()
     skip_embedded = body.get("skip_embedded", False)
+    language = body.get("language")
+    if language is not None and not isinstance(language, str):
+        return jsonify({"error": "language must be a string"}), 400
 
-    task = library_scan_task.delay(skip_embedded=skip_embedded)
+    task = library_scan_task.delay(skip_embedded=skip_embedded, language=language)
 
     return jsonify({"task_id": task.id, "status": "pending"})
 

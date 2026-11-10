@@ -335,3 +335,72 @@ def test_translate_file_preserves_zero_duration_cue(tmp_path):
 
     out_cues = list(srt_lib.parse((tmp_path / "Movie.spa.srt").read_text(encoding="utf-8")))
     assert len(out_cues) == 3
+
+
+# --- Checkpoint and resume ---------------------------------------------------
+
+
+def _failing_after(n_windows):
+    """Translator that succeeds for ``n_windows`` calls, then raises."""
+    calls = []
+
+    def fake(texts, target_name, keyterms):
+        if len(calls) >= n_windows:
+            raise RuntimeError("rate limited")
+        calls.append(list(texts))
+        return [f"[es] {t}" for t in texts], 10, 10
+
+    return fake, calls
+
+
+def test_translate_file_resumes_after_a_failed_window(tmp_path):
+    src = tmp_path / "Movie.eng.srt"
+    src.write_text(srt_lib.compose(_make_cues(["a", "b", "c", "d", "e"])), encoding="utf-8")
+    dest = tmp_path / "Movie.spa.srt"
+    partial = tmp_path / "Movie.spa.srt.partial"
+
+    failing, _ = _failing_after(1)
+    with pytest.raises(RuntimeError):
+        _new_translator(window_size=2, text_translator=failing).translate_file(src, "es")
+    assert not dest.exists()  # never a half-translated sidecar
+    assert partial.exists()
+
+    resumed, calls = _failing_after(99)
+    result = _new_translator(window_size=2, text_translator=resumed).translate_file(src, "es")
+
+    assert calls == [["c", "d"], ["e"]]  # the first window was not paid for twice
+    assert result.input_tokens == 20
+    assert [c.content for c in srt_lib.parse(dest.read_text(encoding="utf-8"))] == [
+        "[es] a",
+        "[es] b",
+        "[es] c",
+        "[es] d",
+        "[es] e",
+    ]
+    assert not partial.exists()
+
+
+def test_translate_file_ignores_checkpoint_when_source_changed(tmp_path):
+    src = tmp_path / "Movie.eng.srt"
+    src.write_text(srt_lib.compose(_make_cues(["a", "b", "c"])), encoding="utf-8")
+    failing, _ = _failing_after(1)
+    with pytest.raises(RuntimeError):
+        _new_translator(window_size=2, text_translator=failing).translate_file(src, "es")
+
+    src.write_text(srt_lib.compose(_make_cues(["x", "y", "z"])), encoding="utf-8")
+    fresh, calls = _failing_after(99)
+    _new_translator(window_size=2, text_translator=fresh).translate_file(src, "es")
+
+    assert calls == [["x", "y"], ["z"]]
+
+
+def test_translate_file_ignores_corrupt_checkpoint(tmp_path):
+    src = tmp_path / "Movie.eng.srt"
+    src.write_text(srt_lib.compose(_make_cues(["a", "b"])), encoding="utf-8")
+    (tmp_path / "Movie.spa.srt.partial").write_text("{not json", encoding="utf-8")
+    fresh, calls = _failing_after(99)
+
+    _new_translator(text_translator=fresh).translate_file(src, "es")
+
+    assert calls == [["a", "b"]]
+    assert not (tmp_path / "Movie.spa.srt.partial").exists()

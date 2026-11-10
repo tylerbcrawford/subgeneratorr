@@ -9,7 +9,6 @@ Supports batched processing with per-file progress tracking.
 import json
 import logging
 import os
-import subprocess
 import sys
 import time
 
@@ -37,6 +36,7 @@ from core.transcribe import (
     find_speaker_map,
     get_audio_selection_language,
     get_video_duration,
+    has_embedded_subtitle,
     has_sidecar_subtitle,
     inspect_requested_outputs,
     is_media,
@@ -44,6 +44,7 @@ from core.transcribe import (
     load_keyterms_from_csv,
     resolve_synced_marker_path,
     save_keyterms_to_csv,
+    sweep_stale_audio_temp_files,
     transcribe_file,
     write_intelligence_summary,
     write_raw_json,
@@ -58,10 +59,13 @@ MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/media"))
 LOG_ROOT = Path(os.environ.get("LOG_ROOT", "/logs"))
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "nova-3")
 DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en")
-BAZARR_BASE_URL = os.environ.get("BAZARR_BASE_URL", "")
-BAZARR_API_KEY = os.environ.get("BAZARR_API_KEY", "")
 DG_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
 SAVE_RAW_JSON = os.environ.get("SAVE_RAW_JSON", "0") == "1"
+# Per-job JSON logs kept in LOG_ROOT; the oldest are pruned past this count (0 = keep all).
+JOB_LOG_KEEP = int(os.environ.get("JOB_LOG_KEEP", "1000"))
+# How long finished task results (batch status, library-scan results and their
+# CSV export) stay in Redis.
+RESULT_EXPIRES_DAYS = float(os.environ.get("RESULT_EXPIRES_DAYS", "7"))
 
 # Initialize Celery app
 celery_app = Celery(__name__, broker=REDIS_URL, backend=REDIS_URL)
@@ -69,11 +73,39 @@ celery_app = Celery(__name__, broker=REDIS_URL, backend=REDIS_URL)
 # Configure task routing
 celery_app.conf.task_routes = {
     "transcribe_task": {"queue": "transcribe"},
-    "batch_finalize": {"queue": "transcribe"},
     "generate_keyterms_task": {"queue": "transcribe"},
     "translate_subtitles_task": {"queue": "transcribe"},
     "library_scan_task": {"queue": "scan"},
 }
+celery_app.conf.result_expires = int(RESULT_EXPIRES_DAYS * 86400)
+
+
+_temp_audio_swept = False
+
+
+def _sweep_temp_audio_once():
+    """Once per worker process, remove extracted-audio temp files orphaned by
+    cancelled jobs (cancelling terminates the process, skipping its cleanup)."""
+    global _temp_audio_swept
+    if _temp_audio_swept:
+        return
+    _temp_audio_swept = True
+    try:
+        removed = sweep_stale_audio_temp_files()
+    except Exception as exc:
+        logger.warning("Temp audio sweep failed: %s", exc)
+        return
+    if removed:
+        logger.info("Removed %d stale temp audio file(s)", removed)
+
+
+def _prune_job_logs():
+    """Keep only the newest JOB_LOG_KEEP job logs (names sort by timestamp)."""
+    if JOB_LOG_KEEP <= 0:
+        return
+    logs = sorted(LOG_ROOT.glob("job_*.json"), key=lambda p: (len(p.name), p.name))
+    for old in logs[: max(0, len(logs) - JOB_LOG_KEEP)]:
+        old.unlink(missing_ok=True)
 
 
 def _save_job_log(payload: dict):
@@ -88,6 +120,7 @@ def _save_job_log(payload: dict):
         timestamp = int(time.time() * 1000)
         log_file = LOG_ROOT / f"job_{timestamp}.json"
         log_file.write_text(json.dumps(payload, indent=2))
+        _prune_job_logs()
     except Exception as exc:
         print(f"Warning: Failed to write job log to {LOG_ROOT}: {exc}", file=sys.stderr)
 
@@ -236,6 +269,7 @@ def transcribe_task(
 
     audio_tmp = None
     try:
+        _sweep_temp_audio_once()
         # Extract audio
         self.update_state(
             state="PROGRESS", meta={"current_file": vp.name, "stage": "extracting_audio"}
@@ -459,41 +493,7 @@ def transcribe_task(
                 pass
 
 
-@celery_app.task(name="batch_finalize")
-def batch_finalize(results):
-    """
-    Legacy batch finalizer kept for deferred Bazarr rescan work.
-
-    The current release path uses plain Celery groups for progress tracking,
-    so this task is not attached automatically when a batch completes.
-
-    Args:
-        results: List of results from transcribe_task
-
-    Returns:
-        dict: Batch completion status
-    """
-    # Trigger Bazarr rescan once per batch (only if configured)
-    if BAZARR_BASE_URL and BAZARR_API_KEY:
-        import requests
-
-        try:
-            response = requests.post(
-                f"{BAZARR_BASE_URL}/api/system/tasks/SearchWantedSubtitles",
-                headers={"X-API-KEY": BAZARR_API_KEY},
-                timeout=10,
-            )
-            logger.info("Bazarr rescan triggered: %s", response.status_code)
-        except Exception as e:
-            msg = str(e)
-            if BAZARR_API_KEY:
-                msg = msg.replace(BAZARR_API_KEY, "***")
-            logger.warning("Bazarr rescan failed: %s", msg)
-
-    return {"batch_status": "done", "results": results}
-
-
-@celery_app.task(bind=True, name="generate_keyterms_task")
+@celery_app.task(bind=True, name="generate_keyterms_task", soft_time_limit=900, time_limit=960)
 def generate_keyterms_task(
     self,
     video_path: str,
@@ -724,6 +724,7 @@ def translate_subtitles_task(
             "total_cost": total_cost,
             "provider": provider,
             "model": model,
+            "source_srt": src.name,
             "target_count": n,
             "translated": sum(1 for r in results if not r["skipped"]),
             "skipped_count": sum(1 for r in results if r["skipped"]),
@@ -737,13 +738,16 @@ def translate_subtitles_task(
 
 
 @celery_app.task(bind=True, name="library_scan_task")
-def library_scan_task(self, skip_embedded=False):
+def library_scan_task(self, skip_embedded=False, language=None):
     """
     Scan the entire media library for files missing subtitles.
 
     Args:
         skip_embedded: If True, only check for sidecar subtitle files (faster).
                        If False (default), also probe for embedded subtitle tracks.
+        language: Language the user wants subtitles in. Embedded tracks tagged
+                  with another language (and forced tracks) do not count as
+                  existing subtitles; None, "auto" or "multi" accept any track.
 
     Returns:
         dict with missing_files list, total_scanned, total_missing, scan_time_seconds
@@ -864,29 +868,7 @@ def library_scan_task(self, skip_embedded=False):
                     "scan_time_seconds": round(time.time() - start, 1),
                     "cancelled": True,
                 }
-            has_embedded = False
-            try:
-                result = subprocess.run(
-                    [
-                        "ffprobe",
-                        "-v",
-                        "quiet",
-                        "-select_streams",
-                        "s",
-                        "-show_entries",
-                        "stream=codec_type",
-                        "-of",
-                        "csv=p=0",
-                        str(f),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.stdout.strip():
-                    has_embedded = True
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-                pass
+            has_embedded = has_embedded_subtitle(f, language)
 
             if not has_embedded:
                 missing.append({"path": str(f), "name": f.name, "directory": str(f.parent)})
@@ -995,42 +977,41 @@ def make_batch(
     Returns:
         AsyncResult: Celery async result for tracking batch progress
     """
-    jobs = [
-        transcribe_task.s(
-            str(f),
-            model,
-            language,
-            profanity_filter,
-            force_regenerate,
-            enable_transcript,
-            keyterms,
-            save_raw_json,
-            auto_save_keyterms,
-            numerals,
-            filler_words,
-            detect_language,
-            measurements,
-            diarization,
-            utterances,
-            paragraphs,
-            dictation,
-            multichannel,
-            redact,
-            replace,
-            utt_split,
-            sentiment,
-            summarize,
-            topics,
-            intents,
-            detect_entities,
-            search,
-            tag,
-            engine,
-            whisper_model,
-            speaker_labels,
-        )
-        for f in files
-    ]
+    # Options travel by keyword so a signature change can never silently shift
+    # one option into another's slot.
+    options = dict(
+        model=model,
+        language=language,
+        profanity_filter=profanity_filter,
+        force_regenerate=force_regenerate,
+        enable_transcript=enable_transcript,
+        keyterms=keyterms,
+        save_raw_json=save_raw_json,
+        auto_save_keyterms=auto_save_keyterms,
+        numerals=numerals,
+        filler_words=filler_words,
+        detect_language=detect_language,
+        measurements=measurements,
+        diarization=diarization,
+        utterances=utterances,
+        paragraphs=paragraphs,
+        dictation=dictation,
+        multichannel=multichannel,
+        redact=redact,
+        replace=replace,
+        utt_split=utt_split,
+        sentiment=sentiment,
+        summarize=summarize,
+        topics=topics,
+        intents=intents,
+        detect_entities=detect_entities,
+        search=search,
+        tag=tag,
+        engine=engine,
+        whisper_model=whisper_model,
+        speaker_labels=speaker_labels,
+    )
+    jobs = [transcribe_task.s(str(f), **options) for f in files]
     # Use group() instead of chord to allow progress tracking
     # GroupResult allows the API to query individual task states
     job_group = group(jobs)
