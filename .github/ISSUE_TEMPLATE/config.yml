@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/tylerbcrawford/subgeneratorr/security/advisories/new
+    about: Report security issues privately, not as a public issue.
+  - name: Question or idea
+    url: https://github.com/tylerbcrawford/subgeneratorr/discussions
+    about: Ask how to do something or float an idea before opening an issue.

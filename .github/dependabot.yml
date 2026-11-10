@@ -1,0 +1,22 @@
+# Version updates. Security updates are enabled separately in the repo settings.
+# GitHub Actions are pinned to commit SHAs, so this is what keeps them current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: ["/web", "/cli"]
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directories: ["/", "/web", "/cli"]
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]

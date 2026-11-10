@@ -10,8 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.11"
       - run: pip install -r requirements-dev.txt
@@ -21,18 +21,46 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.11"
       - run: pip install 'ruff==0.17.1'  # exact pin, same as requirements-dev.txt — unpinned ruff broke CI when markdown formatting landed
       - run: ruff check .
       - run: ruff format --check .
 
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Syntax check only: catches a broken script before it ships in an image.
+      - run: for f in web/static/*.js; do node --check "$f"; done
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       - run: docker build -f cli/Dockerfile -t sg-cli-smoke .
       - run: docker build -f web/Dockerfile -t sg-web-smoke .
+      # The -local targets add faster-whisper and bake the default model.
+      - run: docker build -f web/Dockerfile --target local -t sg-web-local-smoke .
+      - run: docker build -f cli/Dockerfile --target local -t sg-cli-local-smoke .
+      - name: Example compose files are valid
+        run: |
+          for f in examples/docker-compose.example.yml examples/docker-compose.local.example.yml; do
+            MEDIA_PATH=/tmp DEEPGRAM_API_KEY=dummy docker compose -f "$f" config -q
+          done
+      - name: Web image starts and answers its health check
+        run: |
+          for image in sg-web-smoke sg-web-local-smoke; do
+            docker run -d --name smoke -e DISABLE_AUTH=true -p 127.0.0.1:5000:5000 "$image"
+            ok=""
+            for _ in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:5000/healthz | grep -q ok; then ok=1; break; fi
+              sleep 1
+            done
+            docker logs smoke
+            docker rm -f smoke
+            test -n "$ok"
+          done
