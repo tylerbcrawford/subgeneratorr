@@ -1,11 +1,13 @@
 # Subgeneratorr - AI-powered subtitle generation
 # https://github.com/tylerbcrawford/subgeneratorr
 #
-# Quick start:
-#   1. Copy this file: cp examples/docker-compose.example.yml docker-compose.yml
-#   2. Copy .env.example to .env and set your DEEPGRAM_API_KEY and MEDIA_PATH
-#   3. docker compose build
-#   4. docker compose up -d    (Web UI at http://localhost:5000)
+# Quick start (pulls the published images — no clone or build needed):
+#   1. Save this file as docker-compose.yml
+#   2. Save .env.example as .env and set your DEEPGRAM_API_KEY and MEDIA_PATH
+#   3. docker compose up -d    (Web UI at http://localhost:5000)
+#
+# Pin a release with SUBGENERATORR_VERSION=3.3.1 in .env (default: latest).
+# Working from a clone? `docker compose up -d --build` builds from source instead.
 #
 # CLI usage:
 #   docker compose run --rm cli
@@ -32,17 +34,16 @@ services:
   # Web UI - Gunicorn app server
   # ==========================================================================
   web:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-web:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: web/Dockerfile
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-web:latest
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:?Set DEEPGRAM_API_KEY in .env}
       DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
@@ -50,8 +51,6 @@ services:
       DEFAULT_MODEL: ${DEFAULT_MODEL:-nova-3}
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
-      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
-      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -59,6 +58,7 @@ services:
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       DISABLE_AUTH: ${DISABLE_AUTH:-true}  # Default: auth disabled for local use. Set to false + configure a reverse proxy for remote/production access
+      FRAME_OPTIONS: ${FRAME_OPTIONS-SAMEORIGIN}  # set FRAME_OPTIONS= (empty) in .env to embed the UI in a dashboard iframe
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media  # read-write: web writes keyterms to Transcripts/Keyterms/
       - logs:/logs
@@ -85,11 +85,11 @@ services:
   # Celery Worker - Background transcription job processing
   # ==========================================================================
   worker:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-worker:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: web/Dockerfile
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-worker:latest
     command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=${WORKER_CONCURRENCY:-1}
     healthcheck:
       test: ["CMD-SHELL", "celery -A tasks.celery_app inspect ping | grep -q pong || exit 1"]
@@ -107,8 +107,6 @@ services:
       LOG_ROOT: /logs
       DEFAULT_MODEL: ${DEFAULT_MODEL:-nova-3}
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
-      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
-      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -116,6 +114,8 @@ services:
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       CELERYD_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      RESULT_EXPIRES_DAYS: ${RESULT_EXPIRES_DAYS:-7}  # how long batch status and library-scan results are kept
+      JOB_LOG_KEEP: ${JOB_LOG_KEEP:-1000}  # per-job JSON logs kept in the logs volume (0 = keep all)
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
       - logs:/logs
@@ -136,11 +136,11 @@ services:
   # ==========================================================================
   # Usage: docker compose run --rm cli
   cli:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-cli:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: cli/Dockerfile
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-cli:latest
     profiles:
       - cli
     environment:

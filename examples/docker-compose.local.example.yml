@@ -6,11 +6,13 @@
 # (OLLAMA_HOST) for local keyterm generation and subtitle translation, and
 # nothing leaves your machine.
 #
-# Quick start:
-#   1. Copy this file: cp examples/docker-compose.local.example.yml docker-compose.yml
-#   2. Copy .env.example to .env and set MEDIA_PATH (DEEPGRAM_API_KEY optional)
-#   3. docker compose build
-#   4. docker compose up -d    (Web UI at http://localhost:5000)
+# Quick start (pulls the published -local images — no clone or build needed):
+#   1. Save this file as docker-compose.yml
+#   2. Save .env.example as .env and set MEDIA_PATH (DEEPGRAM_API_KEY optional)
+#   3. docker compose up -d    (Web UI at http://localhost:5000)
+#
+# Pin a release with SUBGENERATORR_VERSION=3.3.1 in .env (default: latest).
+# Working from a clone? `docker compose up -d --build` builds from source instead.
 #
 # Expectations vs the cloud engine:
 #   - Transcription runs near real-time or faster on a modest CPU with the
@@ -46,12 +48,12 @@ services:
   # Web UI - Gunicorn app server (-local image)
   # ==========================================================================
   web:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-web-local:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: web/Dockerfile
       target: local
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-web-local:latest
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
@@ -59,19 +61,17 @@ services:
       WHISPER_MODEL: ${WHISPER_MODEL:-small}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}  # optional — only needed to also use the cloud engine
       DEEPGRAM_TIMEOUT: ${DEEPGRAM_TIMEOUT:-900}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       REDIS_URL: redis://redis:6379/0
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
       SETTINGS_PATH: ${SETTINGS_PATH:-/logs/subgeneratorr-settings.json}  # saved Customize-languages choices
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
-      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
-      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}  # local Ollama endpoint for offline keyterms and translation
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       DISABLE_AUTH: ${DISABLE_AUTH:-true}
+      FRAME_OPTIONS: ${FRAME_OPTIONS-SAMEORIGIN}  # set FRAME_OPTIONS= (empty) in .env to embed the UI in a dashboard iframe
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
       - logs:/logs
@@ -98,12 +98,12 @@ services:
   # Celery Worker - runs the whisper engine (-local image)
   # ==========================================================================
   worker:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-worker-local:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: web/Dockerfile
       target: local
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-worker-local:latest
     # Concurrency pinned to 1: parallel whisper jobs thrash CPU and RAM.
     command: celery -A tasks.celery_app worker --loglevel=INFO -Q transcribe,scan --concurrency=1
     healthcheck:
@@ -125,12 +125,12 @@ services:
       MEDIA_ROOT: /media
       LOG_ROOT: /logs
       DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
-      BAZARR_BASE_URL: ${BAZARR_BASE_URL:-}
-      BAZARR_API_KEY: ${BAZARR_API_KEY:-}
       OLLAMA_HOST: ${OLLAMA_HOST:-}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-600}
       OLLAMA_THINKING_HEADROOM: ${OLLAMA_THINKING_HEADROOM:-8192}  # extra tokens so thinking models (qwen3) can answer
       CELERYD_CONCURRENCY: 1
+      RESULT_EXPIRES_DAYS: ${RESULT_EXPIRES_DAYS:-7}  # how long batch status and library-scan results are kept
+      JOB_LOG_KEEP: ${JOB_LOG_KEEP:-1000}  # per-job JSON logs kept in the logs volume (0 = keep all)
     volumes:
       - ${MEDIA_PATH:?Set MEDIA_PATH in .env}:/media
       - logs:/logs
@@ -152,12 +152,12 @@ services:
   # ==========================================================================
   # Usage: docker compose run --rm cli
   cli:
+    image: ghcr.io/tylerbcrawford/subgeneratorr-cli-local:${SUBGENERATORR_VERSION:-latest}
+    # Used only by `docker compose build` / `up --build` from a clone of the repo.
     build:
       context: .
       dockerfile: cli/Dockerfile
       target: local
-    # Pre-built image (uncomment to skip building):
-    # image: ghcr.io/tylerbcrawford/subgeneratorr-cli-local:latest
     profiles:
       - cli
     environment:
