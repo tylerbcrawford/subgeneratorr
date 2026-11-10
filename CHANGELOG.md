@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-10
+
 ### Security
 - **Cross-site requests can no longer drive the API.** Five endpoints parsed any request
   body as JSON whatever its content type, so with authentication off (the default for
@@ -49,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed settings that did nothing: `SECRET_KEY` (the app has no sessions) and
   `BAZARR_BASE_URL`/`BAZARR_API_KEY` (the rescan task they fed was never called).
   Leftover values in `.env` are ignored.
+- Docs: Multi-language mode now covers 55 languages, following Deepgram's 2026-10-23
+  Nova-3 multilingual expansion. No code change was needed: `language=multi` requests
+  reach the new model automatically, and Subgeneratorr never read the per-word
+  `language` fields that Deepgram says may now be missing.
 
 ### Fixed
 - **Translating from a translation.** With more than one subtitle next to a video, the
@@ -68,12 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`Show.S01E01.1080p.WEB-DL...mkv`) also widened the file list because they contain
   no spaces to wrap at. Names now wrap inside the list, and the card scrolls
   vertically only.
-
-### Changed
-- Docs: Multi-language mode now covers 55 languages, following Deepgram's 2026-10-23
-  Nova-3 multilingual expansion. No code change was needed: `language=multi` requests
-  reach the new model automatically, and Subgeneratorr never read the per-word
-  `language` fields that Deepgram says may now be missing.
 
 ## [3.3.1] - 2026-10-18
 
@@ -432,7 +432,8 @@ Initial public release.
 - **Path traversal protection**: Input validation on file paths to prevent directory escape
 - **Error path hardening**: Removed bare excepts, added timeout guards, and safe handling of empty API responses
 
-[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.1...HEAD
+[Unreleased]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.1...v3.4.0
 [3.3.1]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/tylerbcrawford/subgeneratorr/compare/v3.1.0...v3.2.0

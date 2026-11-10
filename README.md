@@ -124,7 +124,7 @@ docker compose up -d          # Web UI at http://localhost:5000
 docker compose run --rm cli   # processes the whole MEDIA_PATH library
 ```
 
-Update later with `docker compose pull && docker compose up -d`, or pin a release with `SUBGENERATORR_VERSION=3.3.1` in `.env`. To build from source instead, clone the repo, copy the same two files into place, and run `docker compose up -d --build`.
+Update later with `docker compose pull && docker compose up -d`, or pin a release with `SUBGENERATORR_VERSION=3.4.0` in `.env`. To build from source instead, clone the repo, copy the same two files into place, and run `docker compose up -d --build`.
 
 > **Security:** `DISABLE_AUTH=true` is the default and is for local access only; the example compose binds the port to `127.0.0.1`. For remote/production use, set `DISABLE_AUTH=false` and put an authenticating reverse proxy in front that forwards `X-Auth-Request-Email` or `X-Forwarded-User`. Requests that change anything must be same-site JSON, so another web page open in your browser cannot queue jobs. The CLI is synchronous and headless; the Web UI adds async batches, progress tracking, library scanning, and AI keyterm generation.
 

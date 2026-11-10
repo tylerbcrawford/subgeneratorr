@@ -11,7 +11,7 @@
 #   2. Save .env.example as .env and set MEDIA_PATH (DEEPGRAM_API_KEY optional)
 #   3. docker compose up -d    (Web UI at http://localhost:5000)
 #
-# Pin a release with SUBGENERATORR_VERSION=3.3.1 in .env (default: latest).
+# Pin a release with SUBGENERATORR_VERSION=3.4.0 in .env (default: latest).
 # Working from a clone? `docker compose up -d --build` builds from source instead.
 #
 # Expectations vs the cloud engine:
