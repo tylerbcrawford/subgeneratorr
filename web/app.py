@@ -35,7 +35,7 @@ from core.asr_engine import (
     engine_capabilities,
     whisper_available,
 )
-from core.gap_fill import gap_fill_enabled
+from core.gap_fill import GAP_FILL_BUDGET_SECONDS, gap_fill_enabled
 from core.languages import TRANSCRIPTION_CODES, TRANSLATION_CODES, catalog_payload
 from core.llm_providers import model_catalog, ollama_api_root
 from core.model_languages import translation_support
@@ -868,9 +868,10 @@ def api_submit():
         # the timeout is hang protection only — never a progress estimate.
         timeout_seconds = max(7200, file_count * 14400)  # 4 h per file, minimum 2 h
     else:
-        # Gap-fill adds CPU whisper passes over each subtitle blank.
-        per_file = 900 if gap_fill_enabled() else 300
-        timeout_seconds = max(600, file_count * per_file)  # 5 min per file (15 with gap-fill)
+        # FLAC uploads are ~11x the old MP3 (a 3 h film is ~300 MB), so allow
+        # 10 min per file; gap-fill adds a bounded CPU whisper pass on top.
+        per_file = 600 + (GAP_FILL_BUDGET_SECONDS if gap_fill_enabled() else 0)
+        timeout_seconds = max(600, file_count * per_file)
     batch_meta = {
         "submitted_at": time.time(),
         "file_count": file_count,

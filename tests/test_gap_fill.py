@@ -137,3 +137,14 @@ def test_gap_fill_skips_blanks_without_speech(tmp_path, monkeypatch):
     before = srt_path.read_bytes()
     assert gap_fill.gap_fill_srt(srt_path, Path("a.flac"), resp, "en") == 0
     assert srt_path.read_bytes() == before
+
+
+def test_gap_fill_stops_when_budget_spent(tmp_path, monkeypatch):
+    srt_path, resp = _setup(tmp_path, monkeypatch, [])
+    monkeypatch.setattr(gap_fill, "GAP_FILL_BUDGET_SECONDS", 0)
+    seen = []
+    monkeypatch.setattr(gap_fill, "speech_seconds", lambda buf: seen.append(1) or 5.0)
+    clock = iter([0.0, 10.0, 20.0, 30.0])
+    monkeypatch.setattr(gap_fill.time, "monotonic", lambda: next(clock))
+    assert gap_fill.gap_fill_srt(srt_path, Path("a.flac"), resp, "en") == 0
+    assert seen == []

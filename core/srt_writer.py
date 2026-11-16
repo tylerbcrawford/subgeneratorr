@@ -44,7 +44,7 @@ class _Cue:
 
 
 # Honorifics end in "." but never end a sentence ("Mr. McNeil" stays one cue).
-_ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "st.", "jr.", "sr.", "prof.", "vs."}
+_ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "prof."}
 
 
 def _ends_sentence(word: str) -> bool:

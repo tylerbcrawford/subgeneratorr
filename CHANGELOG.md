@@ -8,19 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Whisper gap-fill for Deepgram subtitles** (`GAP_FILL=on`, `-local` image). Nova-3 drops
-  shouted or overlapping dialogue under loud music, leaving long blanks. Every span of at
-  least `GAP_FILL_MIN_SECONDS` (default 10) with no Deepgram word is re-transcribed by the
-  local faster-whisper model and merged in; Deepgram cues are never changed. Skipped when
-  profanity filtering, redaction, multichannel or language detection is on, since Whisper
-  text cannot honour them. A speech pre-check skips blanks that are only music or silence;
-  on 4 files / 40 blanks scored against official subtitles it decoded 8 blanks, added 23
-  correct cues and 3 wrong ones, and a dialogue-heavy episode gained 0 s of processing.
+- **Experimental: Whisper gap-fill for Deepgram subtitles** (`GAP_FILL=on`, off by default,
+  `-local` image, web UI/worker only — the CLI has no hook). Nova-3 drops shouted or
+  overlapping dialogue under loud music, leaving long blanks. Each span of at least
+  `GAP_FILL_MIN_SECONDS` (default 10) with no Deepgram word gets a speech pre-check; blanks
+  with speech are re-transcribed by the local faster-whisper model and merged in. Deepgram
+  cues are never changed. Decode time per file is capped by `GAP_FILL_BUDGET_SECONDS`
+  (default 600). Skipped when profanity filtering, redaction, speaker labels, multichannel or
+  language detection is on. Transcript and raw-JSON outputs do not include filled cues. Set
+  `GAP_FILL` on both the web and worker containers (the web uses it for the batch timeout).
+  Evaluated in-sample on 40 blanks from 4 files against official subtitles: 8 blanks decoded,
+  23 correct cues and 3 wrong ones added, about 25% of the missed dialogue recovered, and no
+  added time on a dialogue-heavy episode whose blanks were music.
 
 ### Changed
 - **Extracted audio is lossless FLAC instead of MP3.** MP3 masking smears quiet speech under
-  music; FLAC gave 17% more words on a music-heavy clip. `AUDIO_EXTRACT_CODEC=mp3` restores
-  smaller uploads.
+  music; FLAC gave 17% more words on a music-heavy clip. Uploads are about 11x larger (a 3 h
+  film is ~300 MB) at no extra Deepgram cost, since billing is per audio minute. The
+  Deepgram batch timeout is now 10 min per file. `AUDIO_EXTRACT_CODEC=mp3` restores small
+  uploads for slow connections.
 
 ### Fixed
 - Honorifics ("Mr.", "Dr.") no longer end a subtitle cue in the local Whisper writer.

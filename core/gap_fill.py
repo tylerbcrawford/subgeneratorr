@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
 """
-Whisper gap-fill for Deepgram subtitles.
+Whisper gap-fill for Deepgram subtitles (experimental, opt-in).
 
 Nova-3 drops shouted or overlapping dialogue under loud music, leaving long
-subtitle blanks. When enabled (GAP_FILL=on, -local image only), every span of
-at least GAP_FILL_MIN_SECONDS with no Deepgram word is re-transcribed by the
-local faster-whisper model and the new cues are merged into the SRT.
+subtitle blanks. When enabled (GAP_FILL=on, -local image only, web/worker
+path only - the CLI has no hook), every span of at least GAP_FILL_MIN_SECONDS
+with no Deepgram word is checked for speech and, if speech is found,
+re-transcribed by the local faster-whisper model; the new cues are merged
+into the SRT. Transcript and raw-JSON outputs are built from the Deepgram
+response and do not include filled cues.
 
 Deepgram cues are never altered; the file is rewritten only when cues are
-added. Any failure leaves the Deepgram SRT as it was.
+added. Any failure leaves the Deepgram SRT as it was. Total decode time per
+file is capped at GAP_FILL_BUDGET_SECONDS.
 
-VAD is off on purpose: Silero VAD classifies speech under a music bed as
-non-speech, which is exactly the audio this exists to recover. Hallucination
-control comes from per-segment confidence filters instead.
+Two different uses of Silero VAD:
+- As Whisper's internal ``vad_filter`` it trims speech under a music bed, so
+  decoding runs with it off.
+- As a yes/no pre-check ("at least SPEECH_MIN_SECONDS of speech anywhere in
+  this blank?") it reliably separates speech-bearing blanks from pure music or
+  silence, because loud speech still registers even when the bed around it
+  does not.
 
-A speech pre-check (Silero VAD at threshold 0.5) skips blanks with under
-SPEECH_MIN_SECONDS of speech before any decoding: most Deepgram blanks are real
-music or silence. Evaluated on 4 files / 40 blanks against official subtitles,
-it cut decode time 82% with no loss of correct cues. Show keyterms are not
-passed as hotwords: +60% decode time for ~2 points of recall, and they seeded
+Evaluated on 40 blanks from 4 files against official subtitles (in-sample):
+the pre-check cut decode time 82%; with the 0.5 word-probability floor, 23
+correct cues were added vs 26 untuned, and wrong cues fell from 11 to 3.
+Recall of missed dialogue is about 25%. Show keyterms are not passed as
+hotwords: +60% decode time for ~2 points of recall, and they seeded
 hallucinations ("hack, hack, hack") in speechless windows.
 """
 
@@ -26,6 +34,7 @@ import io
 import logging
 import os
 import subprocess
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -51,6 +60,10 @@ MAX_COMPRESSION_RATIO = 2.4
 MIN_MEAN_WORD_PROB = 0.5
 SPEECH_VAD_THRESHOLD = 0.5
 SPEECH_MIN_SECONDS = 2.0
+try:
+    GAP_FILL_BUDGET_SECONDS = max(60, int(os.environ.get("GAP_FILL_BUDGET_SECONDS", "600")))
+except ValueError:
+    GAP_FILL_BUDGET_SECONDS = 600
 _HALLUCINATIONS = {
     "thank you.",
     "thanks for watching!",
@@ -81,6 +94,7 @@ def should_gap_fill(
     profanity_filter: str,
     redact,
     multichannel: bool,
+    speaker_labels: bool = False,
 ) -> Tuple[bool, str]:
     """Return (run, reason). Whisper text cannot honour Deepgram-only options."""
     if not gap_fill_enabled():
@@ -97,6 +111,8 @@ def should_gap_fill(
         return False, "redaction on"
     if multichannel:
         return False, "multichannel"
+    if speaker_labels:
+        return False, "speaker labels on"
     return True, "ok"
 
 
@@ -247,9 +263,17 @@ def gap_fill_srt(
         model = WhisperEngine()._load_model()
         lang = whisper_language_code(language)
         new_cues = []
+        started = time.monotonic()
         for i, (g0, g1) in enumerate(gaps):
             if progress:
                 progress(i, len(gaps))
+            if time.monotonic() - started > GAP_FILL_BUDGET_SECONDS:
+                logger.warning(
+                    "Gap-fill budget (%ss) spent; %d blank(s) left unfilled",
+                    GAP_FILL_BUDGET_SECONDS,
+                    len(gaps) - i,
+                )
+                break
             lo, hi = g0 + (EDGE_MARGIN if g0 > 0 else 0), g1 - (EDGE_MARGIN if g1 < duration else 0)
             try:
                 buf = _slice(audio_path, g0, g1 - g0)

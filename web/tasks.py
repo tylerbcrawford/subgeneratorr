@@ -381,6 +381,7 @@ def transcribe_task(
                     profanity_filter=profanity_filter,
                     redact=redact,
                     multichannel=multichannel,
+                    speaker_labels=speaker_labels,
                 )
                 if run_fill:
                     self.update_state(
@@ -392,6 +393,15 @@ def transcribe_task(
                         resp,
                         language,
                         replace=replace,
+                        progress=lambda done, total: self.update_state(
+                            state="PROGRESS",
+                            meta={
+                                "current_file": vp.name,
+                                "stage": "gap_filling",
+                                "gaps_done": done,
+                                "gaps_total": total,
+                            },
+                        ),
                     )
                 elif why != "disabled":
                     logger.info("Gap-fill skipped for %s: %s", vp.name, why)

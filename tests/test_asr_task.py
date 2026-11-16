@@ -286,3 +286,63 @@ def test_whisper_skip_logic_still_applies(monkeypatch, tmp_path):
 
     assert result["status"] == "skipped"
     assert not record["calls"]
+
+
+def _deepgram_patches(monkeypatch, tmp_path, gap_fill_on):
+    _common_patches(monkeypatch, tmp_path, dg_key="key")
+    monkeypatch.setattr(tasks_module, "transcribe_file", lambda *a, **k: SimpleNamespace())
+
+    def fake_write_srt(resp, dest, **k):
+        dest.write_text("1\n00:00:01,000 --> 00:00:02,000\nHi.\n", encoding="utf-8")
+
+    monkeypatch.setattr(tasks_module, "write_srt", fake_write_srt)
+    calls = []
+
+    def fake_fill(srt_path, audio, resp, language, replace=None, progress=None):
+        calls.append(srt_path)
+        if progress:
+            progress(0, 1)
+        return 3
+
+    monkeypatch.setattr(tasks_module, "gap_fill_srt", fake_fill)
+    if gap_fill_on:
+        monkeypatch.setenv("GAP_FILL", "on")
+    else:
+        monkeypatch.delenv("GAP_FILL", raising=False)
+    import core.gap_fill as gf
+
+    monkeypatch.setattr(gf, "whisper_available", lambda: True)
+    return calls
+
+
+def test_deepgram_gap_fill_off_by_default(monkeypatch, tmp_path):
+    media = tmp_path / "episode.mkv"
+    media.write_text("video")
+    calls = _deepgram_patches(monkeypatch, tmp_path, gap_fill_on=False)
+    result = tasks_module.transcribe_task(RecordingTaskContext(), str(media), language="en")
+    assert result["status"] == "ok"
+    assert calls == []
+    assert "gap_fill_cues" not in result
+
+
+def test_deepgram_gap_fill_runs_when_enabled(monkeypatch, tmp_path):
+    media = tmp_path / "episode.mkv"
+    media.write_text("video")
+    calls = _deepgram_patches(monkeypatch, tmp_path, gap_fill_on=True)
+    ctx = RecordingTaskContext()
+    result = tasks_module.transcribe_task(ctx, str(media), language="en")
+    assert result["status"] == "ok"
+    assert len(calls) == 1
+    assert result["gap_fill_cues"] == 3
+    stages = [s["meta"].get("stage") for s in ctx.states]
+    assert "gap_filling" in stages
+
+
+def test_deepgram_gap_fill_skipped_with_speaker_labels(monkeypatch, tmp_path):
+    media = tmp_path / "episode.mkv"
+    media.write_text("video")
+    calls = _deepgram_patches(monkeypatch, tmp_path, gap_fill_on=True)
+    tasks_module.transcribe_task(
+        RecordingTaskContext(), str(media), language="en", speaker_labels=True
+    )
+    assert calls == []

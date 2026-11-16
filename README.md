@@ -184,6 +184,8 @@ Two values are required; everything else has sensible defaults.
 | `MEDIA_PATH` | Media directory to scan (**required**) | `/media` |
 | `ASR_ENGINE` | `deepgram` (cloud) or `whisper` (local `-local` image) | `deepgram` |
 | `WHISPER_MODEL` | Local model: `tiny` · `base` · `small` · `medium` · `large-v3` | `small` |
+| `AUDIO_EXTRACT_CODEC` | Audio sent to the engine: `flac` (lossless, better under music) or `mp3` (~11x smaller uploads) | `flac` |
+| `GAP_FILL` | Experimental, `-local` image: re-transcribe Deepgram subtitle blanks that contain speech with local Whisper. Set on web and worker | `off` |
 | `LANGUAGE` | Language code, or `auto` / `multi` | `en` |
 | `ENABLE_TRANSCRIPT` | Generate speaker-labeled transcripts | `0` |
 | `PROFANITY_FILTER` | `off` or `on` — masks profanity with asterisks | `off` |
