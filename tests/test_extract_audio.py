@@ -70,12 +70,31 @@ def test_sweep_removes_only_stale_audio_temp_files(tmpdir_env):
     stale = tmpdir_env / f"{transcribe.AUDIO_TMP_PREFIX}old.mp3"
     fresh = tmpdir_env / f"{transcribe.AUDIO_TMP_PREFIX}new.mp3"
     other = tmpdir_env / "unrelated.mp3"
-    for f in (stale, fresh, other):
+    stale_flac = tmpdir_env / f"{transcribe.AUDIO_TMP_PREFIX}old.flac"
+    for f in (stale, fresh, other, stale_flac):
         f.write_text("x")
     old = time.time() - 7 * 3600
     os.utime(stale, (old, old))
+    os.utime(stale_flac, (old, old))
     os.utime(other, (old, old))
 
-    assert transcribe.sweep_stale_audio_temp_files() == 1
+    assert transcribe.sweep_stale_audio_temp_files() == 2
+    assert not stale_flac.exists()
     assert not stale.exists()
     assert fresh.exists() and other.exists()
+
+
+def test_extract_audio_uses_lossless_flac_by_default(tmpdir_env, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+
+    monkeypatch.setattr(transcribe, "_get_channel_count", lambda *a, **k: 2)
+    monkeypatch.setattr(transcribe.subprocess, "run", fake_run)
+    out = transcribe.extract_audio(Path("/media/video.mkv"))
+    cmd = seen["cmd"]
+    assert out.suffix == ".flac"
+    assert cmd[cmd.index("-acodec") + 1] == "flac"
+    assert cmd[cmd.index("-sample_fmt") + 1] == "s16"
+    out.unlink(missing_ok=True)

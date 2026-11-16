@@ -67,6 +67,8 @@ def deepgram_rate_per_minute(
 
 # deepgram-sdk 7.x defaults every request to a 60 s timeout, which a feature-length upload
 # plus transcription can exceed. Override with DEEPGRAM_TIMEOUT (seconds).
+# Codec for extracted audio sent to the ASR engine: "flac" (default, lossless) or "mp3" (smaller uploads).
+AUDIO_EXTRACT_CODEC = "mp3" if os.environ.get("AUDIO_EXTRACT_CODEC", "flac").lower() == "mp3" else "flac"
 DEEPGRAM_TIMEOUT = float(os.environ.get("DEEPGRAM_TIMEOUT", "900"))
 
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
@@ -777,14 +779,17 @@ def extract_audio(video: Path, language: Optional[str] = None) -> Path:
                   track is extracted from multi-language containers.
 
     Returns:
-        Path to temporary MP3 audio file
+        Path to temporary audio file (FLAC by default, MP3 if AUDIO_EXTRACT_CODEC=mp3)
 
     Raises:
         subprocess.CalledProcessError: If FFmpeg extraction fails
     """
     # mkstemp returns an open descriptor; close it (ffmpeg reopens the path) so
     # a long-lived worker does not leak one per job.
-    fd, tmp_name = tempfile.mkstemp(prefix=AUDIO_TMP_PREFIX, suffix=".mp3")
+    # Lossless FLAC by default: MP3 masks quiet speech under loud music, and
+    # nova-3 drops those words (A/B on a music-heavy clip: +17% words).
+    codec = AUDIO_EXTRACT_CODEC
+    fd, tmp_name = tempfile.mkstemp(prefix=AUDIO_TMP_PREFIX, suffix=f".{codec}")
     os.close(fd)
     tmp = Path(tmp_name)
 
@@ -814,7 +819,8 @@ def extract_audio(video: Path, language: Optional[str] = None) -> Path:
         *filter_args,
         "-vn",
         "-acodec",
-        "mp3",
+        codec,
+        *(["-sample_fmt", "s16"] if codec == "flac" else []),
         "-ar",
         "16000",
         "-ac",
@@ -845,7 +851,9 @@ def sweep_stale_audio_temp_files(max_age_seconds: float = 6 * 3600) -> int:
     """
     removed = 0
     cutoff = time.time() - max_age_seconds
-    for stale in Path(tempfile.gettempdir()).glob(f"{AUDIO_TMP_PREFIX}*.mp3"):
+    tmpdir = Path(tempfile.gettempdir())
+    leftovers = [*tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.mp3"), *tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.flac")]
+    for stale in leftovers:
         try:
             if stale.stat().st_mtime < cutoff:
                 stale.unlink()
