@@ -93,6 +93,7 @@ def _setup(tmp_path, monkeypatch, segs):
     )
     monkeypatch.setattr(gap_fill, "_probe_duration", lambda p: 32.0)
     monkeypatch.setattr(gap_fill, "_slice", lambda *a: b"")
+    monkeypatch.setattr(gap_fill, "speech_seconds", lambda buf: 5.0)
     monkeypatch.setattr(gap_fill.WhisperEngine, "_load_model", lambda self: FakeModel(segs))
     return srt_path, _resp([(1, 2), (30, 31)])
 
@@ -124,6 +125,15 @@ def test_gap_fill_engine_failure_keeps_deepgram_srt(tmp_path, monkeypatch):
         raise RuntimeError("no model")
 
     monkeypatch.setattr(gap_fill.WhisperEngine, "_load_model", boom)
+    before = srt_path.read_bytes()
+    assert gap_fill.gap_fill_srt(srt_path, Path("a.flac"), resp, "en") == 0
+    assert srt_path.read_bytes() == before
+
+
+def test_gap_fill_skips_blanks_without_speech(tmp_path, monkeypatch):
+    segs = [_seg([_w("Get", 8.0, 8.3), _w("the", 8.3, 8.5), _w("car!", 8.5, 8.9)])]
+    srt_path, resp = _setup(tmp_path, monkeypatch, segs)
+    monkeypatch.setattr(gap_fill, "speech_seconds", lambda buf: 0.5)
     before = srt_path.read_bytes()
     assert gap_fill.gap_fill_srt(srt_path, Path("a.flac"), resp, "en") == 0
     assert srt_path.read_bytes() == before

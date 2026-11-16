@@ -391,7 +391,6 @@ def transcribe_task(
                         audio_tmp,
                         resp,
                         language,
-                        keyterms=keyterms,
                         replace=replace,
                     )
                 elif why != "disabled":

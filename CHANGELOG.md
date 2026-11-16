@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   least `GAP_FILL_MIN_SECONDS` (default 10) with no Deepgram word is re-transcribed by the
   local faster-whisper model and merged in; Deepgram cues are never changed. Skipped when
   profanity filtering, redaction, multichannel or language detection is on, since Whisper
-  text cannot honour them. A 22-minute test episode went from a 57 s blank to 32 filled cues.
+  text cannot honour them. A speech pre-check skips blanks that are only music or silence;
+  on 4 files / 40 blanks scored against official subtitles it decoded 8 blanks, added 23
+  correct cues and 3 wrong ones, and a dialogue-heavy episode gained 0 s of processing.
 
 ### Changed
 - **Extracted audio is lossless FLAC instead of MP3.** MP3 masking smears quiet speech under
