@@ -43,8 +43,15 @@ class _Cue:
     text: str
 
 
+# Honorifics end in "." but never end a sentence ("Mr. McNeil" stays one cue).
+_ABBREVIATIONS = {"mr.", "mrs.", "ms.", "dr.", "st.", "jr.", "sr.", "prof.", "vs."}
+
+
 def _ends_sentence(word: str) -> bool:
-    return word.rstrip(_TRAILING_QUOTES).endswith(_SENTENCE_END)
+    stripped = word.rstrip(_TRAILING_QUOTES)
+    if stripped.lower() in _ABBREVIATIONS:
+        return False
+    return stripped.endswith(_SENTENCE_END)
 
 
 def _layout_lines(text: str) -> List[str]:

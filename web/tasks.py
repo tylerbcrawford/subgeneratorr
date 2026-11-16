@@ -27,6 +27,7 @@ from core.asr_engine import (
     WhisperEngine,
     whisper_available,
 )
+from core.gap_fill import gap_fill_srt, should_gap_fill
 from core.srt_writer import (
     write_normalized_srt,
     write_normalized_transcript,
@@ -373,6 +374,28 @@ def transcribe_task(
                 write_normalized_srt(normalized, resolved_srt_out)
             else:
                 write_srt(resp, resolved_srt_out, speaker_labels=speaker_labels)
+                run_fill, why = should_gap_fill(
+                    engine=engine,
+                    language=language,
+                    detect_language=detect_language,
+                    profanity_filter=profanity_filter,
+                    redact=redact,
+                    multichannel=multichannel,
+                )
+                if run_fill:
+                    self.update_state(
+                        state="PROGRESS", meta={"current_file": vp.name, "stage": "gap_filling"}
+                    )
+                    meta["gap_fill_cues"] = gap_fill_srt(
+                        resolved_srt_out,
+                        audio_tmp,
+                        resp,
+                        language,
+                        keyterms=keyterms,
+                        replace=replace,
+                    )
+                elif why != "disabled":
+                    logger.info("Gap-fill skipped for %s: %s", vp.name, why)
             produced_outputs.append("subtitle")
 
             # Remove Subsyncarr marker file if it exists so Subsyncarr knows to reprocess

@@ -322,6 +322,7 @@ See `examples/video-list-example.txt` for a complete example.
 |----------|---------|-------------|
 | `DEEPGRAM_API_KEY` | (required for cloud) | Your Deepgram API key; optional when `ASR_ENGINE=whisper` |
 | `DEEPGRAM_TIMEOUT` | `900` | Seconds to wait for one Deepgram request (upload + transcription). deepgram-sdk 7.x defaults to 60 s, too short for feature-length audio |
+| `AUDIO_EXTRACT_CODEC` | `flac` | Codec for audio sent to the ASR engine: `flac` (lossless, better under music) or `mp3` (smaller uploads) |
 | `MEDIA_PATH` | `/media` | Path to scan for videos (inside container) |
 | `FILE_LIST_PATH` | - | Path to text file with specific media files to process |
 | `LOG_PATH` | `/logs` | Directory for processing logs |
@@ -337,6 +338,8 @@ See `examples/video-list-example.txt` for a complete example.
 | `WHISPER_MODEL_DIR` | `/models` | Model cache directory (a named volume in the local compose) |
 | `WHISPER_COMPUTE_TYPE` | `int8` | CTranslate2 compute type; `int8` is the CPU sweet spot |
 | `WHISPER_CPU_THREADS` | `0` | CPU threads for inference (`0` = auto) |
+| `GAP_FILL` | `off` | `on` re-transcribes Deepgram subtitle blanks with local Whisper (`-local` image only) |
+| `GAP_FILL_MIN_SECONDS` | `10` | Shortest blank (seconds) that gap-fill re-transcribes |
 | `SPEAKER_LABELS` | `0` | Set to `1` to embed `[speaker N]` tags in subtitle cues (cloud engine; off by default since v3) |
 
 #### Feature Toggles

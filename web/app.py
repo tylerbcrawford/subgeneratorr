@@ -35,6 +35,7 @@ from core.asr_engine import (
     engine_capabilities,
     whisper_available,
 )
+from core.gap_fill import gap_fill_enabled
 from core.languages import TRANSCRIPTION_CODES, TRANSLATION_CODES, catalog_payload
 from core.llm_providers import model_catalog, ollama_api_root
 from core.model_languages import translation_support
@@ -867,7 +868,9 @@ def api_submit():
         # the timeout is hang protection only — never a progress estimate.
         timeout_seconds = max(7200, file_count * 14400)  # 4 h per file, minimum 2 h
     else:
-        timeout_seconds = max(600, file_count * 300)  # 5 min per file, minimum 10 min
+        # Gap-fill adds CPU whisper passes over each subtitle blank.
+        per_file = 900 if gap_fill_enabled() else 300
+        timeout_seconds = max(600, file_count * per_file)  # 5 min per file (15 with gap-fill)
     batch_meta = {
         "submitted_at": time.time(),
         "file_count": file_count,

@@ -68,7 +68,9 @@ def deepgram_rate_per_minute(
 # deepgram-sdk 7.x defaults every request to a 60 s timeout, which a feature-length upload
 # plus transcription can exceed. Override with DEEPGRAM_TIMEOUT (seconds).
 # Codec for extracted audio sent to the ASR engine: "flac" (default, lossless) or "mp3" (smaller uploads).
-AUDIO_EXTRACT_CODEC = "mp3" if os.environ.get("AUDIO_EXTRACT_CODEC", "flac").lower() == "mp3" else "flac"
+AUDIO_EXTRACT_CODEC = (
+    "mp3" if os.environ.get("AUDIO_EXTRACT_CODEC", "flac").lower() == "mp3" else "flac"
+)
 DEEPGRAM_TIMEOUT = float(os.environ.get("DEEPGRAM_TIMEOUT", "900"))
 
 # Preferred subtitle suffixes use ISO 639-2/B tags for media server compatibility.
@@ -852,7 +854,10 @@ def sweep_stale_audio_temp_files(max_age_seconds: float = 6 * 3600) -> int:
     removed = 0
     cutoff = time.time() - max_age_seconds
     tmpdir = Path(tempfile.gettempdir())
-    leftovers = [*tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.mp3"), *tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.flac")]
+    leftovers = [
+        *tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.mp3"),
+        *tmpdir.glob(f"{AUDIO_TMP_PREFIX}*.flac"),
+    ]
     for stale in leftovers:
         try:
             if stale.stat().st_mtime < cutoff:

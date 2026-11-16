@@ -270,3 +270,12 @@ def test_write_normalized_srt_respects_resolved_path(tmp_path):
     out = write_normalized_srt(GOLDEN_RESULT, dest, lang="eng")
     assert out == dest
     assert out.exists()
+
+
+def test_honorific_does_not_end_cue():
+    from core.srt_writer import _ends_sentence
+
+    assert not _ends_sentence("Mr.")
+    assert not _ends_sentence("Dr.")
+    assert _ends_sentence("car.")
+    assert _ends_sentence('now!"')
