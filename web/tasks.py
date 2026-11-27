@@ -512,9 +512,14 @@ def transcribe_task(
         return {"status": status, **meta, **timing_data}
 
     except Exception as e:
-        # Log error
-        _save_job_log({"status": "error", "error": str(e), **meta})
-        raise
+        # Celery's Redis backend can't re-serialise SDK errors (Deepgram's
+        # ApiError reaches the UI as "status_code: None"), so hand it a plain
+        # RuntimeError with a short message, like generate_keyterms_task does.
+        error_msg = _transcription_error_message(e)
+        _save_job_log({"status": "error", "error": error_msg, **meta})
+        if type(e) in (RuntimeError, ValueError):
+            raise
+        raise RuntimeError(error_msg) from None
 
     finally:
         # Clean up temporary audio file
@@ -523,6 +528,22 @@ def transcribe_task(
                 Path(audio_tmp).unlink()
             except Exception:
                 pass
+
+
+def _transcription_error_message(e: Exception) -> str:
+    """Short, user-facing message for a transcription failure."""
+    status = getattr(e, "status_code", None)
+    if status in (401, 403):
+        return "Deepgram API key is invalid or expired"
+    if status == 402:
+        return "Deepgram account is out of credit"
+    if status == 429:
+        return "Deepgram rate limit exceeded — wait a moment and try again"
+    if status is not None:
+        body = str(getattr(e, "body", "") or "")[:300]
+        return f"Deepgram request failed (HTTP {status}){': ' + body if body else ''}"
+    msg = str(e) or type(e).__name__
+    return msg[:500] + "..." if len(msg) > 500 else msg
 
 
 @celery_app.task(bind=True, name="generate_keyterms_task", soft_time_limit=900, time_limit=960)

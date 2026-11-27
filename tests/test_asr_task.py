@@ -167,6 +167,44 @@ def test_deepgram_task_still_requires_key(monkeypatch, tmp_path):
         tasks_module.transcribe_task(RecordingTaskContext(), str(media), language="en")
 
 
+class FakeDeepgramApiError(Exception):
+    """Same shape as deepgram-sdk v7's ApiError (status_code, headers, body)."""
+
+    def __init__(self, status_code, body):
+        super().__init__()
+        self.status_code = status_code
+        self.headers = {}
+        self.body = body
+
+
+@pytest.mark.parametrize(
+    "status, expected",
+    [
+        (401, "Deepgram API key is invalid or expired"),
+        (429, "Deepgram rate limit exceeded"),
+        (500, "Deepgram request failed (HTTP 500)"),
+    ],
+)
+def test_deepgram_api_error_becomes_readable_runtime_error(monkeypatch, tmp_path, status, expected):
+    media = tmp_path / "episode.mkv"
+    media.write_text("video")
+    _common_patches(monkeypatch, tmp_path, dg_key="bad-key")
+    logged = []
+    monkeypatch.setattr(tasks_module, "_save_job_log", lambda entry: logged.append(entry))
+
+    def reject(*a, **k):
+        raise FakeDeepgramApiError(status, {"err_msg": "Invalid credentials."})
+
+    monkeypatch.setattr(tasks_module, "transcribe_file", reject)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tasks_module.transcribe_task(RecordingTaskContext(), str(media), language="en")
+
+    assert type(excinfo.value) is RuntimeError
+    assert str(excinfo.value).startswith(expected)
+    assert logged[-1]["error"].startswith(expected)
+
+
 def test_unknown_engine_rejected(monkeypatch, tmp_path):
     media = tmp_path / "episode.mkv"
     media.write_text("video")
