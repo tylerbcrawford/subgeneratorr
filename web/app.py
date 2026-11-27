@@ -39,6 +39,7 @@ from core.gap_fill import GAP_FILL_BUDGET_SECONDS, gap_fill_enabled
 from core.languages import TRANSCRIPTION_CODES, TRANSLATION_CODES, catalog_payload
 from core.llm_providers import model_catalog, ollama_api_root
 from core.model_languages import translation_support
+from core.translate import is_recorded_translation
 from core.settings_store import (
     SettingsError,
     load_language_prefs,
@@ -1545,7 +1546,7 @@ def _find_source_srt(video_path: Path, source_language=None, targets=()):
         if not (remainder.lower() == ".srt" or remainder.startswith(".")):
             continue
         tag = _sidecar_tag(video_path, p)
-        if tag in excluded:
+        if tag in excluded or is_recorded_translation(p):
             continue
         rank = preferred.index(tag) if tag in preferred else len(preferred)
         candidates.append((rank, p.name, p))

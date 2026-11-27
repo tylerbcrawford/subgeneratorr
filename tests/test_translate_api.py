@@ -327,6 +327,27 @@ def test_source_falls_back_to_neutral_then_untagged_then_name(tmp_path):
     assert _source_name(video, targets=["es"]) == "Movie.fre.srt"
 
 
+def test_recorded_translation_is_never_the_source_whatever_the_dropdown(tmp_path):
+    # todo #19 live case: a French clip transcribed as fr, translated to English,
+    # then translated again with the dropdown left on English.
+    from core import translate as translate_mod
+
+    video = _touch_sidecars(tmp_path, "Movie.fre.srt", "Movie.eng.srt")
+    translate_mod.record_translation(tmp_path / "Movie.eng.srt", tmp_path / "Movie.fre.srt")
+    assert _source_name(video, source_language="en", targets=["de"]) == "Movie.fre.srt"
+    assert _source_name(video, targets=["de"]) == "Movie.fre.srt"
+
+
+def test_overwritten_translation_counts_as_a_source_again(tmp_path):
+    from core import translate as translate_mod
+
+    video = _touch_sidecars(tmp_path, "Movie.fre.srt", "Movie.eng.srt")
+    translate_mod.record_translation(tmp_path / "Movie.eng.srt", tmp_path / "Movie.fre.srt")
+    # a later English transcription replaces the file: the manifest entry is stale
+    (tmp_path / "Movie.eng.srt").write_text("1\n00:00:00,000 --> 00:00:03,000\nReal English transcript\n")
+    assert _source_name(video, source_language="en", targets=["de"]) == "Movie.eng.srt"
+
+
 def test_source_ignores_other_videos_with_a_shared_prefix(tmp_path):
     video = _touch_sidecars(tmp_path, "Movie 2.eng.srt", "Movie.eng.sdh.srt")
     assert _source_name(video, targets=["es"]) == "Movie.eng.sdh.srt"
