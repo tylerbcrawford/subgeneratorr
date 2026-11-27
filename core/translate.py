@@ -215,6 +215,7 @@ class SubtitleTranslator:
         # (reindex=True) runs sort_and_reindex, which silently drops cues with
         # empty content or non-positive duration and renumbers the survivors.
         dest.write_text(srt_lib.compose(result.cues, reindex=False), encoding="utf-8")
+        record_translation(dest, srt_path)
         partial.unlink(missing_ok=True)
         result.output_path = dest
         result.skipped = False
@@ -396,3 +397,50 @@ def _parse_translation_response(text: str, expected_count: int) -> List[str]:
             by_index[item["i"]] = str(item["text"])
 
     return [by_index[i] for i in sorted(by_index)]
+
+
+# --- translation provenance ---------------------------------------------------
+# A folder's sidecars don't say which are translations, and translating a
+# translation compounds errors. translate_file records each output here; the
+# web UI's source picker skips recorded files (todo #19). Each entry keeps the
+# file's size and mtime when written, so a file later overwritten (say by a real
+# transcription) stops counting as a translation without any cleanup.
+
+TRANSLATIONS_MANIFEST = ".subgeneratorr-translations.json"
+
+
+def _fingerprint(path: Path) -> List[int]:
+    st = path.stat()
+    return [st.st_size, st.st_mtime_ns]
+
+
+def _read_manifest(folder: Path) -> dict:
+    try:
+        data = json.loads((folder / TRANSLATIONS_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_translation(dest: Path, source: Path) -> None:
+    """Note that ``dest`` was translated from ``source``. Best effort: a
+    read-only folder must not fail an otherwise finished translation."""
+    dest = Path(dest)
+    try:
+        manifest = _read_manifest(dest.parent)
+        manifest[dest.name] = {"source": Path(source).name, "fingerprint": _fingerprint(dest)}
+        (dest.parent / TRANSLATIONS_MANIFEST).write_text(json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def is_recorded_translation(path: Path) -> bool:
+    """True if ``path`` is a translation this tool wrote and it is unchanged since."""
+    path = Path(path)
+    entry = _read_manifest(path.parent).get(path.name)
+    if not isinstance(entry, dict):
+        return False
+    try:
+        return entry.get("fingerprint") == _fingerprint(path)
+    except OSError:
+        return False

@@ -187,6 +187,19 @@ def test_cloud_translation_cost_is_nonzero():
 # --- File I/O: tagged sidecar + skip-existing -------------------------------
 
 
+def test_translate_file_records_its_output_as_a_translation(tmp_path):
+    from core.translate import is_recorded_translation
+
+    src = tmp_path / "Movie.fre.srt"
+    src.write_text(srt_lib.compose(_make_cues(["Bonjour"])), encoding="utf-8")
+    tr = _new_translator(text_translator=_recording_translator(lambda t: f"[en] {t}"))
+
+    tr.translate_file(src, "en")
+
+    assert is_recorded_translation(tmp_path / "Movie.eng.srt")
+    assert not is_recorded_translation(src)
+
+
 def test_translate_file_writes_tagged_sidecar(tmp_path):
     src = tmp_path / "Movie.eng.srt"
     src.write_text(srt_lib.compose(_make_cues(["Hello", "World"])), encoding="utf-8")
